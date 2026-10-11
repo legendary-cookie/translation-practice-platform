@@ -108,6 +108,7 @@ export default function App() {
   const [pendingConsent, setPendingConsent] = useState<CloudConsentRequest | undefined>()
   const [isEvaluating, setIsEvaluating] = useState(false)
   const dataLoadGeneration = useRef(0)
+  const diagnosticAutoStarted = useRef(false)
 
   const handleLocalProgress = (progress: LocalModelProgress) => {
     setLocalProgress(progress)
@@ -135,6 +136,14 @@ export default function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || diagnosticAutoStarted.current || capability.localModel.status !== 'available' || !new URLSearchParams(window.location.search).has('localDiagnostic')) {
+      return
+    }
+    diagnosticAutoStarted.current = true
+    void prepareLocalModel()
+  }, [capability.localModel.status])
 
   useEffect(() => {
     let cancelled = false

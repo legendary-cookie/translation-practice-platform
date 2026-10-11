@@ -69,6 +69,7 @@ export function ExamRunner({
             profile,
             elapsedSeconds,
           )
+          isDirtyRef.current = true
 
           if (overallExpired) {
             clearInterval(intervalId)

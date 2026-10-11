@@ -26,12 +26,18 @@ export function ProviderSettings({ onSettingsChange, onBusyChange, locked = fals
     setSaving(true); setError(''); setNotice('')
     try {
       const next: AppSettings = { privacyMode: settings.privacyMode, localModelId: settings.localModelId }
-      const baseUrl = settings.cloudBaseUrl?.trim()
-      const model = settings.cloudModel?.trim()
-      if (baseUrl || model) {
-        if (!baseUrl || !model) throw new Error('Enter both a cloud base URL and model, or clear both fields.')
-        cloudEndpoint({ baseUrl, model })
-        next.cloudBaseUrl = baseUrl; next.cloudModel = model
+      if (settings.privacyMode === 'local-only') {
+        const saved = await database.getSettings()
+        if (saved.cloudBaseUrl !== undefined) next.cloudBaseUrl = saved.cloudBaseUrl
+        if (saved.cloudModel !== undefined) next.cloudModel = saved.cloudModel
+      } else {
+        const baseUrl = settings.cloudBaseUrl?.trim()
+        const model = settings.cloudModel?.trim()
+        if (baseUrl || model) {
+          if (!baseUrl || !model) throw new Error('Enter both a cloud base URL and model, or clear both fields.')
+          cloudEndpoint({ baseUrl, model })
+          next.cloudBaseUrl = baseUrl; next.cloudModel = model
+        }
       }
       await database.saveSettings(next)
       setSessionKey(key)

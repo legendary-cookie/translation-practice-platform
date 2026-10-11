@@ -66,7 +66,7 @@ export const database = {
 
   async saveSettings(settings: StoredSettings): Promise<void> {
     const db = await getDatabase()
-    await db.put('settings', { ...settings, id: SETTINGS_KEY })
+    await db.put('settings', { ...settings, id: SETTINGS_KEY }, SETTINGS_KEY)
   },
 
   async exportData(): Promise<ExportData> {

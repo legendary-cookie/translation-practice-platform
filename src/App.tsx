@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createCloudProvider } from './ai/cloud-provider'
 import type { LocalModelProgress } from './ai/local-provider'
 import { createLocalProvider } from './ai/local-provider'
@@ -104,6 +104,7 @@ export default function App() {
   const [practiceNotice, setPracticeNotice] = useState<string | undefined>()
   const [pendingConsent, setPendingConsent] = useState<CloudConsentRequest | undefined>()
   const [isEvaluating, setIsEvaluating] = useState(false)
+  const dataLoadGeneration = useRef(0)
 
   const handleLocalProgress = (progress: LocalModelProgress) => {
     setLocalProgress(progress)
@@ -121,11 +122,19 @@ export default function App() {
   useEffect(() => () => localProvider.dispose(), [localProvider])
 
   useEffect(() => {
+    const loadGeneration = dataLoadGeneration.current
     void database.getSettings().then((savedSettings) => {
+      if (dataLoadGeneration.current !== loadGeneration) {
+        return
+      }
       setSettings(savedSettings)
       setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '' })
     }).catch(() => undefined)
-    void database.listSessions().then(setRecentSessions).catch(() => undefined)
+    void database.listSessions().then((sessions) => {
+      if (dataLoadGeneration.current === loadGeneration) {
+        setRecentSessions(sessions)
+      }
+    }).catch(() => undefined)
   }, [])
 
   const cloudProvider = useMemo(() => {
@@ -159,6 +168,7 @@ export default function App() {
   }
 
   async function clearLocalData() {
+    dataLoadGeneration.current += 1
     await database.clearData()
     localProvider.dispose()
     setSettings(DEFAULT_SETTINGS)

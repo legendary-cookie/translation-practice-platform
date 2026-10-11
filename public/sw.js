@@ -1,8 +1,28 @@
-const CACHE_NAME = 'lingo-practice-shell-v1'
+const CACHE_NAME = 'lingo-practice-shell-v2'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg']
+const PRECACHE_MANIFEST = '/precache-manifest.json'
+
+function toRootAssetUrl(path) {
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+async function precacheAppShell() {
+  const manifestResponse = await fetch(PRECACHE_MANIFEST, { cache: 'no-store' })
+  if (!manifestResponse.ok) {
+    throw new Error(`Unable to load ${PRECACHE_MANIFEST} for precaching.`)
+  }
+
+  const manifest = await manifestResponse.json()
+  const generatedAssets = (Array.isArray(manifest.assets) ? manifest.assets : [])
+    .filter((asset) => typeof asset === 'string')
+    .map(toRootAssetUrl)
+
+  const cache = await caches.open(CACHE_NAME)
+  await cache.addAll([...new Set([...APP_SHELL, PRECACHE_MANIFEST, ...generatedAssets])])
+}
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)))
+  event.waitUntil(precacheAppShell())
 })
 
 self.addEventListener('activate', (event) => {

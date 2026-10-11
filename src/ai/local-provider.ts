@@ -4,7 +4,7 @@ import {
   prebuiltAppConfig,
   type WebWorkerMLCEngine,
 } from '@mlc-ai/web-llm'
-import { validateFeedback } from '../domain/scoring'
+import { FeedbackValidationError, validateFeedback } from '../domain/scoring'
 import { DEFAULT_LOCAL_MODEL_ID, type EvaluationInput, type TranslationFeedback } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { parseJsonResponse, ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
@@ -19,13 +19,24 @@ export type LocalModelProgress = {
 export type LocalModelProgressCallback = (progress: LocalModelProgress) => void
 
 export const LOCAL_MODEL_CACHE_EVICTED_MESSAGE = 'The local model cache is missing. Your browser may have evicted the downloaded model; prepare it again before retrying local evaluation.'
+export const LOCAL_EVALUATION_INVALID_RESPONSE_MESSAGE = 'The local evaluator returned incomplete or invalid feedback twice. No score was saved. Try again, review manually, or choose explicit cloud consent.'
 const LOCAL_MODEL_READY_MARKER = 'lingo-practice-local-model-ready'
-type DiagnosticMode = 'unconstrained' | 'json' | 'json-prompt'
+const LOCAL_EVALUATION_MAX_TOKENS = 1400
+const LOCAL_EVALUATION_MAX_ATTEMPTS = 2
+const QWEN3_NON_THINKING_BODY = { enable_thinking: false } as const
+type DiagnosticMode = 'unconstrained' | 'json' | 'json-prompt' | 'thinking-on'
 type StreamChunk = {
   choices: Array<{
     delta?: { content?: string | null }
     finish_reason?: string | null
   }>
+}
+
+type CollectedStream = {
+  content: string
+  chunks: number
+  finishReason: string | null | undefined
+  elapsedMs: number
 }
 
 function logLocalEvent(event: string, details: Record<string, unknown> = {}): void {
@@ -39,10 +50,10 @@ function requestedDiagnosticMode(): DiagnosticMode | undefined {
     return undefined
   }
   const value = new URLSearchParams(location.search).get('localDiagnostic')
-  return value === 'unconstrained' || value === 'json' || value === 'json-prompt' ? value : undefined
+  return value === 'unconstrained' || value === 'json' || value === 'json-prompt' || value === 'thinking-on' ? value : undefined
 }
 
-async function collectStream(stream: AsyncIterable<StreamChunk>, phase: string): Promise<string> {
+async function collectStream(stream: AsyncIterable<StreamChunk>, phase: string): Promise<CollectedStream> {
   const startedAt = performance.now()
   let content = ''
   let chunks = 0
@@ -66,7 +77,12 @@ async function collectStream(stream: AsyncIterable<StreamChunk>, phase: string):
     elapsedMs: Math.round(performance.now() - startedAt),
     finishReason,
   })
-  return content
+  return {
+    content,
+    chunks,
+    finishReason,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  }
 }
 
 async function runRequestedDiagnostic(engine: WebWorkerMLCEngine, mode: DiagnosticMode): Promise<void> {
@@ -83,17 +99,18 @@ async function runRequestedDiagnostic(engine: WebWorkerMLCEngine, mode: Diagnost
           temperature: 0,
           stream: true,
           ...(mode === 'json' ? { response_format: { type: 'json_object' as const } } : {}),
-          extra_body: { enable_thinking: false },
+          extra_body: QWEN3_NON_THINKING_BODY,
         }
       : {
           messages: [{ role: 'user', content: 'Reply with exactly the word OK.' }],
-          max_tokens: 8,
-          temperature: 0,
+          max_tokens: mode === 'thinking-on' ? 128 : 8,
+          temperature: mode === 'thinking-on' ? 0.6 : 0.7,
+          top_p: mode === 'thinking-on' ? 0.95 : 0.8,
           stream: true,
-          extra_body: { enable_thinking: false },
+          extra_body: { enable_thinking: mode === 'thinking-on' },
         })
-    const content = await collectStream(stream as AsyncIterable<StreamChunk>, 'diagnostic.' + mode)
-    logLocalEvent('diagnostic.success', { mode, characters: content.length, elapsedMs: Math.round(performance.now() - startedAt) })
+    const result = await collectStream(stream as AsyncIterable<StreamChunk>, 'diagnostic.' + mode)
+    logLocalEvent('diagnostic.success', { mode, characters: result.content.length, elapsedMs: Math.round(performance.now() - startedAt) })
   } catch (error) {
     logLocalEvent('diagnostic.error', {
       mode,
@@ -173,6 +190,11 @@ function instrumentWorker(worker: Worker): void {
   worker.addEventListener('messageerror', () => {
     logLocalEvent('worker.message-error')
   })
+}
+
+function isRecoverableFeedbackError(error: unknown): boolean {
+  return error instanceof FeedbackValidationError
+    || (error instanceof Error && (error.message === 'The evaluator returned malformed JSON.' || error.message === 'The local evaluator response was truncated before completion.'))
 }
 
 export function createLocalProvider(
@@ -262,41 +284,76 @@ export function createLocalProvider(
       }
       const engine = await enginePromise
       const evaluationStartedAt = performance.now()
-      logLocalEvent('evaluation.start', {
-        sourceCharacters: input.exercise.sourceText.length,
-        answerCharacters: input.learnerAnswer.length,
-        maxTokens: 900,
-        responseFormat: 'prompt-only-json',
-      })
-      const response = await engine.chat.completions.create({
-        messages: [
-          { role: 'system', content: evaluationSystemPrompt },
-          { role: 'user', content: buildEvaluationPrompt(input) },
-        ],
-        temperature: 0.2,
-        top_p: 0.9,
-        max_tokens: 900,
-        stream: true,
-        extra_body: { enable_thinking: false },
-      })
-      logLocalEvent('evaluation.stream-opened', { elapsedMs: Math.round(performance.now() - evaluationStartedAt) })
-      const generated = await collectStream(response as AsyncIterable<StreamChunk>, 'evaluation')
-      let raw: unknown
-      try {
-        raw = parseJsonResponse(generated)
-      } catch (error) {
-        logLocalEvent('evaluation.parse-error', {
-          characters: generated.length,
-          hasThinkingWrapper: /^\s*<think>[\s\S]*?<\/think>/i.test(generated),
-          startsWithBrace: generated.trimStart().startsWith('{'),
-          endsWithBrace: generated.trimEnd().endsWith('}'),
-          error: error instanceof Error ? error.message : String(error),
+      let lastError: unknown
+      for (let attempt = 1; attempt <= LOCAL_EVALUATION_MAX_ATTEMPTS; attempt += 1) {
+        const attemptStartedAt = performance.now()
+        logLocalEvent('evaluation.start', {
+          attempt,
+          sourceCharacters: input.exercise.sourceText.length,
+          answerCharacters: input.learnerAnswer.length,
+          maxTokens: LOCAL_EVALUATION_MAX_TOKENS,
+          responseFormat: 'prompt-only-json',
+          thinking: false,
         })
-        throw error
+        try {
+          const response = await engine.chat.completions.create({
+            messages: [
+              {
+                role: 'system',
+                content: attempt === 1
+                  ? evaluationSystemPrompt
+                  : `${evaluationSystemPrompt} The previous response was invalid or truncated. Return one complete JSON object with every required field and no Markdown, commentary, or extra text.`,
+              },
+              { role: 'user', content: buildEvaluationPrompt(input) },
+            ],
+            temperature: attempt === 1 ? 0.2 : 0,
+            top_p: attempt === 1 ? 0.9 : 0.8,
+            max_tokens: LOCAL_EVALUATION_MAX_TOKENS,
+            stream: true,
+            extra_body: QWEN3_NON_THINKING_BODY,
+          })
+          logLocalEvent('evaluation.stream-opened', { attempt, elapsedMs: Math.round(performance.now() - attemptStartedAt) })
+          const generated = await collectStream(response as AsyncIterable<StreamChunk>, 'evaluation.' + attempt)
+          if (generated.finishReason === 'length') {
+            throw new FeedbackValidationError('The local evaluator response was truncated before completion.')
+          }
+          let raw: unknown
+          try {
+            raw = parseJsonResponse(generated.content)
+          } catch (error) {
+            logLocalEvent('evaluation.parse-error', {
+              attempt,
+              characters: generated.content.length,
+              hasThinkingWrapper: /^\s*<think>[\s\S]*?<\/think>/i.test(generated.content),
+              startsWithBrace: generated.content.trimStart().startsWith('{'),
+              endsWithBrace: generated.content.trimEnd().endsWith('}'),
+              error: error instanceof Error ? error.message : String(error),
+            })
+            throw error
+          }
+          const feedback = validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
+          logLocalEvent('evaluation.validated', { attempt, elapsedMs: Math.round(performance.now() - evaluationStartedAt) })
+          return feedback
+        } catch (error) {
+          lastError = error
+          if (!isRecoverableFeedbackError(error) || attempt === LOCAL_EVALUATION_MAX_ATTEMPTS) {
+            break
+          }
+          logLocalEvent('evaluation.retry', {
+            attempt,
+            elapsedMs: Math.round(performance.now() - evaluationStartedAt),
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
       }
-      const feedback = validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
-      logLocalEvent('evaluation.validated', { elapsedMs: Math.round(performance.now() - evaluationStartedAt) })
-      return feedback
+      if (isRecoverableFeedbackError(lastError)) {
+        logLocalEvent('evaluation.invalid-response', {
+          elapsedMs: Math.round(performance.now() - evaluationStartedAt),
+          error: lastError instanceof Error ? lastError.message : String(lastError),
+        })
+        throw new ProviderUnavailableError(LOCAL_EVALUATION_INVALID_RESPONSE_MESSAGE)
+      }
+      throw lastError instanceof Error ? lastError : new ProviderUnavailableError('The local evaluator failed.')
     },
 
     getStatus() {

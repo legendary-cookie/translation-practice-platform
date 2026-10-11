@@ -253,9 +253,9 @@ export function ProgressPage({
                   <span>simulations completed</span>
                 </article>
                 <article className="progress-stat">
-                  <span className="eyebrow">Above Benchmark</span>
+                  <span className="eyebrow">Met Benchmark</span>
                   <strong>
-                    {examResults.filter((r) => r.estimatedStatus === 'above-benchmark').length}
+                    {examResults.filter((r) => r.totalScore >= r.passBenchmark).length}
                   </strong>
                   <span>attempts met benchmark</span>
                 </article>

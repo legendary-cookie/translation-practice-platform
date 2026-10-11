@@ -170,6 +170,9 @@ export type PassageFeedbackItem = {
   feedback: TranslationFeedback
   answer: string
   sourceText: string
+  /** Optional so reports can still open results saved before language metadata was added. */
+  sourceLanguage?: LanguageCode
+  targetLanguage?: LanguageCode
 }
 
 export type SectionResult = {

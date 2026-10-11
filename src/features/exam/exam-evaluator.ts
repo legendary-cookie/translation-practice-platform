@@ -173,6 +173,8 @@ export async function evaluateExamRun(
         passageId: passage.id,
         passageTitle: passage.title,
         sourceText: passage.sourceText,
+        sourceLanguage: resolveSourceLanguage(section.direction, passage.targetLanguage, profile),
+        targetLanguage: passage.targetLanguage,
         answer: run.answers[section.id]?.[passage.id] ?? '',
         feedback: feedbackMap[passage.id] ?? EMPTY_FEEDBACK,
       })),

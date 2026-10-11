@@ -3,6 +3,7 @@ import type {
   ExamProfile,
   FeedbackAnnotation,
   FeedbackDimensions,
+  LanguageCode,
   PassageFeedbackItem,
   ScoreDimension,
   SectionResult,
@@ -173,6 +174,8 @@ export type SectionEvaluationInput = {
     passageId: string
     passageTitle: string
     sourceText: string
+    sourceLanguage: LanguageCode
+    targetLanguage: LanguageCode
     answer: string
     feedback: TranslationFeedback
   }>
@@ -216,6 +219,8 @@ export function aggregateExamScores(
         feedback: passage.feedback,
         answer: passage.answer,
         sourceText: passage.sourceText,
+        sourceLanguage: passage.sourceLanguage,
+        targetLanguage: passage.targetLanguage,
       })
     }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ConsolidatedExamResult, ScoreDimension } from '../../domain/types'
+import { getLanguage } from '../../domain/languages'
 import {
   CATTI_THRESHOLD_NOTICE,
   PRACTICE_ESTIMATE_DISCLAIMER,
@@ -206,6 +207,8 @@ export function ExamResultsReport({
               {section.passageFeedbacks.map((passage) => {
                 const isExpanded = expandedPassageIds[passage.passageId] ?? false
                 const hasAnswer = passage.answer.trim().length > 0
+                const sourceLanguage = passage.sourceLanguage ? getLanguage(passage.sourceLanguage) : undefined
+                const targetLanguage = passage.targetLanguage ? getLanguage(passage.targetLanguage) : undefined
 
                 return (
                   <div
@@ -257,6 +260,8 @@ export function ExamResultsReport({
                         <div style={{ marginBottom: '1rem' }}>
                           <span className="eyebrow">Your Submitted Translation</span>
                           <div
+                            dir={targetLanguage?.direction ?? 'ltr'}
+                            lang={passage.targetLanguage}
                             style={{
                               backgroundColor: '#ffffff',
                               border: '1px solid #cbd5e1',
@@ -307,7 +312,7 @@ export function ExamResultsReport({
                                   {issue.sourceQuote && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem' }}>
                                       <strong>Source: </strong>
-                                      <span style={{ backgroundColor: '#f1f5f9', padding: '0.1rem 0.3rem' }}>
+                                      <span dir={sourceLanguage?.direction} lang={passage.sourceLanguage} style={{ backgroundColor: '#f1f5f9', padding: '0.1rem 0.3rem' }}>
                                         {issue.sourceQuote}
                                       </span>
                                     </p>
@@ -315,7 +320,7 @@ export function ExamResultsReport({
                                   {issue.learnerQuote && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem' }}>
                                       <strong>Your version: </strong>
-                                      <span style={{ backgroundColor: '#fee2e2', padding: '0.1rem 0.3rem' }}>
+                                      <span dir={targetLanguage?.direction} lang={passage.targetLanguage} style={{ backgroundColor: '#fee2e2', padding: '0.1rem 0.3rem' }}>
                                         {issue.learnerQuote}
                                       </span>
                                     </p>

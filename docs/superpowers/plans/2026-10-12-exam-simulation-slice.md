@@ -150,20 +150,20 @@ From Part 1 Research (`catti-mti-exam-profiles.md`), the following verified fact
 - `ExamHeaderProps`: `{ title: string; sectionTitle: string; sectionIndex: number; totalSections: number; overallSeconds: number; sectionSeconds: number; aidPolicy: ExamAidPolicy; onOpenAidsModal: () => void; onSubmitEarly: () => void }`.
 - `ExamSectionWorkspaceProps`: `{ section: ExamSectionConfig; answers: Record<string, string>; onAnswerChange: (passageId: string, text: string) => void; onNextSection: () => void; isLastSection: boolean }`.
 
-- [ ] Implement active run initialization in `ExamRunner`: create new `ActiveExamRun` in IndexedDB or load existing incomplete run if resuming.
-- [ ] Implement dual countdown timer using `requestAnimationFrame` or `setInterval` combined with wall-clock diffing (`Date.now()`) to prevent timer drift when tab is backgrounded.
-- [ ] Implement debounced auto-save (every 3 seconds and on text blur) persisting user input and remaining seconds to `database.saveExamRun`.
-- [ ] Build crash/reload detection: when user navigates to exam mode with an unfinished run, prompt with "Resume In-Progress Exam" modal showing remaining time and last saved timestamp.
-- [ ] Enforce strict test-taking constraints:
+- [x] Implement active run initialization in `ExamRunner`: create new `ActiveExamRun` in IndexedDB or load existing incomplete run if resuming.
+- [x] Implement dual countdown timer using `requestAnimationFrame` or `setInterval` combined with wall-clock diffing (`Date.now()`) to prevent timer drift when tab is backgrounded.
+- [x] Implement debounced auto-save (every 3 seconds and on text blur) persisting user input and remaining seconds to `database.saveExamRun`.
+- [x] Build crash/reload detection: when user navigates to exam mode with an unfinished run, prompt with "Resume In-Progress Exam" modal showing remaining time and last saved timestamp.
+- [x] Enforce strict test-taking constraints:
   - Hide glossary sidebar and disable AI hint buttons.
   - Disable clipboard pasting into answer textarea from source text container via `onPaste` guard to simulate CATTI client typing environment.
   - Display sticky warning banner if user attempts to leave screen without submitting.
-- [ ] Implement section locking and auto-advance: when section time expires, show countdown warning, lock current section inputs, and advance to next section. When overall exam timer hits zero, trigger automatic final submission.
-- [ ] Support responsive workspace layout:
+- [x] Implement section locking and auto-advance: when section time expires, show countdown warning, lock current section inputs, and advance to next section. When overall exam timer hits zero, trigger automatic final submission.
+- [x] Support responsive workspace layout:
   - Laptop: side-by-side split screen with source passage on left and translation editor on right.
   - Phone: compact stacked view with sticky timer bar, touch tabs for passages, and full-screen editor toggle.
   - Arabic support: dynamic `dir="rtl"` applied when source or target language is Arabic (`ar`), ensuring proper cursor and text flow.
-- [ ] Run `npm run build` to verify workspace components and CSS compilation.
+- [x] Run `npm run build` to verify workspace components and CSS compilation.
 
 ---
 

@@ -24,12 +24,13 @@ function wordCount(answer: string, language: string): { count: number; label: st
   return { count: answer.trim() ? answer.trim().split(/\s+/u).length : 0, label: 'space-separated words (approximate)' }
 }
 
-export function TranslationWorkspace({ configuration, active, onOpenSettings, onSaved, onBusyChange }: {
+export function TranslationWorkspace({ configuration, active, onOpenSettings, onSaved, onBusyChange, onSavingChange }: {
   configuration: PracticeConfiguration
   active: boolean
   onOpenSettings: () => void
   onSaved: () => void
   onBusyChange: (busy: boolean) => void
+  onSavingChange: (busy: boolean) => void
 }) {
   const { exercise, targetLanguage, timeLimitMinutes } = configuration
   const source = getLanguage(exercise.sourceLanguage)
@@ -100,13 +101,14 @@ export function TranslationWorkspace({ configuration, active, onOpenSettings, on
 
   async function save() {
     if (!completed || saving || saved) return
+    onSavingChange(true)
     setSaving(true); setSaveError('')
     try {
       const feedback = validateFeedback(completed.session.feedback, completed.input)
       await database.saveSession({ ...completed.session, feedback })
       if (mounted.current) { setSaved(true); onSaved() }
     } catch (error) { if (mounted.current) setSaveError(error instanceof Error ? error.message : 'Could not save this session.') }
-    finally { if (mounted.current) setSaving(false) }
+    finally { onSavingChange(false); if (mounted.current) setSaving(false) }
   }
 
   function revise() {

@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.82",
     "idb": "^8.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

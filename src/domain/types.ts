@@ -22,6 +22,18 @@ export interface EvaluationInput {
   learnerAnswer: string
 }
 
+export type EvaluationRouteResult =
+  | { status: 'complete'; feedback: TranslationFeedback }
+  | { status: 'needs-consent'; input: EvaluationInput; payloadSummary: string }
+  | { status: 'unavailable'; reason: string }
+
+export interface LocalModelState {
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
+  progress: number
+  message: string
+  cached: boolean | null
+}
+
 export type EvaluationDimension = 'accuracy' | 'coverage' | 'terminology' | 'grammar' | 'fluency'
 
 export interface FeedbackIssue {

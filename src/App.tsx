@@ -408,6 +408,10 @@ export default function App() {
     setSelectedExamProfile(undefined)
   }
 
+  function handleExamPersistenceError(message: string) {
+    setExamEvaluationNotice((current) => current ? `${current} ${message}` : message)
+  }
+
   function handleRetakeExam() {
     setExamView('catalog')
     setActiveExamResult(undefined)
@@ -587,6 +591,7 @@ export default function App() {
             initialRun={activeExamRun}
             onSubmitRun={handleSubmitExamRun}
             onCancel={handleCancelExamRun}
+            onPersistenceError={handleExamPersistenceError}
           />
         )}
         {currentPage === 'exam' && !isEvaluatingExam && examView === 'results' && activeExamResult && (

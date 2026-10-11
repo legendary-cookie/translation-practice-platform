@@ -14,8 +14,35 @@ import './exam.css'
 export type ExamRunnerProps = {
   profile: ExamProfile
   initialRun?: ActiveExamRun
-  onSubmitRun: (run: ActiveExamRun) => void
+  onSubmitRun: (run: ActiveExamRun) => void | Promise<void>
   onCancel: () => void
+  onPersistenceError?: (message: string) => void
+}
+
+async function saveAndSubmitRun(
+  run: ActiveExamRun,
+  onSubmitRun: ExamRunnerProps['onSubmitRun'],
+  onPersistenceError?: ExamRunnerProps['onPersistenceError'],
+): Promise<void> {
+  let persistenceError: unknown
+  try {
+    await database.saveExamRun(run)
+  } catch (error) {
+    persistenceError = error
+  }
+
+  try {
+    await onSubmitRun(run)
+  } finally {
+    if (persistenceError) {
+      const reason = persistenceError instanceof Error && persistenceError.message
+        ? ` (${persistenceError.message})`
+        : ''
+      const message = `The final exam state could not be saved locally${reason} The in-memory attempt was submitted, but it may not be recoverable if this page closes.`
+      console.error('Final exam run persistence failed before submission.', persistenceError)
+      onPersistenceError?.(message)
+    }
+  }
 }
 
 export function ExamRunner({
@@ -23,6 +50,7 @@ export function ExamRunner({
   initialRun,
   onSubmitRun,
   onCancel,
+  onPersistenceError,
 }: ExamRunnerProps) {
   const [run, setRun] = useState<ActiveExamRun>(() => initialRun ?? createActiveExamRun(profile))
   const [showAidsModal, setShowAidsModal] = useState(false)
@@ -73,9 +101,7 @@ export function ExamRunner({
 
           if (overallExpired) {
             clearInterval(intervalId)
-            void database.saveExamRun(updatedRun).then(() => {
-              onSubmitRun(updatedRun)
-            })
+            void saveAndSubmitRun(updatedRun, onSubmitRun, onPersistenceError)
             return updatedRun
           }
 
@@ -146,9 +172,7 @@ export function ExamRunner({
 
   const handleConfirmSubmit = () => {
     setShowSubmitModal(false)
-    void database.saveExamRun(run).then(() => {
-      onSubmitRun(run)
-    })
+    void saveAndSubmitRun(run, onSubmitRun, onPersistenceError)
   }
 
   const handleSaveAndExit = async () => {

@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Translation Studio — CATTI / MTI practice",
+  "short_name": "Translation Studio",
+  "description": "Independent written and news translation practice.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f6fa",
+  "theme_color": "#234f75",
+  "icons": [
+    { "src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/app.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

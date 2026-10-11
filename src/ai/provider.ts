@@ -15,6 +15,7 @@ export type LocalProviderLike = EvaluationProvider & {
 }
 
 export type CloudConsentRequest = {
+  exercise: EvaluationInput['exercise']
   sourceText: string
   learnerAnswer: string
   confirm: () => Promise<TranslationFeedback>
@@ -88,6 +89,7 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
         status: 'needs-consent',
         reason: localFailure ?? 'Local evaluation is unavailable.',
         request: {
+          exercise: input.exercise,
           sourceText: input.exercise.sourceText,
           learnerAnswer: input.learnerAnswer,
           confirm: () => cloudProvider.evaluate(input),

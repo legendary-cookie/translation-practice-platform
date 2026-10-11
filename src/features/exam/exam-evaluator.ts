@@ -6,8 +6,34 @@ import type {
   LanguageCode,
   TranslationFeedback,
 } from '../../domain/types'
-import type { EvaluationRouter } from '../../ai/provider'
+import type { CloudConsentRequest, EvaluationRouter } from '../../ai/provider'
 import { aggregateExamScores, type SectionEvaluationInput } from '../../domain/scoring'
+
+export type ExamEvaluationBlockStatus = 'needs-consent' | 'unavailable'
+
+export class ExamEvaluationBlockedError extends Error {
+  readonly status: ExamEvaluationBlockStatus
+  readonly passageId: string
+  readonly request?: CloudConsentRequest
+
+  constructor({
+    status,
+    reason,
+    passageId,
+    request,
+  }: {
+    status: ExamEvaluationBlockStatus
+    reason: string
+    passageId: string
+    request?: CloudConsentRequest
+  }) {
+    super(reason)
+    this.name = 'ExamEvaluationBlockedError'
+    this.status = status
+    this.passageId = passageId
+    this.request = request
+  }
+}
 
 const EMPTY_FEEDBACK: TranslationFeedback = {
   summary: 'No translation was provided for this passage.',
@@ -47,6 +73,7 @@ export async function evaluateExamRun(
   profile: ExamProfile,
   evaluationRouter: EvaluationRouter,
   onProgress?: (completed: number, total: number) => void,
+  approvedFeedback: Record<string, TranslationFeedback> = {},
 ): Promise<ConsolidatedExamResult> {
   const evaluatedSections: SectionEvaluationInput[] = []
 
@@ -83,6 +110,14 @@ export async function evaluateExamRun(
     if (!item.answer.trim()) {
       feedbackMap[item.passageId] = EMPTY_FEEDBACK
     } else {
+      const approved = approvedFeedback[item.passageId]
+      if (approved) {
+        feedbackMap[item.passageId] = approved
+        completedCount += 1
+        onProgress?.(completedCount, allPassages.length)
+        continue
+      }
+
       const exercise: Exercise = {
         id: item.passageId,
         mode: 'written',
@@ -106,38 +141,22 @@ export async function evaluateExamRun(
         if (evalResult.status === 'evaluated') {
           feedbackMap[item.passageId] = evalResult.feedback
         } else {
-          feedbackMap[item.passageId] = {
-            summary: `Automated assessment notice: ${evalResult.reason}. Scored with practice estimate baseline.`,
-            overallScore: 60,
-            dimensions: {
-              accuracy: 60,
-              terminology: 60,
-              grammar: 60,
-              fluency: 60,
-              taskStyle: 60,
-            },
-            strengths: ['Translation submitted within time limit.'],
-            issues: [],
-            alternatives: [],
-            uncertainty: evalResult.reason,
-          }
+          throw new ExamEvaluationBlockedError({
+            status: evalResult.status,
+            reason: evalResult.reason,
+            passageId: item.passageId,
+            request: evalResult.status === 'needs-consent' ? evalResult.request : undefined,
+          })
         }
       } catch (err) {
-        feedbackMap[item.passageId] = {
-          summary: 'Evaluation encountered an error. Practice assessment generated.',
-          overallScore: 60,
-          dimensions: {
-            accuracy: 60,
-            terminology: 60,
-            grammar: 60,
-            fluency: 60,
-            taskStyle: 60,
-          },
-          strengths: [],
-          issues: [],
-          alternatives: [],
-          uncertainty: err instanceof Error ? err.message : 'Evaluation error',
+        if (err instanceof ExamEvaluationBlockedError) {
+          throw err
         }
+        throw new ExamEvaluationBlockedError({
+          status: 'unavailable',
+          reason: err instanceof Error ? err.message : 'Evaluation error',
+          passageId: item.passageId,
+        })
       }
     }
 

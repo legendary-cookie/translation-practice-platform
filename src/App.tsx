@@ -14,7 +14,7 @@ import { SettingsPage } from './features/settings/SettingsPage'
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
-import { evaluateExamRun } from './features/exam/exam-evaluator'
+import { ExamEvaluationBlockedError, evaluateExamRun } from './features/exam/exam-evaluator'
 import { DEFAULT_EXAM_PROFILES } from './data/exam-profiles'
 import { DirectionQualityNotice, ModelCapabilityStatus } from './features/settings/ModelCapabilityStatus'
 import type {
@@ -54,6 +54,13 @@ const pageCopy: Record<Page, { eyebrow: string; title: string }> = {
   exam: { eyebrow: 'Exam simulation', title: 'Test under realistic conditions.' },
   progress: { eyebrow: 'Local history', title: 'See the work you have done.' },
   settings: { eyebrow: 'Privacy and setup', title: 'Keep your practice yours.' },
+}
+
+type PendingExamConsent = {
+  run: ActiveExamRun
+  passageId: string
+  request: CloudConsentRequest
+  approvedFeedback: Record<string, TranslationFeedback>
 }
 
 function Navigation({ currentPage, onNavigate }: { currentPage: Page; onNavigate: (page: Page) => void }) {
@@ -131,6 +138,8 @@ export default function App() {
   const [activeExamResult, setActiveExamResult] = useState<ConsolidatedExamResult | undefined>()
   const [isEvaluatingExam, setIsEvaluatingExam] = useState(false)
   const [examEvaluationProgress, setExamEvaluationProgress] = useState<{ completed: number; total: number } | undefined>()
+  const [examEvaluationNotice, setExamEvaluationNotice] = useState<string | undefined>()
+  const [pendingExamConsent, setPendingExamConsent] = useState<PendingExamConsent | undefined>()
   const dataLoadGeneration = useRef(0)
   const diagnosticAutoStarted = useRef(false)
 
@@ -265,11 +274,15 @@ export default function App() {
     setActiveExamResult(undefined)
     setSelectedExamProfile(undefined)
     setExamView('catalog')
+    setExamEvaluationNotice(undefined)
+    setPendingExamConsent(undefined)
     resetPractice()
   }
 
   function handleSelectExamProfile(profile: ExamProfile) {
     setSelectedExamProfile(profile)
+    setExamEvaluationNotice(undefined)
+    setPendingExamConsent(undefined)
     setExamView('runner')
   }
 
@@ -280,6 +293,8 @@ export default function App() {
     if (profile) {
       setSelectedExamProfile(profile)
       setActiveExamRun(run)
+      setExamEvaluationNotice(undefined)
+      setPendingExamConsent(undefined)
       setExamView('runner')
       setCurrentPage('exam')
     }
@@ -290,10 +305,14 @@ export default function App() {
     setActiveExamRun(undefined)
   }
 
-  async function handleSubmitExamRun(completedRun: ActiveExamRun) {
+  async function handleSubmitExamRun(
+    completedRun: ActiveExamRun,
+    approvedFeedback: Record<string, TranslationFeedback> = {},
+  ) {
     if (!selectedExamProfile) {
       return
     }
+    setExamEvaluationNotice(undefined)
     setIsEvaluatingExam(true)
     setExamEvaluationProgress({ completed: 0, total: 1 })
     try {
@@ -302,15 +321,52 @@ export default function App() {
         selectedExamProfile,
         evaluationRouter,
         (completed, total) => setExamEvaluationProgress({ completed, total }),
+        approvedFeedback,
       )
       await database.saveExamResult(result)
       await database.deleteExamRun(completedRun.id)
       setActiveExamRun(undefined)
       setActiveExamResult(result)
       setRecentExamResults((prev) => [result, ...prev.filter((r) => r.id !== result.id)])
+      setPendingExamConsent(undefined)
       setExamView('results')
-    } catch {
-      setPracticeNotice('Exam evaluation could not be completed.')
+    } catch (error) {
+      if (error instanceof ExamEvaluationBlockedError && error.status === 'needs-consent' && error.request) {
+        setPendingExamConsent({
+          run: completedRun,
+          passageId: error.passageId,
+          request: error.request,
+          approvedFeedback,
+        })
+        setExamEvaluationNotice(`${error.message} Review the exact task before deciding whether to use cloud evaluation.`)
+      } else {
+        const reason = error instanceof Error ? error.message : 'Evaluation could not be completed.'
+        setExamEvaluationNotice(`Exam evaluation unavailable: ${reason} No practice estimate was saved; the exam remains available for retry.`)
+      }
+    } finally {
+      setIsEvaluatingExam(false)
+      setExamEvaluationProgress(undefined)
+    }
+  }
+
+  async function confirmExamCloudEvaluation() {
+    const pending = pendingExamConsent
+    if (!pending) {
+      return
+    }
+
+    setExamEvaluationNotice(undefined)
+    setIsEvaluatingExam(true)
+    try {
+      const feedback = await pending.request.confirm()
+      setPendingExamConsent(undefined)
+      await handleSubmitExamRun(pending.run, {
+        ...pending.approvedFeedback,
+        [pending.passageId]: feedback,
+      })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Cloud evaluation could not be completed.'
+      setExamEvaluationNotice(`Cloud evaluation could not be completed: ${reason} The exam remains unscored; you can retry.`)
     } finally {
       setIsEvaluatingExam(false)
       setExamEvaluationProgress(undefined)
@@ -320,6 +376,8 @@ export default function App() {
   async function handleCancelExamRun() {
     const run = await database.getActiveExamRun()
     setActiveExamRun(run)
+    setExamEvaluationNotice(undefined)
+    setPendingExamConsent(undefined)
     setExamView('catalog')
     setSelectedExamProfile(undefined)
   }
@@ -328,6 +386,8 @@ export default function App() {
     setExamView('catalog')
     setActiveExamResult(undefined)
     setSelectedExamProfile(undefined)
+    setExamEvaluationNotice(undefined)
+    setPendingExamConsent(undefined)
   }
 
 
@@ -460,6 +520,11 @@ export default function App() {
         {currentPage === 'practice' && !activeExercise && <><DirectionQualityNotice capability={capability} /><PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
+        {currentPage === 'exam' && !isEvaluatingExam && examEvaluationNotice && (
+          <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>
+            {examEvaluationNotice}
+          </section>
+        )}
         {currentPage === 'exam' && !isEvaluatingExam && <ModelCapabilityStatus capability={capability} />}
         {currentPage === 'exam' && isEvaluatingExam && (
           <div className="exam-modal-backdrop" role="presentation">
@@ -525,6 +590,18 @@ export default function App() {
       </main>
       <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}
+      {pendingExamConsent && (
+        <ConsentDialog
+          exercise={pendingExamConsent.request.exercise}
+          request={pendingExamConsent.request}
+          isSubmitting={isEvaluatingExam}
+          onCancel={() => {
+            setPendingExamConsent(undefined)
+            setExamEvaluationNotice('Cloud evaluation was not approved. No practice estimate was saved; the exam remains available for retry.')
+          }}
+          onConfirm={() => void confirmExamCloudEvaluation()}
+        />
+      )}
     </div>
   )
 }

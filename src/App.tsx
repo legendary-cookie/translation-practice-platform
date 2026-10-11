@@ -286,6 +286,12 @@ export default function App() {
   }
 
   function handleSelectExamProfile(profile: ExamProfile) {
+    if (activeExamRun) {
+      setExamEvaluationNotice('An unfinished exam is already saved. Resume it or discard it before starting a new simulation.')
+      setExamView('catalog')
+      setCurrentPage('exam')
+      return
+    }
     setSelectedExamProfile(profile)
     setExamEvaluationNotice(undefined)
     setPendingExamConsent(undefined)
@@ -309,6 +315,8 @@ export default function App() {
   async function handleDiscardExamRun(runId: string) {
     await database.deleteExamRun(runId)
     setActiveExamRun(undefined)
+    setExamEvaluationNotice(undefined)
+    setPendingExamConsent(undefined)
   }
 
   async function handleSubmitExamRun(

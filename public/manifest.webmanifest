@@ -3,10 +3,12 @@
   "short_name": "Lingo",
   "description": "Local-first written translation practice.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f3f6f1",
   "theme_color": "#386b57",
   "lang": "en",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icons/icon-192.svg",

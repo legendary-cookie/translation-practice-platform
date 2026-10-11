@@ -32,6 +32,6 @@ self.addEventListener('fetch', (event) => {
         void caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy))
       }
       return networkResponse
-    })),
+    })).catch(() => request.mode === 'navigate' ? caches.match('/index.html') : Response.error()),
   )
 })

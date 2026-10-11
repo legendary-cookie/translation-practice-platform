@@ -142,10 +142,10 @@
 **Files:**
 - Modify: `src/styles.css`, feature CSS files, PWA assets, and `README.md`.
 
-- [ ] Refine keyboard focus, labels, contrast, touch target size, reduced-motion handling, Arabic direction, and narrow-screen layouts.
-- [ ] Ensure the service worker caches same-origin app assets only; never cache evaluation requests or cloud responses.
-- [ ] Document setup, `npm run dev`, `npm run build`, first-time local-model download, cloud opt-in, offline boundaries, and current planned modes.
-- [ ] Produce the final production build with `npm run build` and commit as `docs: document local-first practice app`.
+- [x] Refine keyboard focus, labels, contrast, touch target size, reduced-motion handling, Arabic direction, and narrow-screen layouts.
+- [x] Ensure the service worker caches same-origin app assets only; never cache evaluation requests or cloud responses.
+- [x] Document setup, `npm run dev`, `npm run build`, first-time local-model download, cloud opt-in, offline boundaries, and current planned modes.
+- [x] Produce the final production build with `npm run build` and commit as `docs: document local-first practice app`.
 
 ## Research Notes
 

@@ -93,12 +93,12 @@
 - `createCloudProvider(config)` accepts `{ baseUrl, model, apiKey }`, sends an OpenAI-compatible chat-completion request, and never persists `apiKey`.
 - The router uses local evaluation when selected and ready. If cloud is enabled and local evaluation is unavailable, it returns a `needs-consent` result containing the exact exercise text and answer; only an explicit confirmation may call the cloud provider.
 
-- [ ] Pin `@mlc-ai/web-llm` to version `0.2.82` and use its web-worker API so generation does not block the UI.
-- [ ] Add explicit model preparation, download progress, cached/ready state, and recoverable error handling.
-- [ ] Request a JSON-shaped rubric response without treating model output as calibrated or official scoring.
-- [ ] Add a cloud settings form for an OpenAI-compatible URL, model, and session-only key; require a per-session consent dialog before sending exercise text or a learner answer.
-- [ ] Make the local-only setting disable all evaluation network requests, including when local model support is unavailable.
-- [ ] Run `npm run build` and commit as `feat: add privacy-aware AI evaluation providers`.
+- [x] Pin `@mlc-ai/web-llm` to version `0.2.82` and use its web-worker API so generation does not block the UI.
+- [x] Add explicit model preparation, download progress, cached/ready state, and recoverable error handling.
+- [x] Request a JSON-shaped rubric response without treating model output as calibrated or official scoring.
+- [x] Add a cloud settings form for an OpenAI-compatible URL, model, and session-only key; require a per-session consent dialog before sending exercise text or a learner answer.
+- [x] Make the local-only setting disable all evaluation network requests, including when local model support is unavailable.
+- [x] Run `npm run build` and commit as `feat: add privacy-aware AI evaluation providers`.
 
 ### Task 4: Build the written and news translation learning loop
 

@@ -106,9 +106,11 @@ export function ExamRunner({
           }
 
           if (sectionExpired && !isLastSection(updatedRun, profile)) {
+            const nextRun = advanceSection(updatedRun, profile)
             setSectionExpiredAlert(
-              `Time for Section ${updatedRun.currentSectionIndex + 1} has expired. Advancing to the next section.`,
+              `Time for Section ${updatedRun.currentSectionIndex + 1} has expired. The exam advanced to the next section.`,
             )
+            return nextRun
           }
 
           return updatedRun
@@ -304,14 +306,9 @@ export function ExamRunner({
               <button
                 className="button button--primary"
                 type="button"
-                onClick={() => {
-                  setSectionExpiredAlert(undefined)
-                  const nextRun = advanceSection(run, profile)
-                  setRun(nextRun)
-                  void database.saveExamRun(nextRun)
-                }}
+                onClick={() => setSectionExpiredAlert(undefined)}
               >
-                Continue to Next Section →
+                Continue →
               </button>
             </div>
           </div>

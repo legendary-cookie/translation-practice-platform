@@ -7,7 +7,7 @@ import type {
   TranslationFeedback,
 } from '../../domain/types'
 import type { CloudConsentRequest, EvaluationRouter } from '../../ai/provider'
-import { aggregateExamScores, type SectionEvaluationInput } from '../../domain/scoring'
+import { aggregateExamScores, validateFeedback, type SectionEvaluationInput } from '../../domain/scoring'
 
 export type ExamEvaluationBlockStatus = 'needs-consent' | 'unavailable'
 
@@ -68,6 +68,14 @@ function resolveSourceLanguage(
   return profile.sourceLanguage
 }
 
+function validateExamFeedback(
+  feedback: unknown,
+  sourceText: string,
+  learnerAnswer: string,
+): TranslationFeedback {
+  return validateFeedback(feedback, { sourceText, learnerAnswer })
+}
+
 export async function evaluateExamRun(
   run: ActiveExamRun,
   profile: ExamProfile,
@@ -108,11 +116,11 @@ export async function evaluateExamRun(
 
   for (const item of allPassages) {
     if (!item.answer.trim()) {
-      feedbackMap[item.passageId] = EMPTY_FEEDBACK
+      feedbackMap[item.passageId] = validateExamFeedback(EMPTY_FEEDBACK, item.sourceText, item.answer)
     } else {
       const approved = approvedFeedback[item.passageId]
       if (approved) {
-        feedbackMap[item.passageId] = approved
+        feedbackMap[item.passageId] = validateExamFeedback(approved, item.sourceText, item.answer)
         completedCount += 1
         onProgress?.(completedCount, allPassages.length)
         continue
@@ -139,7 +147,7 @@ export async function evaluateExamRun(
         })
 
         if (evalResult.status === 'evaluated') {
-          feedbackMap[item.passageId] = evalResult.feedback
+          feedbackMap[item.passageId] = validateExamFeedback(evalResult.feedback, item.sourceText, item.answer)
         } else {
           throw new ExamEvaluationBlockedError({
             status: evalResult.status,

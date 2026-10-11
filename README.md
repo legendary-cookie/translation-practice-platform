@@ -43,7 +43,7 @@ When local-only mode is selected, an unavailable local model stops evaluation wi
 
 ## Cloud opt-in
 
-Cloud fallback is optional and uses a user-configured OpenAI-compatible `baseUrl`, model name, and API key. The endpoint and model preference may be stored locally; the API key is held in memory for the current tab only and is never stored in IndexedDB or included in exports.
+Cloud fallback is optional and uses a user-configured OpenAI-compatible `baseUrl`, model name, and API key. Remote endpoints must use HTTPS; plain HTTP is accepted only for exact loopback hosts (`localhost`, `127.0.0.1`, or `::1`) used by local OpenAI-compatible servers. The endpoint and model preference may be stored locally; the API key is held in memory for the current tab only and is never stored in IndexedDB or included in exports.
 
 If local-first with cloud fallback is selected and local evaluation cannot run, the app opens a task-specific consent step. It shows the exact source passage and learner answer that would be sent. Cloud evaluation starts only after the learner confirms that step. Provider output is validated before it can be displayed or stored.
 

@@ -15,9 +15,24 @@ type CloudResponse = {
 
 function getCompletionEndpoint(baseUrl: string): string {
   const normalized = baseUrl.trim().replace(/\/+$/, '')
-  if (!/^https?:\/\//i.test(normalized)) {
-    throw new Error('Cloud endpoint must begin with http:// or https://.')
+  let parsed: URL
+  try {
+    parsed = new URL(normalized)
+  } catch {
+    throw new Error('Cloud endpoint must be a valid http:// or https:// URL.')
   }
+
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  const isLocalHttp = parsed.protocol === 'http:' && (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1'
+  )
+
+  if (parsed.protocol !== 'https:' && !isLocalHttp) {
+    throw new Error('Cloud endpoints must use HTTPS; HTTP is allowed only for localhost or loopback addresses.')
+  }
+
   return `${normalized}/chat/completions`
 }
 

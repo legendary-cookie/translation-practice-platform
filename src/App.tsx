@@ -63,6 +63,12 @@ type PendingExamConsent = {
   approvedFeedback: Record<string, TranslationFeedback>
 }
 
+type PendingPracticeConsent = {
+  request: CloudConsentRequest
+  answer: string
+  elapsedSeconds: number
+}
+
 function Navigation({ currentPage, onNavigate }: { currentPage: Page; onNavigate: (page: Page) => void }) {
   return (
     <nav className="navigation" aria-label="Primary navigation">
@@ -128,7 +134,7 @@ export default function App() {
   const [draftElapsedSeconds, setDraftElapsedSeconds] = useState(0)
   const [feedback, setFeedback] = useState<TranslationFeedback | undefined>()
   const [practiceNotice, setPracticeNotice] = useState<string | undefined>()
-  const [pendingConsent, setPendingConsent] = useState<CloudConsentRequest | undefined>()
+  const [pendingConsent, setPendingConsent] = useState<PendingPracticeConsent | undefined>()
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [examProfiles, setExamProfiles] = useState<ExamProfile[]>(DEFAULT_EXAM_PROFILES)
   const [activeExamRun, setActiveExamRun] = useState<ActiveExamRun | undefined>()
@@ -416,7 +422,12 @@ export default function App() {
     setPendingConsent(undefined)
   }
 
-  async function saveCompletedSession(nextFeedback: TranslationFeedback, provider: 'local' | 'cloud') {
+  async function saveCompletedSession(
+    nextFeedback: TranslationFeedback,
+    provider: 'local' | 'cloud',
+    answer: string,
+    elapsedSeconds: number,
+  ) {
     if (!activeExercise) {
       return
     }
@@ -427,9 +438,9 @@ export default function App() {
       mode: activeExercise.mode,
       sourceLanguage: activeExercise.sourceLanguage,
       targetLanguage: activeExercise.targetLanguage,
-      answer: draftAnswer,
+      answer,
       feedback: nextFeedback,
-      elapsedSeconds: draftElapsedSeconds,
+      elapsedSeconds,
     }
     setFeedback(nextFeedback)
     setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
@@ -453,9 +464,9 @@ export default function App() {
     try {
       const result = await evaluationRouter.evaluate({ exercise: activeExercise, learnerAnswer: answer, mode: activeExercise.mode })
       if (result.status === 'evaluated') {
-        await saveCompletedSession(result.feedback, result.provider)
+        await saveCompletedSession(result.feedback, result.provider, answer, elapsedSeconds)
       } else if (result.status === 'needs-consent') {
-        setPendingConsent(result.request)
+        setPendingConsent({ request: result.request, answer, elapsedSeconds })
         setPracticeNotice(`${result.reason} Review the exact task before deciding whether to use cloud evaluation.`)
       } else {
         setPracticeNotice(result.reason)
@@ -468,14 +479,15 @@ export default function App() {
   }
 
   async function confirmCloudEvaluation() {
-    if (!pendingConsent) {
+    const pending = pendingConsent
+    if (!pending) {
       return
     }
     setIsEvaluating(true)
     try {
-      const nextFeedback = await pendingConsent.confirm()
+      const nextFeedback = await pending.request.confirm()
       setPendingConsent(undefined)
-      await saveCompletedSession(nextFeedback, 'cloud')
+      await saveCompletedSession(nextFeedback, 'cloud', pending.answer, pending.elapsedSeconds)
     } catch (error) {
       setPracticeNotice(error instanceof Error ? error.message : 'Cloud evaluation could not be completed. You can review the consent and try again.')
     } finally {
@@ -589,7 +601,7 @@ export default function App() {
         {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
       </main>
       <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>
-      {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}
+      {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}
       {pendingExamConsent && (
         <ConsentDialog
           exercise={pendingExamConsent.request.exercise}

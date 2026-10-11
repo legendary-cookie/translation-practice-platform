@@ -190,7 +190,7 @@ export function aggregateExamScores(
   consolidatedDimensions: FeedbackDimensions
 } {
   const sectionResults: SectionResult[] = []
-  const allAnsweredDimensions: FeedbackDimensions[] = []
+  const allAnsweredDimensionWeights: Array<{ dimensions: FeedbackDimensions; weight: number }> = []
 
   for (const section of sections) {
     const passageCount = Math.max(1, section.passages.length)
@@ -204,7 +204,10 @@ export function aggregateExamScores(
       sectionScore += passageScore
 
       if (hasAnswer) {
-        allAnsweredDimensions.push(passage.feedback.dimensions)
+        allAnsweredDimensionWeights.push({
+          dimensions: passage.feedback.dimensions,
+          weight: passageMaxPoints,
+        })
       }
 
       passageFeedbacks.push({
@@ -232,12 +235,16 @@ export function aggregateExamScores(
   const passBenchmarkPercent = maxScore > 0 ? Math.round((profile.passBenchmarkPoints / maxScore) * 100) : 0
   const estimatedStatus = getEstimatedStatus(percentage, passBenchmarkPercent)
 
+  const totalAnsweredWeight = allAnsweredDimensionWeights.reduce((total, item) => total + item.weight, 0)
   const consolidatedDimensions = scoreDimensions.reduce<FeedbackDimensions>((acc, dimension) => {
-    if (allAnsweredDimensions.length === 0) {
+    if (totalAnsweredWeight === 0) {
       acc[dimension] = 0
     } else {
-      const sum = allAnsweredDimensions.reduce((total, dim) => total + dim[dimension], 0)
-      acc[dimension] = Math.round(sum / allAnsweredDimensions.length)
+      const weightedSum = allAnsweredDimensionWeights.reduce(
+        (total, item) => total + item.dimensions[dimension] * item.weight,
+        0,
+      )
+      acc[dimension] = Math.round(weightedSum / totalAnsweredWeight)
     }
     return acc
   }, {} as FeedbackDimensions)

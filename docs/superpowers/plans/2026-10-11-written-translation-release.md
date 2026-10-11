@@ -113,11 +113,11 @@
 - `FeedbackPanel` renders validated rubric scores, exact evidence quotes, explanations, alternatives, uncertainty, and a revise action.
 - A completed session is saved through `database.saveSession` only after feedback has passed validation.
 
-- [ ] Add dashboard cards for continue practice, written translation, news translation, local AI status, and recent skill activity.
-- [ ] Add an accessible source/answer workspace with a glossary, word count, timer, and submit/revise flow.
-- [ ] Support the 12 initial directions and correct left-to-right/right-to-left text rendering.
-- [ ] Display an explicit practice-estimate label and explain when a task cannot be evaluated locally.
-- [ ] Run `npm run build` and commit as `feat: add translation practice and feedback`.
+- [x] Add dashboard cards for continue practice, written translation, news translation, local AI status, and recent skill activity.
+- [x] Add an accessible source/answer workspace with a glossary, word count, timer, and submit/revise flow.
+- [x] Support the 12 initial directions and correct left-to-right/right-to-left text rendering.
+- [x] Display an explicit practice-estimate label and explain when a task cannot be evaluated locally.
+- [x] Run `npm run build` and commit as `feat: add translation practice and feedback`.
 
 ### Task 5: Add progress, privacy controls, export, and deletion
 

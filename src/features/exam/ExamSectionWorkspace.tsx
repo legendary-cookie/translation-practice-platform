@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ExamSectionConfig } from '../../domain/types'
 import { CLIPBOARD_POLICY_NOTICE, countTextUnits } from '../../domain/exam'
 
@@ -21,6 +21,10 @@ export function ExamSectionWorkspace({
 }: ExamSectionWorkspaceProps) {
   const [selectedPassageIndex, setSelectedPassageIndex] = useState(0)
   const [pasteNotice, setPasteNotice] = useState<string | undefined>()
+
+  useEffect(() => {
+    setSelectedPassageIndex(0)
+  }, [section.id])
 
   const activePassage = section.passages[selectedPassageIndex] ?? section.passages[0]
   if (!activePassage) {

@@ -1,9 +1,14 @@
 import type {
+  EstimatedStatus,
+  ExamProfile,
   FeedbackAnnotation,
   FeedbackDimensions,
+  PassageFeedbackItem,
   ScoreDimension,
+  SectionResult,
   TranslationFeedback,
 } from './types'
+import { getEstimatedStatus } from './exam'
 
 export type FeedbackValidationContext = {
   sourceText: string
@@ -156,3 +161,91 @@ export function validateFeedback(raw: unknown, context: FeedbackValidationContex
     uncertainty,
   }
 }
+
+export type SectionEvaluationInput = {
+  sectionId: string
+  sectionTitle: string
+  maxPoints: number
+  passages: Array<{
+    passageId: string
+    passageTitle: string
+    sourceText: string
+    answer: string
+    feedback: TranslationFeedback
+  }>
+}
+
+export function aggregateExamScores(
+  sections: SectionEvaluationInput[],
+  profile: ExamProfile,
+): {
+  totalScore: number
+  maxScore: number
+  percentage: number
+  estimatedStatus: EstimatedStatus
+  sectionResults: SectionResult[]
+  consolidatedDimensions: FeedbackDimensions
+} {
+  const sectionResults: SectionResult[] = []
+  const allAnsweredDimensions: FeedbackDimensions[] = []
+
+  for (const section of sections) {
+    const passageCount = Math.max(1, section.passages.length)
+    const passageMaxPoints = section.maxPoints / passageCount
+    let sectionScore = 0
+    const passageFeedbacks: PassageFeedbackItem[] = []
+
+    for (const passage of section.passages) {
+      const hasAnswer = passage.answer.trim().length > 0
+      const passageScore = hasAnswer ? (passage.feedback.overallScore / 100) * passageMaxPoints : 0
+      sectionScore += passageScore
+
+      if (hasAnswer) {
+        allAnsweredDimensions.push(passage.feedback.dimensions)
+      }
+
+      passageFeedbacks.push({
+        passageId: passage.passageId,
+        passageTitle: passage.passageTitle,
+        feedback: passage.feedback,
+        answer: passage.answer,
+        sourceText: passage.sourceText,
+      })
+    }
+
+    sectionResults.push({
+      sectionId: section.sectionId,
+      sectionTitle: section.sectionTitle,
+      score: Math.round(sectionScore * 10) / 10,
+      maxPoints: section.maxPoints,
+      passageFeedbacks,
+    })
+  }
+
+  const rawTotal = sectionResults.reduce((sum, item) => sum + item.score, 0)
+  const totalScore = Math.min(profile.maxTotalPoints, Math.max(0, Math.round(rawTotal)))
+  const maxScore = profile.maxTotalPoints
+  const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0
+  const passBenchmarkPercent = maxScore > 0 ? Math.round((profile.passBenchmarkPoints / maxScore) * 100) : 60
+  const estimatedStatus = getEstimatedStatus(percentage, passBenchmarkPercent)
+
+  const consolidatedDimensions = scoreDimensions.reduce<FeedbackDimensions>((acc, dimension) => {
+    if (allAnsweredDimensions.length === 0) {
+      acc[dimension] = 0
+    } else {
+      const sum = allAnsweredDimensions.reduce((total, dim) => total + dim[dimension], 0)
+      acc[dimension] = Math.round(sum / allAnsweredDimensions.length)
+    }
+    return acc
+  }, {} as FeedbackDimensions)
+
+  return {
+    totalScore,
+    maxScore,
+    percentage,
+    estimatedStatus,
+    sectionResults,
+    consolidatedDimensions,
+  }
+}
+

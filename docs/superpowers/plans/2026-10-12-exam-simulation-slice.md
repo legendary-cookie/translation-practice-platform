@@ -179,23 +179,23 @@ From Part 1 Research (`catti-mti-exam-profiles.md`), the following verified fact
 - `aggregateExamFeedback(feedbacks, profile)`: Consolidates individual passage dimension scores into a weighted final exam score and overall dimension averages.
 - `ExamResultsReportProps`: `{ result: ConsolidatedExamResult; onRetake: () => void; onBackToDashboard: () => void }`.
 
-- [ ] In `src/domain/scoring.ts`, implement `aggregateExamScores(feedbacks, profile)`:
+- [x] In `src/domain/scoring.ts`, implement `aggregateExamScores(feedbacks, profile)`:
   - Calculate weighted score per section and overall percentage.
   - Normalize to exam max points (e.g. 100 for CATTI, 150 for MTI).
   - Compute weighted averages for the five core dimensions: `accuracy`, `terminology`, `grammar`, `fluency`, and `taskStyle`.
   - Compare overall estimate against profile benchmark (e.g., 60% for CATTI Level 2) with qualitative categorization (`Above Benchmark`, `Near Benchmark`, `Below Benchmark`).
-- [ ] Implement sequential or parallel evaluation batching in `ExamRunner` on submission:
+- [x] Implement sequential or parallel evaluation batching in `ExamRunner` on submission:
   - For each answered passage, invoke `provider.evaluate({ exercise: passageExercise, learnerAnswer, mode: 'written' })`.
   - Validate all returned feedbacks via Phase 1 `validateFeedback` to ensure exact evidence quote integrity.
   - Construct `ConsolidatedExamResult`, persist to IndexedDB store `examResults`, and delete the transient `ActiveExamRun`.
-- [ ] Build `ExamResultsReport.tsx`:
+- [x] Build `ExamResultsReport.tsx`:
   - Prominent mandatory practice estimate banner:
     > "Practice Assessment Only: This score is an automated estimation generated for independent study. It is NOT an official CATTI or MTI examination result and has no official certification standing."
   - Scaled overall score display (e.g., `72 / 100` with 60-point benchmark line).
   - Radar or bar breakdown of the 5 core rubric dimensions.
   - Section-by-section collapsible accordion with full source passage, learner translation, and annotated evidence quotes (issues and strengths).
   - Export action enabling JSON download of the complete result report.
-- [ ] Run `npm run build` and verify results rendering and calculation.
+- [x] Run `npm run build` and verify results rendering and calculation.
 
 ---
 

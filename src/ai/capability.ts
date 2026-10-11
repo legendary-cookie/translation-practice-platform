@@ -1,6 +1,7 @@
 import type { EvaluationInput } from '../domain/types'
 import type { LanguageCode } from '../domain/languages'
 import { DEFAULT_LOCAL_MODEL_ID } from '../domain/types'
+import { hasModelInCache, prebuiltAppConfig } from '@mlc-ai/web-llm'
 
 export type CapabilityTier = 'L0' | 'L1' | 'L2' | 'L3' | 'L4'
 
@@ -32,6 +33,7 @@ export type CapabilityAssessment = {
     freeBytes?: number
     quotaBytes?: number
     usageBytes?: number
+    modelCached?: boolean
     persistent?: boolean
     reason: string
   }
@@ -172,14 +174,16 @@ async function detectStorage(): Promise<CapabilityAssessment['storage']> {
     const usageBytes = estimate.usage
     const quotaBytes = estimate.quota
     const freeBytes = usageBytes !== undefined && quotaBytes !== undefined ? Math.max(0, quotaBytes - usageBytes) : undefined
+    const modelCached = await hasModelInCache(LOCAL_MODEL_REQUIREMENTS.modelId, prebuiltAppConfig).catch(() => false)
     const persistent = typeof navigator.storage.persisted === 'function' ? await navigator.storage.persisted() : undefined
 
-    if (freeBytes !== undefined && freeBytes < LOCAL_MODEL_STORAGE_RESERVE_BYTES) {
+    if (freeBytes !== undefined && freeBytes < LOCAL_MODEL_STORAGE_RESERVE_BYTES && !modelCached) {
       return {
         status: 'insufficient',
         freeBytes,
         quotaBytes,
         usageBytes,
+        modelCached,
         persistent,
         reason: 'The estimated free origin storage is below the model cache reserve.',
       }
@@ -190,10 +194,13 @@ async function detectStorage(): Promise<CapabilityAssessment['storage']> {
       freeBytes,
       quotaBytes,
       usageBytes,
+      modelCached,
       persistent,
-      reason: persistent === true
-        ? 'The model cache has enough estimated space and persistent storage is currently granted.'
-        : 'The model cache has enough estimated space, but browser storage can still be evicted under pressure.',
+      reason: modelCached
+        ? 'The local model is already cached. Current free space is not used as a download gate, though browser storage can still evict the cache under pressure.'
+        : persistent === true
+          ? 'The model cache has enough estimated space and persistent storage is currently granted.'
+          : 'The model cache has enough estimated space, but browser storage can still be evicted under pressure.',
     }
   } catch {
     return {

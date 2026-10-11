@@ -1,4 +1,5 @@
 import type { EvaluationInput, EvaluationMode, TranslationFeedback } from '../domain/types'
+import { getLocalEvaluationDecision, type CapabilityAssessment } from './capability'
 
 export interface EvaluationProvider {
   evaluate(input: EvaluationInput): Promise<TranslationFeedback>
@@ -32,6 +33,7 @@ export type EvaluationRouterDependencies = {
   getMode: () => EvaluationMode
   getLocalProvider: () => LocalProviderLike | undefined
   getCloudProvider: () => EvaluationProvider | undefined
+  getCapability: () => CapabilityAssessment
 }
 
 export class ProviderUnavailableError extends Error {
@@ -42,7 +44,8 @@ export class ProviderUnavailableError extends Error {
 }
 
 export function parseJsonResponse(content: string): unknown {
-  const withoutFence = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
+  const withoutThinking = content.trim().replace(/^<think>[\s\S]*?<\/think>\s*/i, '')
+  const withoutFence = withoutThinking.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
   try {
     return JSON.parse(withoutFence) as unknown
   } catch {
@@ -54,20 +57,21 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
   return {
     async evaluate(input) {
       const localProvider = dependencies.getLocalProvider()
-      let localFailure: string | undefined
+      const capabilityDecision = getLocalEvaluationDecision(dependencies.getCapability(), input)
+      let localFailure: string | undefined = capabilityDecision.allowed ? undefined : capabilityDecision.reason
 
-      if (localProvider?.isReady()) {
+      if (capabilityDecision.allowed && localProvider?.isReady()) {
         try {
           return { status: 'evaluated', provider: 'local', feedback: await localProvider.evaluate(input) }
         } catch (error) {
           localFailure = error instanceof Error ? error.message : 'The local evaluator failed.'
         }
-      } else if (localProvider) {
+      } else if (capabilityDecision.allowed && localProvider) {
         const status = localProvider.getStatus()
         localFailure = localProvider.getErrorMessage() ?? (status === 'preparing'
           ? 'The local model is still preparing.'
           : 'The local model is not ready on this device.')
-      } else {
+      } else if (capabilityDecision.allowed) {
         localFailure = 'The local evaluator has not been prepared.'
       }
 
@@ -82,7 +86,7 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
 
       return {
         status: 'needs-consent',
-        reason: localFailure,
+        reason: localFailure ?? 'Local evaluation is unavailable.',
         request: {
           sourceText: input.exercise.sourceText,
           learnerAnswer: input.learnerAnswer,

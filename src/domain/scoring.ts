@@ -35,11 +35,14 @@ function requiredText(value: unknown, fieldName: string): string {
   return value.trim()
 }
 
-function clampScore(value: unknown, fieldName: string): number {
+function normalizeScore(value: unknown, fieldName: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new FeedbackValidationError(`Feedback has an invalid score for ${fieldName}.`)
   }
-  return Math.round(Math.min(100, Math.max(0, value)))
+  if (value < 0 || value > 100) {
+    throw new FeedbackValidationError(`Feedback score for ${fieldName} must be between 0 and 100.`)
+  }
+  return Math.round(value)
 }
 
 function normalizeDimensions(raw: Record<string, unknown>): FeedbackDimensions {
@@ -49,7 +52,7 @@ function normalizeDimensions(raw: Record<string, unknown>): FeedbackDimensions {
   }
 
   return scoreDimensions.reduce<FeedbackDimensions>((dimensions, dimension) => {
-    dimensions[dimension] = clampScore(dimensionsValue[dimension], dimension)
+    dimensions[dimension] = normalizeScore(dimensionsValue[dimension], dimension)
     return dimensions
   }, {} as FeedbackDimensions)
 }
@@ -147,8 +150,8 @@ export function validateFeedback(raw: unknown, context: FeedbackValidationContex
     .filter((issue): issue is FeedbackAnnotation => issue !== undefined)
 
   const suppliedOverall = raw.overallScore
-  const overallScore = typeof suppliedOverall === 'number' && Number.isFinite(suppliedOverall)
-    ? Math.round(Math.min(100, Math.max(0, suppliedOverall)))
+  const overallScore = typeof suppliedOverall === 'number'
+    ? normalizeScore(suppliedOverall, 'overallScore')
     : Math.round(scoreDimensions.reduce((total, dimension) => total + dimensions[dimension], 0) / scoreDimensions.length)
 
   return {

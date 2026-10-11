@@ -211,21 +211,21 @@ From Part 1 Research (`catti-mti-exam-profiles.md`), the following verified fact
 - `ExamCatalogProps`: `{ onSelectProfile: (profile: ExamProfile) => void; onResumeRun: (runId: string) => void; activeRun?: ActiveExamRun }`.
 - `App`: Handle `page === 'exam'` state; switch between catalog, active runner, and results report.
 
-- [ ] Build `ExamCatalog.tsx`:
+- [x] Build `ExamCatalog.tsx`:
   - List available verified profiles (CATTI Level 2, MTI 357, French Level 2, Arabic Level 2).
   - Display syllabus specifications: exam type, level, total minutes, passage count, word count, permitted aids badge (e.g., "Paper Dictionaries Permitted" vs "Closed Book").
   - Provide language direction filter (e.g., EN <-> ZH, FR <-> ZH, AR <-> ZH).
   - Show active in-progress run alert banner with "Resume" and "Discard" actions if an active run exists.
   - Prominently display the official practice disclaimer.
-- [ ] Update `Dashboard.tsx`:
+- [x] Update `Dashboard.tsx`:
   - Change "Exam simulation" card status from planned to active.
   - Show active mock exam banner if an unfinished run is stored in IndexedDB.
   - Display summary card of recent mock exam scores.
-- [ ] Update `ProgressPage.tsx`:
+- [x] Update `ProgressPage.tsx`:
   - Add "Mock Exams" tab or section alongside written translation practice history.
   - Show historical mock exam scores, benchmark status, and dimension trends over time.
-- [ ] Wire up navigation in `App.tsx` to handle exam catalog, runner, and result view transitions without losing state.
-- [ ] Run `npm run build` to verify application wiring and navigation.
+- [x] Wire up navigation in `App.tsx` to handle exam catalog, runner, and result view transitions without losing state.
+- [x] Run `npm run build` to verify application wiring and navigation.
 
 ---
 

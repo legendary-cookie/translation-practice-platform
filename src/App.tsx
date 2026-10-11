@@ -10,13 +10,27 @@ import { PracticeSetup, type PracticeStart } from './features/practice/PracticeS
 import { TranslationWorkspace } from './features/practice/TranslationWorkspace'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
-import type { Exercise, SessionRecord, StoredSettings, TranslationFeedback } from './domain/types'
+import { ExamCatalog } from './features/exam/ExamCatalog'
+import { ExamRunner } from './features/exam/ExamRunner'
+import { ExamResultsReport } from './features/exam/ExamResultsReport'
+import { evaluateExamRun } from './features/exam/exam-evaluator'
+import { DEFAULT_EXAM_PROFILES } from './data/exam-profiles'
+import type {
+  ActiveExamRun,
+  ConsolidatedExamResult,
+  ExamProfile,
+  Exercise,
+  SessionRecord,
+  StoredSettings,
+  TranslationFeedback,
+} from './domain/types'
 import { DEFAULT_LOCAL_MODEL_ID } from './domain/types'
 import { getLanguage } from './domain/languages'
 import './features/practice/practice.css'
 import './features/progress/progress.css'
+import './features/exam/exam.css'
 
-export type Page = 'home' | 'practice' | 'progress' | 'settings'
+export type Page = 'home' | 'practice' | 'exam' | 'progress' | 'settings'
 
 type NavigationItem = {
   id: Page
@@ -27,6 +41,7 @@ type NavigationItem = {
 const navigationItems: NavigationItem[] = [
   { id: 'home', label: 'Home', icon: '⌂' },
   { id: 'practice', label: 'Practice', icon: '✎' },
+  { id: 'exam', label: 'Exam', icon: '◷' },
   { id: 'progress', label: 'Progress', icon: '↗' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ]
@@ -34,6 +49,7 @@ const navigationItems: NavigationItem[] = [
 const pageCopy: Record<Page, { eyebrow: string; title: string }> = {
   home: { eyebrow: 'Your study space', title: 'Translate with intention.' },
   practice: { eyebrow: 'Practice desk', title: 'Make a translation pass.' },
+  exam: { eyebrow: 'Exam simulation', title: 'Test under realistic conditions.' },
   progress: { eyebrow: 'Local history', title: 'See the work you have done.' },
   settings: { eyebrow: 'Privacy and setup', title: 'Keep your practice yours.' },
 }
@@ -104,6 +120,14 @@ export default function App() {
   const [practiceNotice, setPracticeNotice] = useState<string | undefined>()
   const [pendingConsent, setPendingConsent] = useState<CloudConsentRequest | undefined>()
   const [isEvaluating, setIsEvaluating] = useState(false)
+  const [examProfiles, setExamProfiles] = useState<ExamProfile[]>(DEFAULT_EXAM_PROFILES)
+  const [activeExamRun, setActiveExamRun] = useState<ActiveExamRun | undefined>()
+  const [recentExamResults, setRecentExamResults] = useState<ConsolidatedExamResult[]>([])
+  const [examView, setExamView] = useState<'catalog' | 'runner' | 'results'>('catalog')
+  const [selectedExamProfile, setSelectedExamProfile] = useState<ExamProfile | undefined>()
+  const [activeExamResult, setActiveExamResult] = useState<ConsolidatedExamResult | undefined>()
+  const [isEvaluatingExam, setIsEvaluatingExam] = useState(false)
+  const [examEvaluationProgress, setExamEvaluationProgress] = useState<{ completed: number; total: number } | undefined>()
   const dataLoadGeneration = useRef(0)
 
   const handleLocalProgress = (progress: LocalModelProgress) => {
@@ -133,6 +157,21 @@ export default function App() {
     void database.listSessions().then((sessions) => {
       if (dataLoadGeneration.current === loadGeneration) {
         setRecentSessions(sessions)
+      }
+    }).catch(() => undefined)
+    void database.listExamProfiles().then((profiles) => {
+      if (dataLoadGeneration.current === loadGeneration && profiles.length > 0) {
+        setExamProfiles(profiles)
+      }
+    }).catch(() => undefined)
+    void database.getActiveExamRun().then((run) => {
+      if (dataLoadGeneration.current === loadGeneration) {
+        setActiveExamRun(run)
+      }
+    }).catch(() => undefined)
+    void database.listExamResults().then((results) => {
+      if (dataLoadGeneration.current === loadGeneration) {
+        setRecentExamResults(results)
       }
     }).catch(() => undefined)
   }, [])
@@ -175,8 +214,76 @@ export default function App() {
     setCloudDraft({ baseUrl: '', model: '', apiKey: '' })
     setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
     setRecentSessions([])
+    setActiveExamRun(undefined)
+    setRecentExamResults([])
+    setActiveExamResult(undefined)
+    setSelectedExamProfile(undefined)
+    setExamView('catalog')
     resetPractice()
   }
+
+  function handleSelectExamProfile(profile: ExamProfile) {
+    setSelectedExamProfile(profile)
+    setExamView('runner')
+  }
+
+  function handleResumeExamRun(run: ActiveExamRun) {
+    const profile =
+      examProfiles.find((p) => p.id === run.profileId) ??
+      DEFAULT_EXAM_PROFILES.find((p) => p.id === run.profileId)
+    if (profile) {
+      setSelectedExamProfile(profile)
+      setActiveExamRun(run)
+      setExamView('runner')
+      setCurrentPage('exam')
+    }
+  }
+
+  async function handleDiscardExamRun(runId: string) {
+    await database.deleteExamRun(runId)
+    setActiveExamRun(undefined)
+  }
+
+  async function handleSubmitExamRun(completedRun: ActiveExamRun) {
+    if (!selectedExamProfile) {
+      return
+    }
+    setIsEvaluatingExam(true)
+    setExamEvaluationProgress({ completed: 0, total: 1 })
+    try {
+      const result = await evaluateExamRun(
+        completedRun,
+        selectedExamProfile,
+        evaluationRouter,
+        (completed, total) => setExamEvaluationProgress({ completed, total }),
+      )
+      await database.saveExamResult(result)
+      await database.deleteExamRun(completedRun.id)
+      setActiveExamRun(undefined)
+      setActiveExamResult(result)
+      setRecentExamResults((prev) => [result, ...prev.filter((r) => r.id !== result.id)])
+      setExamView('results')
+    } catch {
+      setPracticeNotice('Exam evaluation could not be completed.')
+    } finally {
+      setIsEvaluatingExam(false)
+      setExamEvaluationProgress(undefined)
+    }
+  }
+
+  async function handleCancelExamRun() {
+    const run = await database.getActiveExamRun()
+    setActiveExamRun(run)
+    setExamView('catalog')
+    setSelectedExamProfile(undefined)
+  }
+
+  function handleRetakeExam() {
+    setExamView('catalog')
+    setActiveExamResult(undefined)
+    setSelectedExamProfile(undefined)
+  }
+
 
   function saveCloudPreferences(baseUrl: string, model: string) {
     updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim() })
@@ -271,17 +378,102 @@ export default function App() {
   }
 
   const pageCopyForCurrentPage = pageCopy[currentPage]
+  const isTakingExam = currentPage === 'exam' && examView === 'runner' && selectedExamProfile !== undefined
 
   return (
     <div className="app-shell">
       <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></aside>
       <main className="main-content">
-        <header className="topbar"><div><p className="eyebrow">{pageCopyForCurrentPage.eyebrow}</p><h1>{pageCopyForCurrentPage.title}</h1></div><div className="topbar__meta"><span className="status-dot" aria-hidden="true" /><span>Saved on this device</span></div></header>
-        {currentPage === 'home' && <Dashboard localProgress={localProgress} recentSessions={recentSessions} onNavigate={setCurrentPage} />}
+        {!isTakingExam && (
+          <header className="topbar">
+            <div>
+              <p className="eyebrow">{pageCopyForCurrentPage.eyebrow}</p>
+              <h1>{pageCopyForCurrentPage.title}</h1>
+            </div>
+            <div className="topbar__meta">
+              <span className="status-dot" aria-hidden="true" />
+              <span>Saved on this device</span>
+            </div>
+          </header>
+        )}
+        {currentPage === 'home' && (
+          <Dashboard
+            localProgress={localProgress}
+            recentSessions={recentSessions}
+            activeExamRun={activeExamRun}
+            recentExamResults={recentExamResults}
+            onNavigate={(page) => {
+              if (page === 'exam' && activeExamRun) {
+                handleResumeExamRun(activeExamRun)
+              } else {
+                setCurrentPage(page)
+              }
+            }}
+          />
+        )}
         {currentPage === 'practice' && !activeExercise && <PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} />}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} />}
-        {currentPage === 'progress' && <ProgressPage sessions={recentSessions} onStartPractice={() => setCurrentPage('practice')} />}
+        {currentPage === 'exam' && isEvaluatingExam && (
+          <div className="exam-modal-backdrop" role="presentation">
+            <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="eval-heading">
+              <h3 id="eval-heading" className="exam-modal__title">Evaluating Exam Submissions…</h3>
+              <p className="exam-modal__body">
+                Assessing answered passages against the rubric dimensions.
+                {examEvaluationProgress && (
+                  <span> Completed {examEvaluationProgress.completed} of {examEvaluationProgress.total} tasks.</span>
+                )}
+              </p>
+              <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    background: '#0284c7',
+                    width: `${examEvaluationProgress ? Math.round((examEvaluationProgress.completed / examEvaluationProgress.total) * 100) : 0}%`,
+                    transition: 'width 200ms ease',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {currentPage === 'exam' && !isEvaluatingExam && examView === 'runner' && selectedExamProfile && (
+          <ExamRunner
+            profile={selectedExamProfile}
+            initialRun={activeExamRun}
+            onSubmitRun={handleSubmitExamRun}
+            onCancel={handleCancelExamRun}
+          />
+        )}
+        {currentPage === 'exam' && !isEvaluatingExam && examView === 'results' && activeExamResult && (
+          <ExamResultsReport
+            result={activeExamResult}
+            onRetake={handleRetakeExam}
+            onBackToDashboard={() => setCurrentPage('home')}
+          />
+        )}
+        {currentPage === 'exam' && !isEvaluatingExam && (examView === 'catalog' || (!selectedExamProfile && !activeExamResult)) && (
+          <ExamCatalog
+            profiles={examProfiles}
+            activeRun={activeExamRun}
+            onSelectProfile={handleSelectExamProfile}
+            onResumeRun={handleResumeExamRun}
+            onDiscardRun={handleDiscardExamRun}
+          />
+        )}
+        {currentPage === 'progress' && (
+          <ProgressPage
+            sessions={recentSessions}
+            examResults={recentExamResults}
+            onStartPractice={() => setCurrentPage('practice')}
+            onStartExam={() => {
+              setExamView('catalog')
+              setSelectedExamProfile(undefined)
+              setActiveExamResult(undefined)
+              setCurrentPage('exam')
+            }}
+          />
+        )}
         {currentPage === 'settings' && <SettingsPage cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
       </main>
       <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>

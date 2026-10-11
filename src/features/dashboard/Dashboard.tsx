@@ -1,17 +1,22 @@
 import { DEFAULT_LOCAL_MODEL_ID } from '../../domain/types'
 import { getLanguage } from '../../domain/languages'
 import type { LocalModelProgress } from '../../ai/local-provider'
-import type { SessionRecord } from '../../domain/types'
+import type { ActiveExamRun, ConsolidatedExamResult, SessionRecord } from '../../domain/types'
+import { formatSeconds } from '../../domain/exam'
 
-type DashboardPage = 'home' | 'practice' | 'progress' | 'settings'
+export type DashboardPage = 'home' | 'practice' | 'exam' | 'progress' | 'settings'
 
 export function Dashboard({
   localProgress,
   recentSessions,
+  activeExamRun,
+  recentExamResults = [],
   onNavigate,
 }: {
   localProgress: LocalModelProgress
   recentSessions: SessionRecord[]
+  activeExamRun?: ActiveExamRun
+  recentExamResults?: ConsolidatedExamResult[]
   onNavigate: (page: DashboardPage) => void
 }) {
   const localStatusLabel = localProgress.status === 'ready'
@@ -24,6 +29,33 @@ export function Dashboard({
 
   return (
     <div className="page-content">
+      {activeExamRun && (
+        <section
+          className="info-card info-card--accent"
+          style={{ marginBottom: '1.5rem', borderLeft: '4px solid #0284c7' }}
+          role="region"
+          aria-label="Active Exam Recovery"
+        >
+          <div className="info-card__topline">
+            <span className="eyebrow">Exam in progress</span>
+            <span className="pill pill--warning">Resume available</span>
+          </div>
+          <h3>You have an unfinished examination attempt</h3>
+          <p>
+            Remaining time: <strong>{formatSeconds(activeExamRun.overallRemainingSeconds)}</strong>.
+            All your drafted answers were saved safely on this device.
+          </p>
+          <button
+            className="button button--primary"
+            type="button"
+            style={{ marginTop: '0.75rem' }}
+            onClick={() => onNavigate('exam')}
+          >
+            Resume Exam Simulation ({formatSeconds(activeExamRun.overallRemainingSeconds)}) →
+          </button>
+        </section>
+      )}
+
       <section className="hero-card">
         <div>
           <p className="eyebrow">Ready when you are</p>
@@ -46,7 +78,7 @@ export function Dashboard({
             <p className="eyebrow">Choose your mode</p>
             <h2 id="modes-heading">Practice that fits today.</h2>
           </div>
-          <span className="section-heading__note">2 available now</span>
+          <span className="section-heading__note">3 available now</span>
         </div>
         <div className="mode-grid">
           <button className="mode-card mode-card--active" type="button" onClick={() => onNavigate('practice')}>
@@ -65,19 +97,19 @@ export function Dashboard({
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
+          <button className="mode-card mode-card--active" type="button" onClick={() => onNavigate('exam')}>
+            <span className="mode-card__icon">◷</span>
+            <span className="mode-card__content">
+              <strong>Exam simulation</strong>
+              <span>CATTI & MTI timed practice with strict test conditions.</span>
+            </span>
+            <span className="mode-card__arrow" aria-hidden="true">↗</span>
+          </button>
           <div className="mode-card mode-card--planned">
             <span className="mode-card__icon">◌</span>
             <span className="mode-card__content">
               <strong>Interpreting</strong>
               <span>Planned mode · audio and delivery practice.</span>
-            </span>
-            <span className="pill">Planned</span>
-          </div>
-          <div className="mode-card mode-card--planned">
-            <span className="mode-card__icon">◷</span>
-            <span className="mode-card__content">
-              <strong>Exam simulation</strong>
-              <span>Planned mode · versioned timed profiles.</span>
             </span>
             <span className="pill">Planned</span>
           </div>
@@ -106,6 +138,22 @@ export function Dashboard({
           ) : <p>Completed work, practice estimates, and dimension trends will appear in Progress.</p>}
           <button className="text-button" type="button" onClick={() => onNavigate(recentSessions.length ? 'progress' : 'practice')}>{recentSessions.length ? 'Open progress' : 'Start practicing'} <span aria-hidden="true">→</span></button>
         </article>
+        {recentExamResults.length > 0 && (
+          <article className="info-card">
+            <div className="info-card__topline">
+              <span className="eyebrow">Exam Simulation</span>
+              <span className="muted-label">{recentExamResults.length} attempt{recentExamResults.length === 1 ? '' : 's'}</span>
+            </div>
+            <h3>Latest Mock Exam</h3>
+            <div className="activity-row">
+              <span>{recentExamResults[0].examTitle}</span>
+              <strong>{recentExamResults[0].totalScore} / {recentExamResults[0].maxScore}</strong>
+            </div>
+            <button className="text-button" type="button" onClick={() => onNavigate('exam')}>
+              Open exam catalog <span aria-hidden="true">→</span>
+            </button>
+          </article>
+        )}
       </section>
     </div>
   )

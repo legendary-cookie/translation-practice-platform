@@ -131,11 +131,11 @@
 - `database.exportData()` returns a versioned JSON object containing learner settings and session history, excluding transient API keys.
 - `database.clearData()` removes local sessions and settings after an explicit confirmation.
 
-- [ ] Show sessions, score trends, and dimension averages without inventing data for a new learner.
-- [ ] Add export to a user-selected JSON download and confirmed local-data deletion.
-- [ ] Add privacy mode selection, model status, cloud endpoint fields, transient API-key entry, and per-task consent copy.
-- [ ] Show clearly that data is stored per browser/device and is not synchronized.
-- [ ] Run `npm run build` and commit as `feat: add learner progress and privacy settings`.
+- [x] Show sessions, score trends, and dimension averages without inventing data for a new learner.
+- [x] Add export to a user-selected JSON download and confirmed local-data deletion.
+- [x] Add privacy mode selection, model status, cloud endpoint fields, transient API-key entry, and per-task consent copy.
+- [x] Show clearly that data is stored per browser/device and is not synchronized.
+- [x] Run `npm run build` and commit as `feat: add learner progress and privacy settings`.
 
 ### Task 6: Finish responsive details and project handoff
 

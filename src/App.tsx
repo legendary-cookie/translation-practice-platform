@@ -8,10 +8,13 @@ import { Dashboard } from './features/dashboard/Dashboard'
 import { FeedbackPanel } from './features/practice/FeedbackPanel'
 import { PracticeSetup, type PracticeStart } from './features/practice/PracticeSetup'
 import { TranslationWorkspace } from './features/practice/TranslationWorkspace'
+import { ProgressPage } from './features/progress/ProgressPage'
+import { SettingsPage } from './features/settings/SettingsPage'
 import type { Exercise, SessionRecord, StoredSettings, TranslationFeedback } from './domain/types'
 import { DEFAULT_LOCAL_MODEL_ID } from './domain/types'
 import { getLanguage } from './domain/languages'
 import './features/practice/practice.css'
+import './features/progress/progress.css'
 
 export type Page = 'home' | 'practice' | 'progress' | 'settings'
 
@@ -52,18 +55,6 @@ function Navigation({ currentPage, onNavigate }: { currentPage: Page; onNavigate
       </div>
       <div className="navigation__footer"><span className="status-dot" aria-hidden="true" /><span>Local-first mode</span></div>
     </nav>
-  )
-}
-
-function PlaceholderPage({ page }: { page: Page }) {
-  const copy = page === 'progress'
-    ? { icon: '↗', eyebrow: 'Local history', title: 'Your progress will appear here.', description: 'Complete a validated practice session to start building local history.' }
-    : { icon: '⚙', eyebrow: 'Privacy and setup', title: 'Your settings are coming together.', description: 'Choose an evaluation mode and manage this browser’s local data.' }
-
-  return (
-    <div className="page-content">
-      <section className="empty-state"><span className="empty-state__icon" aria-hidden="true">{copy.icon}</span><p className="eyebrow">{copy.eyebrow}</p><h2>{copy.title}</h2><p>{copy.description}</p></section>
-    </div>
   )
 }
 
@@ -157,6 +148,28 @@ export default function App() {
   function updateSettings(nextSettings: StoredSettings) {
     setSettings(nextSettings)
     void database.saveSettings(nextSettings)
+  }
+
+  async function prepareLocalModel() {
+    try {
+      await localProvider.prepare()
+    } catch {
+      return
+    }
+  }
+
+  async function clearLocalData() {
+    await database.clearData()
+    localProvider.dispose()
+    setSettings(DEFAULT_SETTINGS)
+    setCloudDraft({ baseUrl: '', model: '', apiKey: '' })
+    setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
+    setRecentSessions([])
+    resetPractice()
+  }
+
+  function saveCloudPreferences(baseUrl: string, model: string) {
+    updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim() })
   }
 
   function beginPractice(selection: PracticeStart) {
@@ -258,8 +271,8 @@ export default function App() {
         {currentPage === 'practice' && !activeExercise && <PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} />}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} />}
-        {currentPage === 'progress' && <PlaceholderPage page="progress" />}
-        {currentPage === 'settings' && <PlaceholderPage page="settings" />}
+        {currentPage === 'progress' && <ProgressPage sessions={recentSessions} onStartPractice={() => setCurrentPage('practice')} />}
+        {currentPage === 'settings' && <SettingsPage cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
       </main>
       <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}

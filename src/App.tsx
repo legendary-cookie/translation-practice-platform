@@ -16,7 +16,7 @@ import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
 import { evaluateExamRun } from './features/exam/exam-evaluator'
 import { DEFAULT_EXAM_PROFILES } from './data/exam-profiles'
-import { DirectionQualityNotice } from './features/settings/ModelCapabilityStatus'
+import { DirectionQualityNotice, ModelCapabilityStatus } from './features/settings/ModelCapabilityStatus'
 import type {
   ActiveExamRun,
   ConsolidatedExamResult,
@@ -460,6 +460,7 @@ export default function App() {
         {currentPage === 'practice' && !activeExercise && <><DirectionQualityNotice capability={capability} /><PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} />}
+        {currentPage === 'exam' && !isEvaluatingExam && <ModelCapabilityStatus capability={capability} />}
         {currentPage === 'exam' && isEvaluatingExam && (
           <div className="exam-modal-backdrop" role="presentation">
             <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="eval-heading">

@@ -12,6 +12,14 @@ export const PRACTICE_ESTIMATE_DISCLAIMER =
   'Practice Assessment Only: This score is an automated estimation generated for independent study. It is NOT an official CATTI or MTI examination result and has no official certification standing.'
 
 export const PRACTICE_ESTIMATE_LABEL = 'Practice Estimate · 模拟练习评估'
+export const PLATFORM_AUTHORED_RUBRIC_NOTICE =
+  'Rubric and dimension scores are a platform-authored practice model, not an official CATTI/MTI marker-consensus sheet or deduction table.'
+export const CATTI_THRESHOLD_NOTICE =
+  'The comparison below is a practice benchmark only. CATTI thresholds depend on administration, level, paper, and region; the 2024 separate-line exception was 58 rather than a universal 60.'
+export const CLIPBOARD_POLICY_NOTICE =
+  'Clipboard restriction is a platform simulation choice for this practice run, not an official universal CATTI rule.'
+export const MATERIALS_POLICY_NOTICE =
+  'This release uses platform-authored practice passages. It does not assert ownership of past CATTI papers; rights must be checked paper by paper before reuse.'
 export const PROVISIONAL_DRAFT_LABEL = 'Provisional Draft · 待最终核实草案'
 export const PROVISIONAL_DRAFT_NOTICE =
   'This exam profile contains provisional parameters pending authoritative confirmation. Always refer to your target institution or official examination announcements for official requirements.'

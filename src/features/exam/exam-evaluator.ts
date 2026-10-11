@@ -33,6 +33,8 @@ function resolveSourceLanguage(
   if (sectionDirection.startsWith('en')) return 'en'
   if (sectionDirection.startsWith('zh')) return 'zh'
   if (sectionDirection.startsWith('fr')) return 'fr'
+  if (sectionDirection.startsWith('ru')) return 'ru'
+  if (sectionDirection.startsWith('es')) return 'es'
   if (sectionDirection.startsWith('ar')) return 'ar'
   if (sectionDirection === 'bidirectional') {
     return targetLanguage === 'zh' ? 'en' : 'zh'
@@ -175,6 +177,9 @@ export async function evaluateExamRun(
     sectionResults: aggregated.sectionResults,
     consolidatedDimensions: aggregated.consolidatedDimensions,
     disclaimer: profile.disclaimer,
+    benchmarkLabel: 'Practice benchmark estimate',
+    benchmarkNote: profile.benchmarkNote,
+    authorityNote: profile.authorityNote,
     isProvisional: profile.status === 'provisional_draft',
   }
 }

@@ -157,12 +157,15 @@ export function ProgressPage({
                       <div className="trend-row" key={session.id}>
                         <div className="trend-row__label">
                           <span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span>
-                          <small>{formatDate(session.createdAt)}</small>
+                          <small>{formatDate(session.createdAt)} · Practice estimate</small>
                         </div>
                         <div className="trend-row__track">
                           <span style={{ width: `${session.feedback.overallScore}%` }} />
                         </div>
-                        <strong>{session.feedback.overallScore}</strong>
+                        <strong>
+                          {session.feedback.overallScore}
+                          <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
+                        </strong>
                       </div>
                     ))}
                   </div>
@@ -261,7 +264,7 @@ export function ProgressPage({
                   <strong>
                     {examResults[0].totalScore} / {examResults[0].maxScore}
                   </strong>
-                  <span>{examResults[0].percentage}%</span>
+                  <span>{examResults[0].percentage}% · practice estimate</span>
                 </article>
               </section>
 
@@ -287,11 +290,11 @@ export function ProgressPage({
                           <div className="trend-row__label">
                             <span>{result.examTitle}</span>
                             <small>
-                              {formatDate(result.completedAt)} · <span className={`pill ${badgeClass}`}>{result.estimatedStatus}</span>
+                              {formatDate(result.completedAt)} · Practice estimate · <span className={`pill ${badgeClass}`}>{result.estimatedStatus}</span>
                             </small>
                           </div>
                           <strong>
-                            {result.totalScore} / {result.maxScore} pts ({result.percentage}%)
+                            {result.totalScore} / {result.maxScore} pts ({result.percentage}%) · Practice estimate
                           </strong>
                         </div>
                       )

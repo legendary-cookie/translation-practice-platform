@@ -7,7 +7,7 @@ import type {
   SessionRecord,
   StoredSettings,
 } from '../domain/types'
-import { DEFAULT_EXAM_PROFILES } from '../data/exam-profiles'
+import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
 
 const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 2
@@ -113,13 +113,24 @@ export const database = {
   async listExamProfiles(): Promise<ExamProfile[]> {
     const db = await getDatabase()
     const stored = await db.getAll('examProfiles')
-    if (stored.length > 0) {
-      return stored
+    const deprecatedIds = new Set<string>(DEPRECATED_EXAM_PROFILE_IDS)
+    const retained = stored.filter((profile) => !deprecatedIds.has(profile.id))
+
+    for (const profile of stored) {
+      if (deprecatedIds.has(profile.id)) {
+        await db.delete('examProfiles', profile.id)
+      }
     }
+
+    const profilesById = new Map(retained.map((profile) => [profile.id, profile]))
     for (const profile of DEFAULT_EXAM_PROFILES) {
-      await db.put('examProfiles', profile)
+      const storedProfile = profilesById.get(profile.id)
+      if (!storedProfile || storedProfile.version < profile.version) {
+        await db.put('examProfiles', profile)
+        profilesById.set(profile.id, profile)
+      }
     }
-    return DEFAULT_EXAM_PROFILES
+    return Array.from(profilesById.values())
   },
 
   async getExamProfile(id: string): Promise<ExamProfile | undefined> {

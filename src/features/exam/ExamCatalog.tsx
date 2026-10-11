@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import type { ActiveExamRun, ExamProfile, ExamType, LanguageCode } from '../../domain/types'
+import { CATTI_LEVEL_2_SYLLABUS_BASELINES } from '../../data/catti-syllabus-baselines'
 import {
+  CATTI_THRESHOLD_NOTICE,
   formatSeconds,
+  MATERIALS_POLICY_NOTICE,
   PRACTICE_ESTIMATE_DISCLAIMER,
   PROVISIONAL_DRAFT_LABEL,
 } from '../../domain/exam'
@@ -88,11 +91,28 @@ export function ExamCatalog({
         </span>
       </section>
 
+      <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
+        <strong>2023-12-25 CATTI syllabus references: </strong>
+        <span>These are dated official syllabus baselines, not timeless administration promises. The simulator's rubric and scores remain platform-authored practice estimates.</span>
+        <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+          {CATTI_LEVEL_2_SYLLABUS_BASELINES.map((baseline) => (
+            <li key={baseline.language}>
+              {baseline.languageLabel}: {baseline.foreignToChinese} ({baseline.foreignToChinesePoints} pts) → {baseline.chineseToForeign} ({baseline.chineseToForeignPoints} pts), {baseline.durationMinutes} min
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
+        <strong>Profile boundaries: </strong>
+        <span>MTI 357 varies by admitting university and admission year, so no generic national MTI profile is presented here. {MATERIALS_POLICY_NOTICE}</span>
+      </section>
+
       {/* Catalog Header */}
       <div className="section-heading">
         <div>
           <p className="eyebrow">Exam Simulation Profiles</p>
-          <h2>Standard Examination Catalog</h2>
+          <h2>Dated syllabus references and practice profiles</h2>
         </div>
         <span className="section-heading__note">
           {filteredProfiles.length} profile{filteredProfiles.length === 1 ? '' : 's'} available
@@ -160,6 +180,12 @@ export function ExamCatalog({
       </div>
 
       {/* Profile Cards Grid */}
+      {filteredProfiles.length === 0 && (
+        <section className="progress-empty" style={{ marginBottom: '1.5rem' }}>
+          <h3>No profile is bundled for this filter.</h3>
+          <p>MTI 357 practice requires a named university and admission year. A generic national task-count or benchmark profile is intentionally not offered.</p>
+        </section>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.5rem' }}>
         {filteredProfiles.map((profile) => {
           const isProvisional = profile.status === 'provisional_draft'
@@ -179,7 +205,9 @@ export function ExamCatalog({
                   {isProvisional ? (
                     <span className="pill pill--warning">{PROVISIONAL_DRAFT_LABEL}</span>
                   ) : (
-                    <span className="pill pill--success">Verified Syllabus</span>
+                    <span className="pill pill--success">
+                      {profile.authoritySourceDate ? `${profile.authoritySourceDate} syllabus baseline` : 'Verified Syllabus'}
+                    </span>
                   )}
                 </div>
 
@@ -192,13 +220,21 @@ export function ExamCatalog({
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
                   <span className="pill">⏱️ {profile.totalDurationMinutes} min</span>
                   <span className="pill">
-                    🏆 {profile.maxTotalPoints} pts (Pass: {profile.passBenchmarkPoints} pts)
+                    🏆 {profile.maxTotalPoints} pts (Practice benchmark: {profile.passBenchmarkPoints} pts)
                   </span>
                   <span className="pill">
                     📖 {profile.allowedAids.paperDictionaryAllowed ? 'Paper Dictionaries' : 'Closed Book'}
                   </span>
                   <span className="pill">📝 {totalPassages} passage tasks</span>
                 </div>
+
+                {profile.authorityNote && (
+                  <p className="muted-label" style={{ marginBottom: '1rem' }}>{profile.authorityNote}</p>
+                )}
+
+                {profile.benchmarkNote && (
+                  <p className="muted-label" style={{ marginBottom: '1rem' }}>{CATTI_THRESHOLD_NOTICE}</p>
+                )}
 
                 {/* Section Outline */}
                 <div

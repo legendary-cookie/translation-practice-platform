@@ -101,7 +101,7 @@ export function Dashboard({
             <span className="mode-card__icon">◷</span>
             <span className="mode-card__content">
               <strong>Exam simulation</strong>
-              <span>CATTI & MTI timed practice with strict test conditions.</span>
+              <span>CATTI and named-university MTI timed practice with strict test conditions.</span>
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
@@ -131,7 +131,10 @@ export function Dashboard({
               {recentSessions.slice(0, 3).map((session) => (
                 <div className="activity-row" key={session.id}>
                   <span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span>
-                  <strong>{session.feedback.overallScore}/100</strong>
+                  <strong>
+                    {session.feedback.overallScore}/100
+                    <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
+                  </strong>
                 </div>
               ))}
             </div>
@@ -142,12 +145,15 @@ export function Dashboard({
           <article className="info-card">
             <div className="info-card__topline">
               <span className="eyebrow">Exam Simulation</span>
-              <span className="muted-label">{recentExamResults.length} attempt{recentExamResults.length === 1 ? '' : 's'}</span>
+              <span className="muted-label">{recentExamResults.length} practice estimate{recentExamResults.length === 1 ? '' : 's'}</span>
             </div>
             <h3>Latest Mock Exam</h3>
             <div className="activity-row">
               <span>{recentExamResults[0].examTitle}</span>
-              <strong>{recentExamResults[0].totalScore} / {recentExamResults[0].maxScore}</strong>
+              <strong>
+                {recentExamResults[0].totalScore} / {recentExamResults[0].maxScore}
+                <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
+              </strong>
             </div>
             <button className="text-button" type="button" onClick={() => onNavigate('exam')}>
               Open exam catalog <span aria-hidden="true">→</span>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ExamSectionConfig } from '../../domain/types'
-import { countTextUnits } from '../../domain/exam'
+import { CLIPBOARD_POLICY_NOTICE, countTextUnits } from '../../domain/exam'
 
 export type ExamSectionWorkspaceProps = {
   section: ExamSectionConfig
@@ -35,9 +35,9 @@ export function ExamSectionWorkspace({
   const isTargetArabic = activePassage.targetLanguage === 'ar'
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    // Restrict pasting in strict exam mode to simulate real CATTI testing client
+    // This is a product-level simulation choice, not an assertion about every CATTI client.
     event.preventDefault()
-    setPasteNotice('Direct pasting is disabled in strict exam mode to simulate real test-day keyboard entry conditions.')
+    setPasteNotice(`${CLIPBOARD_POLICY_NOTICE} Direct pasting remains blocked for this run.`)
     setTimeout(() => setPasteNotice(undefined), 4000)
   }
 
@@ -47,7 +47,7 @@ export function ExamSectionWorkspace({
       <div className="exam-strict-banner" role="status">
         <span aria-hidden="true">🔒</span>
         <span>
-          <strong>Strict test mode active:</strong> Reference glossaries and interactive AI assistance are disabled. Direct pasting is locked.
+          <strong>Strict test mode active:</strong> Reference glossaries and interactive AI assistance are disabled. Clipboard restriction is a platform simulation choice, not an official universal CATTI rule.
         </span>
       </div>
 
@@ -92,7 +92,7 @@ export function ExamSectionWorkspace({
             dir={isSourceArabic ? 'rtl' : 'ltr'}
             onCopy={(e) => {
               e.preventDefault()
-              setPasteNotice('Copying source text is disabled in exam mode.')
+              setPasteNotice(CLIPBOARD_POLICY_NOTICE)
               setTimeout(() => setPasteNotice(undefined), 4000)
             }}
             onContextMenu={(e) => e.preventDefault()}
@@ -123,7 +123,7 @@ export function ExamSectionWorkspace({
             placeholder={
               isLocked
                 ? 'Time for this section has expired. Inputs are locked.'
-                : 'Type your official translation here. Pasting is restricted to simulate real testing terminals...'
+                : 'Type your translation here. Clipboard restriction is a platform simulation choice for this practice run...'
             }
           />
 

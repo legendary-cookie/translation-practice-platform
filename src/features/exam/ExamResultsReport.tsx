@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { ConsolidatedExamResult, ScoreDimension } from '../../domain/types'
 import {
+  CATTI_THRESHOLD_NOTICE,
   PRACTICE_ESTIMATE_DISCLAIMER,
+  PLATFORM_AUTHORED_RUBRIC_NOTICE,
   PROVISIONAL_DRAFT_LABEL,
   PROVISIONAL_DRAFT_NOTICE,
 } from '../../domain/exam'
@@ -83,6 +85,13 @@ export function ExamResultsReport({
         <span>{PRACTICE_ESTIMATE_DISCLAIMER}</span>
       </section>
 
+      {result.authorityNote && (
+        <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
+          <strong>Profile authority: </strong>
+          <span>{result.authorityNote}</span>
+        </section>
+      )}
+
       {result.isProvisional && (
         <section
           className="notice-banner notice-banner--warning"
@@ -107,7 +116,7 @@ export function ExamResultsReport({
             <span style={{ fontSize: '1.25rem', color: '#64748b' }}> / {result.maxScore}</span>
           </strong>
           <span>
-            {result.percentage}% · <span className={`pill ${statusColorClass}`}>{statusLabel}</span>
+            {result.percentage}% · Practice estimate · <span className={`pill ${statusColorClass}`}>{statusLabel}</span>
           </span>
         </div>
       </header>
@@ -115,16 +124,15 @@ export function ExamResultsReport({
       {/* Benchmark Comparison & Quick Stats */}
       <section className="progress-stat-grid">
         <article className="progress-stat">
-          <span className="eyebrow">Your Score</span>
+          <span className="eyebrow">Your Practice Estimate</span>
           <strong>{result.totalScore} pts</strong>
           <span>out of {result.maxScore} max</span>
         </article>
         <article className="progress-stat">
-          <span className="eyebrow">Syllabus Benchmark</span>
+          <span className="eyebrow">Practice Benchmark</span>
           <strong>{result.passBenchmark} pts</strong>
-          <span>
-            {result.maxScore === 100 ? 'Official 60% passing mark' : 'National guidance line estimate'}
-          </span>
+          <span>{result.benchmarkLabel ?? 'Practice benchmark estimate'}</span>
+          <small style={{ display: 'block', marginTop: '0.35rem' }}>{result.benchmarkNote ?? CATTI_THRESHOLD_NOTICE}</small>
         </article>
         <article className="progress-stat">
           <span className="eyebrow">Estimated Status</span>
@@ -141,6 +149,7 @@ export function ExamResultsReport({
           <div>
             <p className="eyebrow">Rubric Analysis</p>
             <h3>Core Competency Breakdown</h3>
+            <p className="muted-label" style={{ margin: '0.35rem 0 0' }}>{PLATFORM_AUTHORED_RUBRIC_NOTICE}</p>
           </div>
           <span className="section-heading__note">Average across answered passages</span>
         </div>
@@ -189,6 +198,7 @@ export function ExamResultsReport({
                 <strong style={{ fontSize: '1.25rem' }}>
                   {section.score} / {section.maxPoints} pts
                 </strong>
+                <small className="muted-label" style={{ display: 'block', textAlign: 'right' }}>Practice estimate</small>
               </div>
             </div>
 
@@ -227,7 +237,7 @@ export function ExamResultsReport({
                       <div>
                         <strong>{passage.passageTitle}</strong>
                         <span className="muted-label" style={{ marginLeft: '0.5rem' }}>
-                          {hasAnswer ? `Score: ${passage.feedback.overallScore}/100` : 'Unanswered (0 pts)'}
+                          {hasAnswer ? `Practice estimate: ${passage.feedback.overallScore}/100` : 'Practice estimate: 0 pts'}
                         </span>
                       </div>
                       <span className="text-button">{isExpanded ? 'Hide Details ▲' : 'Show Details ▼'}</span>

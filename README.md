@@ -59,23 +59,24 @@ If local-first with cloud fallback is selected and local evaluation cannot run, 
 
 - **Written translation**: Sentence- and paragraph-level deliberate practice focusing on accuracy, terminology, and natural phrasing.
 - **News translation**: Practice with original, current-affairs style passages categorized by domain.
-- **Exam simulation**: Realistic, timed mock examinations for CATTI and MTI candidates with strict test conditions, dual countdown timers, crash recovery, and multi-section consolidated evaluations.
+- **Exam simulation**: Realistic, timed mock examinations for CATTI candidates and named-university MTI profiles with strict test conditions, dual countdown timers, crash recovery, and multi-section consolidated evaluations.
 
 ## Exam simulation mode
 
 The exam simulator provides an authentic testing experience tailored to individual candidates:
 
-### 1. Versioned Exam Profiles & Syllabi
-- **CATTI Level 2 English 实务 (`catti-2-practical-en-zh-v1`)** [Verified]: 180 minutes total; 100 max points; pass threshold 60/100 points. Section 1: English-to-Chinese (2 passages, ~940 words total, 50 pts); Section 2: Chinese-to-English (2 passages, ~600 characters total, 50 pts).
-- **MTI 357 English Foundation Guidance Baseline (`mti-357-foundation-en-zh-v1`)** [Provisional Draft]: 180 minutes total; 150 max points; Section 1: Terminology Translation (15 E->C, 15 C->E, 30 pts); Section 2: English-to-Chinese Passage (~320 words, 60 pts); Section 3: Chinese-to-English Passage (~220 characters, 60 pts). Labeled as National MTI Steering Committee guidance template; specific university variations apply.
-- **CATTI Level 2 French 实务 (`catti-2-practical-fr-zh-v1`)** [Provisional Draft]: 180 minutes; 100 max points (60 pts French->Chinese, 40 pts Chinese->French); 4 original passages.
-- **CATTI Level 2 Arabic 实务 (`catti-2-practical-ar-zh-v1`)** [Provisional Draft]: 180 minutes; 100 max points; 50/50 point weighting; 4 original passages with bidirectional Right-to-Left (RTL) Arabic rendering.
+### 1. Versioned Exam Profiles & Dated Syllabus References
+- **CATTI Level 2 English 实务 (`catti-2-practical-en-zh-v1`)** [2023-12-25 official syllabus baseline]: 180 minutes; about 900 English words for English-to-Chinese (50 pts) and about 600 Chinese characters for Chinese-to-English (50 pts). The score shown by this app remains a practice estimate.
+- **CATTI Level 2 French 实务 (`catti-2-practical-fr-zh-v1`)** [2023-12-25 official syllabus baseline]: 180 minutes; about 800 French words for French-to-Chinese (60 pts) and about 500 Chinese characters for Chinese-to-French (40 pts). The score shown by this app remains a practice estimate.
+- **CATTI Level 2 Arabic 实务 (`catti-2-practical-ar-zh-v1`)** [2023-12-25 official syllabus baseline]: 180 minutes; about 700–800 Arabic words for Arabic-to-Chinese (60 pts) and about 400–500 Chinese characters for Chinese-to-Arabic (40 pts), with RTL rendering. The score shown by this app remains a practice estimate.
+- **CATTI Russian and Spanish references**: The dated 2023-12-25 syllabus baselines are about 800 Russian words / 400 Chinese characters and about 800 Spanish words / 500 Chinese characters, both with 60/40 point weighting. No Russian or Spanish passage packs are bundled in this slice yet.
+- **MTI 357**: No generic national profile is bundled. MTI 357 task counts and structures vary by named university and admission year; a profile must be tied to both before it is offered.
 - **Hindi Scope Boundary**: CATTI does not administer Hindi examinations; Hindi is intentionally excluded from CATTI simulation profiles.
 
 ### 2. Permitted Aids & Strict Mode
-- **CATTI Aids Policy**: In real CATTI 《笔译实务》 computer examinations, candidates are permitted up to two printed paper bilingual general dictionaries. Electronic dictionaries, specialized terminology glossaries, and online searches are strictly prohibited.
-- **MTI Aids Policy**: Strictly closed-book (闭卷); no dictionaries or external reference materials are permitted.
-- **Strict Client Ergonomics**: Inline glossaries, vocabulary tooltips, and interactive AI hints are completely hidden during the test. Direct copying from the source text and pasting into answer textareas are locked to simulate real CATTI testing terminals.
+- **CATTI Aids Policy**: The 2023-12-25 profile references are dated syllabus baselines; consult the target administration's official notice for current aids.
+- **MTI Aids Policy**: A named university and admission-year profile must provide its own current policy; no generic MTI policy is asserted here.
+- **Strict Client Ergonomics**: Inline glossaries, vocabulary tooltips, and interactive AI hints are hidden during the test. Clipboard restriction is a platform simulation choice, not an official universal CATTI rule.
 
 ### 3. Dual Timers & Crash Recovery
 - **Dual Timers**: Live tracking of current section countdown and overall exam countdown, using wall-clock time diffing to prevent timer drift when tabs are backgrounded.
@@ -83,9 +84,10 @@ The exam simulator provides an authentic testing experience tailored to individu
 - **Auto-Advance & Auto-Submit**: Sections auto-lock when section time expires; overall exam timer auto-submits when total time hits zero.
 
 ### 4. Consolidated Evaluation & Mandatory Practice Disclaimer
-- Submissions are evaluated across five core rubric dimensions (`accuracy`, `terminology`, `grammar`, `fluency`, `taskStyle`) and aggregated into a scaled final score.
+- Submissions are evaluated across five platform-authored rubric dimensions (`accuracy`, `terminology`, `grammar`, `fluency`, `taskStyle`) and aggregated into a scaled practice score. No official marker-consensus sheet, micro-deduction table, or official threshold is claimed.
+- **Threshold nuance**: CATTI's default fixed standard is not a universal rule for every administration and region; the 2024 separate-line exception was 58. The simulator's benchmark is only a practice comparison.
 - **Mandatory Practice Disclaimer**: Every score and summary is explicitly labeled as an automated practice estimate. No official endorsement, certification, or affiliation with CIPG (中国外文局), ATICICG (翻译院), CPTA (人事考试网), or any MTI university is implied.
-- **Copyright Integrity**: All passages are original compositions authored for this platform; no copyrighted past exam papers are reproduced.
+- **Materials policy**: This release uses platform-authored practice passages and does not reproduce past exam papers. Ownership of past papers is not asserted; rights must be checked paper by paper before reuse.
 
 Arabic source and answer fields set `dir="rtl"`; all supported scripts use touch-sized controls and responsive layouts for narrow phones and laptops. The app uses system fonts and local SVG icons, with no remote font or image dependency.
 

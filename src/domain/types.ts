@@ -114,9 +114,11 @@ export type ExamSectionConfig = {
   provisionalNotes?: string
 }
 
-export type ExamBenchmarkType = 'fixed-60-percent' | 'national-line-estimate'
+export type ExamBenchmarkType = 'fixed-60-percent' | 'administration-dependent' | 'national-line-estimate'
 
 export type ExamProfileStatus = 'verified' | 'provisional_draft'
+
+export type ExamProfileAuthority = 'official-syllabus-baseline' | 'named-university-admission-year'
 
 export type ExamProvisionalDetails = {
   isStructureProvisional?: boolean
@@ -142,6 +144,10 @@ export type ExamProfile = {
   allowedAids: ExamAidPolicy
   disclaimer: string
   status: ExamProfileStatus
+  authority?: ExamProfileAuthority
+  authoritySourceDate?: string
+  authorityNote?: string
+  benchmarkNote?: string
   provisionalDetails?: ExamProvisionalDetails
 }
 
@@ -191,6 +197,9 @@ export type ConsolidatedExamResult = {
   sectionResults: SectionResult[]
   consolidatedDimensions: FeedbackDimensions
   disclaimer: string
+  benchmarkLabel?: string
+  benchmarkNote?: string
+  authorityNote?: string
   isProvisional?: boolean
 }
 

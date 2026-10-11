@@ -1,25 +1,28 @@
 import type { ExamProfile } from '../domain/types'
-import {
-  PRACTICE_ESTIMATE_DISCLAIMER,
-  PROVISIONAL_DRAFT_NOTICE,
-} from '../domain/exam'
+import { PRACTICE_ESTIMATE_DISCLAIMER } from '../domain/exam'
 
 export const DEFAULT_EXAM_PROFILES: ExamProfile[] = [
   {
     id: 'catti-2-practical-en-zh-v1',
-    version: 1,
+    version: 2,
     examType: 'CATTI',
     level: 'Level 2',
     sourceLanguage: 'en',
     targetLanguage: 'zh',
     title: 'CATTI Level 2 Translation Practice (English <-> Chinese)',
     description:
-      'Standard professional examination simulation for CATTI English Level 2 《笔译实务》. Comprises 2 English-to-Chinese passages (~940 words total) and 2 Chinese-to-English passages (~600 characters total).',
+      '2023-12-25 official syllabus baseline for CATTI English Level 2 《笔译实务》: 180 minutes, 2 English-to-Chinese passages (about 900 words total, 50 pts) and 2 Chinese-to-English passages (about 600 characters total, 50 pts).',
     totalDurationMinutes: 180,
     maxTotalPoints: 100,
     passBenchmarkPoints: 60,
-    benchmarkType: 'fixed-60-percent',
+    benchmarkType: 'administration-dependent',
     status: 'verified',
+    authority: 'official-syllabus-baseline',
+    authoritySourceDate: '2023-12-25',
+    authorityNote:
+      'Official ATICICG syllabus baseline published 2023-12-25. It is a dated reference, not a timeless guarantee about every later administration.',
+    benchmarkNote:
+      'Practice comparison only. CATTI thresholds depend on administration, level, paper, and region; the 2024 separate-line exception was 58 rather than a universal 60.',
     disclaimer: PRACTICE_ESTIMATE_DISCLAIMER,
     allowedAids: {
       paperDictionaryAllowed: true,
@@ -96,165 +99,27 @@ Financial institutions and environmental regulators are also demanding comprehen
     ],
   },
   {
-    id: 'mti-357-foundation-en-zh-v1',
-    version: 1,
-    examType: 'MTI',
-    level: 'MTI 357',
-    sourceLanguage: 'en',
-    targetLanguage: 'zh',
-    title: 'MTI 357 English Translation Foundation Guidance Baseline',
-    description:
-      'National MTI Education Steering Committee guidance baseline simulation for Master of Translation and Interpreting Paper 357 《英语翻译基础》. Comprises Terminology Translation (30 terms, 30 points) and Passage Translation (120 points).',
-    totalDurationMinutes: 180,
-    maxTotalPoints: 150,
-    passBenchmarkPoints: 80,
-    benchmarkType: 'national-line-estimate',
-    status: 'provisional_draft',
-    provisionalDetails: {
-      isStructureProvisional: true,
-      isTimingProvisional: true,
-      isBenchmarkProvisional: true,
-      notes: [
-        'MTI 357 papers are formulated autonomously by individual admitting universities (院校自主命题).',
-        'Terminology counts (30 terms) and passage splits represent the National MTI Education Steering Committee Guidance Syllabus (教指委指导大纲标准模版), but specific universities vary (e.g. 20-40 terms, differing word limits).',
-        'The 80-point pass threshold is a provisional estimate based on recent national graduate entrance minimum score lines (单科线 71-83分); individual university re-examination cutoffs (复试线) vary widely.',
-      ],
-    },
-    disclaimer: `${PRACTICE_ESTIMATE_DISCLAIMER} ${PROVISIONAL_DRAFT_NOTICE}`,
-    allowedAids: {
-      paperDictionaryAllowed: false,
-      onlineSearchAllowed: false,
-      glossaryAllowed: false,
-      notes:
-        'Strictly closed-book (闭卷). No paper dictionaries, glossaries, or electronic devices of any kind are permitted in national graduate entrance examination halls.',
-    },
-    sections: [
-      {
-        id: 'mti-357-sec-1-terminology',
-        title: 'Section 1: Terminology Translation (词语翻译)',
-        direction: 'bidirectional',
-        taskType: 'terminology',
-        timeLimitMinutes: 35,
-        maxPoints: 30,
-        isProvisional: true,
-        provisionalNotes:
-          'Standard Steering Committee template: 15 English-to-Chinese terms (15 pts) and 15 Chinese-to-English terms (15 pts). Format and count may vary by admitting university.',
-        passages: [
-          {
-            id: 'mti-357-term-e-c',
-            title: 'Part A: English-to-Chinese Terminology (英译汉 15题)',
-            wordCount: 15,
-            targetLanguage: 'zh',
-            recommendedPace: '15-18 minutes',
-            isProvisional: true,
-            sourceText: `Translate the following 15 terms/acronyms into Chinese (1 point each):
-1. carbon neutrality
-2. supply chain resilience
-3. artificial general intelligence (AGI)
-4. circular economy
-5. global value chain
-6. green finance
-7. multilateralism
-8. digital divide
-9. clean energy transition
-10. intellectual property rights
-11. food security
-12. biodiversity conservation
-13. carbon border adjustment mechanism (CBAM)
-14. cross-border e-commerce
-15. algorithmic transparency`,
-          },
-          {
-            id: 'mti-357-term-c-e',
-            title: 'Part B: Chinese-to-English Terminology (汉译英 15题)',
-            wordCount: 15,
-            targetLanguage: 'en',
-            recommendedPace: '15-18 minutes',
-            isProvisional: true,
-            sourceText: `Translate the following 15 terms into English (1 point each):
-1. 新质生产力
-2. 人类命运共同体
-3. 乡村振兴
-4. 绿水青山就是金山银山
-5. 碳达峰碳中和
-6. 一带一路倡议
-7. 实体经济
-8. 专精特新企业
-9. 数字经济
-10. 共同富裕
-11. 高质量发展
-12. 区域全面经济伙伴关系协定 (RCEP)
-13. 全过程人民民主
-14. 文化传承发展
-15. 生态文明建设`,
-          },
-        ],
-      },
-      {
-        id: 'mti-357-sec-2-en-zh',
-        title: 'Section 2: English-to-Chinese Passage Translation (英译汉篇章)',
-        direction: 'en-to-zh',
-        taskType: 'translation',
-        timeLimitMinutes: 70,
-        maxPoints: 60,
-        passages: [
-          {
-            id: 'mti-357-p-en-zh',
-            title: 'Passage Translation: Artificial Intelligence Ethics and Algorithmic Governance',
-            wordCount: 326,
-            targetLanguage: 'zh',
-            recommendedPace: 'Approx. 70 minutes',
-            sourceText: `As foundation models and autonomous algorithmic systems permeate public administration, financial risk profiling, and medical diagnostic pathways, the imperative to establish verifiable ethical guardrails has transcended theoretical debate. Generative architectures are capable of synthesizing articulate narratives and orchestrating complex cognitive tasks, yet their internal reasoning pathways frequently remain opaque black boxes. When automated models inadvertently amplify historical statistical biases encoded in legacy training corpora, discriminatory outcomes can be systematized across lending decisions, judicial sentencing algorithms, and automated hiring pipelines.
-
-Crucially, the rapid proliferation of synthetic media and cognitive automation challenges foundational doctrines of legal liability and human agency. In traditional jurisprudence, accountability resides with identifiable natural persons or corporate entities exercising demonstrable intent and oversight. By contrast, when an autonomous neural model produces hallucinated defamation or executes high-frequency trades triggering catastrophic market flash crashes, allocating moral culpability and economic redress becomes profoundly contentious. Technologists, legal scholars, and sovereign regulatory bodies increasingly debate whether developer oversight, deployment telemetry, or end-user instructions should bear primary liability.
-
-To counter these systemic vulnerabilities, international regulatory standards are transitioning from voluntary corporate guidelines toward mandatory conformity assessments and algorithmic audits. Leading frameworks demand rigorous post-deployment monitoring, bias mitigation documentation, and explainability mechanisms for high-risk artificial intelligence applications. Machine learning engineers must prioritize dataset curation provenance and design adversarial testing protocols that stress-test models against deceptive prompts and catastrophic failure modes. Ultimately, technical innovation cannot be pursued in an institutional vacuum. Building trustworthy artificial intelligence requires aligning cutting-edge computational architectures with inviolable democratic values, fundamental human dignity, and robust public oversight.`,
-          },
-        ],
-      },
-      {
-        id: 'mti-357-sec-3-zh-en',
-        title: 'Section 3: Chinese-to-English Passage Translation (汉译英篇章)',
-        direction: 'zh-to-en',
-        taskType: 'translation',
-        timeLimitMinutes: 75,
-        maxPoints: 60,
-        passages: [
-          {
-            id: 'mti-357-p-zh-en',
-            title: 'Passage Translation: 紧凑型城市与宜居韧性社区建设',
-            wordCount: 224,
-            targetLanguage: 'en',
-            recommendedPace: 'Approx. 75 minutes',
-            sourceText: `现代城市发展正加速由外延式规模扩张向内涵式品质提升转变。在紧凑集约理念引领下，城市规划更加注重存量空间有机更新与公共服务均衡配置。打造集交通、商业、休闲与便民养老于一体的“十五分钟社区生活圈”，不仅大幅削减了市民长距离通勤的时间成本与碳排放，更重构了邻里互动与熟人社会的温情纽带。增强城市内生韧性同样要求完善地下综合管廊、雨水调蓄设施与应急避难场所，确保极端天气和突发灾害面前城市系统安全平稳运转。只有将精细化治理绣花功夫融入城市更新肌理，方能绘就生态宜居与人文关怀交相辉映的现代化城市新画卷。`,
-          },
-        ],
-      },
-    ],
-  },
-  {
     id: 'catti-2-practical-fr-zh-v1',
-    version: 1,
+    version: 2,
     examType: 'CATTI',
     level: 'Level 2',
     sourceLanguage: 'fr',
     targetLanguage: 'zh',
-    title: 'CATTI Level 2 Translation Practice (French <-> Chinese Draft)',
+    title: 'CATTI Level 2 Translation Practice (French <-> Chinese)',
     description:
-      'Provisional profile draft for CATTI French Level 2 《笔译实务》. Features official ATICICG 60/40 point weighting (60 pts French-to-Chinese, 40 pts Chinese-to-French).',
+      '2023-12-25 official syllabus baseline for CATTI French Level 2 《笔译实务》: 180 minutes, about 800 French words for French-to-Chinese (60 pts) and about 500 Chinese characters for Chinese-to-French (40 pts).',
     totalDurationMinutes: 180,
     maxTotalPoints: 100,
     passBenchmarkPoints: 60,
-    benchmarkType: 'fixed-60-percent',
-    status: 'provisional_draft',
-    provisionalDetails: {
-      isStructureProvisional: true,
-      notes: [
-        'French Level 2 实务 official weighting is 60 pts (Section 1: 法译汉) and 40 pts (Section 2: 汉译法), unlike the English 50/50 division.',
-        'Word counts and passage sub-timings are provisional drafts modeled on published ATICICG French syllabus guidance.',
-      ],
-    },
-    disclaimer: `${PRACTICE_ESTIMATE_DISCLAIMER} ${PROVISIONAL_DRAFT_NOTICE}`,
+    benchmarkType: 'administration-dependent',
+    status: 'verified',
+    authority: 'official-syllabus-baseline',
+    authoritySourceDate: '2023-12-25',
+    authorityNote:
+      'Official ATICICG syllabus baseline published 2023-12-25. It is a dated reference, not a timeless guarantee about every later administration; section timer splits and passages are platform-authored practice parameters.',
+    benchmarkNote:
+      'Practice comparison only. CATTI thresholds depend on administration, level, paper, and region; the 2024 separate-line exception was 58 rather than a universal 60.',
+    disclaimer: PRACTICE_ESTIMATE_DISCLAIMER,
     allowedAids: {
       paperDictionaryAllowed: true,
       onlineSearchAllowed: false,
@@ -319,27 +184,26 @@ To counter these systemic vulnerabilities, international regulatory standards ar
   },
   {
     id: 'catti-2-practical-ar-zh-v1',
-    version: 1,
+    version: 2,
     examType: 'CATTI',
     level: 'Level 2',
     sourceLanguage: 'ar',
     targetLanguage: 'zh',
-    title: 'CATTI Level 2 Translation Practice (Arabic <-> Chinese Draft)',
+    title: 'CATTI Level 2 Translation Practice (Arabic <-> Chinese)',
     description:
-      'Provisional profile draft for CATTI Arabic Level 2 《笔译实务》. Fully supports Right-to-Left (RTL) Arabic text rendering with balanced 50/50 point weighting.',
+      '2023-12-25 official syllabus baseline for CATTI Arabic Level 2 《笔译实务》: 180 minutes, about 700–800 Arabic words for Arabic-to-Chinese (60 pts) and about 400–500 Chinese characters for Chinese-to-Arabic (40 pts).',
     totalDurationMinutes: 180,
     maxTotalPoints: 100,
     passBenchmarkPoints: 60,
-    benchmarkType: 'fixed-60-percent',
-    status: 'provisional_draft',
-    provisionalDetails: {
-      isStructureProvisional: true,
-      notes: [
-        'Arabic Level 2 实务 passage distribution and point splits represent provisional drafts pending publication of updated ATICICG Arabic syllabus criteria.',
-        'Directional text rendering (RTL) is active for Arabic source and translation editors.',
-      ],
-    },
-    disclaimer: `${PRACTICE_ESTIMATE_DISCLAIMER} ${PROVISIONAL_DRAFT_NOTICE}`,
+    benchmarkType: 'administration-dependent',
+    status: 'verified',
+    authority: 'official-syllabus-baseline',
+    authoritySourceDate: '2023-12-25',
+    authorityNote:
+      'Official ATICICG syllabus baseline published 2023-12-25. It is a dated reference, not a timeless guarantee about every later administration; section timer splits and passages are platform-authored practice parameters. Arabic source and answer fields use RTL rendering.',
+    benchmarkNote:
+      'Practice comparison only. CATTI thresholds depend on administration, level, paper, and region; the 2024 separate-line exception was 58 rather than a universal 60.',
+    disclaimer: PRACTICE_ESTIMATE_DISCLAIMER,
     allowedAids: {
       paperDictionaryAllowed: true,
       onlineSearchAllowed: false,
@@ -350,16 +214,16 @@ To counter these systemic vulnerabilities, international regulatory standards ar
     sections: [
       {
         id: 'catti-2-ar-zh-sec-1',
-        title: 'Section 1: Arabic-to-Chinese Translation (阿译汉 50分)',
+        title: 'Section 1: Arabic-to-Chinese Translation (阿译汉 60分)',
         direction: 'ar-to-zh',
         taskType: 'translation',
         timeLimitMinutes: 90,
-        maxPoints: 50,
+        maxPoints: 60,
         passages: [
           {
             id: 'catti-2-ar-zh-p1',
             title: 'Passage 1: مكافحة التصحر واستصلاح الأراضي في المناطق الجافة',
-            wordCount: 408,
+            wordCount: 380,
             targetLanguage: 'zh',
             recommendedPace: 'Approx. 45 minutes',
             sourceText: `تعد ظاهرة التصحر وتدهور الأراضي الزراعية في البيئات الجافة وشبه الجافة من أخطر التحديات البيئية والاقتصادية التي تواجه العديد من الدول في عصرنا الراهن. يؤدي تآكل الغطاء النباتي الطبيعي وتكرار موجات الجفاف الشديد والرعي الجائر إلى تراجع خصوبة التربة وتوسع الكثبان الرملية المتحركة، مما يهدد الأمن الغذائي والاستقرار السكاني في المناطق الريفية الهشة. ولمواجهة هذه الأزمة المتفاقمة، تبنت العديد من الحكومات استراتيجيات رائدة لإعادة التأهيل البيئي تعتمد على الزراعة المستدامة وتقنيات الري الحديثة عالية الكفاءة. ومن خلال زراعة أحزمة خضراء من الأشجار المقاومة للملوحة والجفاف، واستخدام تقنيات تثبيت الرمال البيولوجية، تمكنت المشاريع البيئية من استعادة مساحات شاسعة من الأراضي المتدهورة والحد من العواصف الترابية المدمرة. إضافة إلى ذلك، يسهم استخدام محطات تحلية المياه بالطاقة الشمسية وشبكات الري بالتنقيط في توفير مياه الري دون استنزاف المياه الجوفية غير المتجددة. إن حماية البيئات الجافة لا تقتصر على الحفاظ على التنوع الحيوي فحسب، بل تمثل ركيزة أساسية لتحقيق التنمية المستدامة وتوفير فرص العمل المجتمعية في المناطق الصحراوية.`,
@@ -367,7 +231,7 @@ To counter these systemic vulnerabilities, international regulatory standards ar
           {
             id: 'catti-2-ar-zh-p2',
             title: 'Passage 2: التبادل الحضاري والثقافي على طريق الحرير التاريخي',
-            wordCount: 395,
+            wordCount: 400,
             targetLanguage: 'zh',
             recommendedPace: 'Approx. 45 minutes',
             sourceText: `شكل طريق الحرير التاريخي عبر العصور جسراً حيوياً للتواصل الإنساني والتلاقح الفكري بين الحضارات الشرقية والغربية. ولم تكن القوافل التجارية التي عبرت الواحات والصحاري تنقل الحرير والتوابل والمنسوجات الثمينة فحسب، بل حملت معها المعارف العلمية والترجمات الفلسفية والابتكارات التكنولوجية مثل صناعة الورق والطباعة. وقد شهدت المدن التاريخية الواقعة على طول المسار ازدهاراً ملحوظاً في حركة الترجمة والتبادل الأكاديمي، حيث التقى العلماء والفلكيون والأطباء لتبادل الخبرات وتدوين المخطوطات التي أثرت التراث الفكري البشري بأكمله. واليوم، تكتسب إحياء روح التبادل الثقافي أهمية متجددة في ظل العولمة المعاصرة، إذ تسعى الدول إلى تعزيز الحوار بين الثقافات وبناء شراكات وثيقة في مجالات التعليم والفنون والبحث العلمي. إن تعميق التفاهم المتبادل واحترام التنوع الحضاري هما السبيل الأمثل لترسيخ السلام العالمي وتعزيز التعاون الاقتصادي الشامل بين الشعوب.`,
@@ -376,16 +240,16 @@ To counter these systemic vulnerabilities, international regulatory standards ar
       },
       {
         id: 'catti-2-zh-ar-sec-2',
-        title: 'Section 2: Chinese-to-Arabic Translation (汉译阿 50分)',
+        title: 'Section 2: Chinese-to-Arabic Translation (汉译阿 40分)',
         direction: 'zh-to-ar',
         taskType: 'translation',
         timeLimitMinutes: 90,
-        maxPoints: 50,
+        maxPoints: 40,
         passages: [
           {
             id: 'catti-2-zh-ar-p1',
             title: 'Passage 1: 中国茶文化与传统制茶技艺的历史源流',
-            wordCount: 302,
+            wordCount: 200,
             targetLanguage: 'ar',
             recommendedPace: 'Approx. 45 minutes',
             sourceText: `中国茶文化源远流长，历经数千年的沉淀与演进，已深深融入中华民族的日常生活与精神追求之中。古人以茶会友、以茶修身，将和敬清寂的哲学理念赋予一片东方树叶。从绿茶的清雅、红茶的醇厚到乌龙茶的芬芳，传统制茶技艺凝聚着世代茶农对自然时令与火候工艺的深刻领悟。采茶、杀青、揉捻与烘焙等数十道工序环环相扣，造就了品类丰富、香气各异的茶中佳品。近年来，中国传统制茶技艺及其相关习俗成功列入人类非物质文化遗产代表作名录，茶文化正跨越山海走向世界，成为促进中外民心相通与文明互鉴的亮丽名片。`,
@@ -393,7 +257,7 @@ To counter these systemic vulnerabilities, international regulatory standards ar
           {
             id: 'catti-2-zh-ar-p2',
             title: 'Passage 2: 高铁技术与现代交通网络的创新突破',
-            wordCount: 298,
+            wordCount: 250,
             targetLanguage: 'ar',
             recommendedPace: 'Approx. 45 minutes',
             sourceText: `高速铁路作为现代综合交通枢纽的重要骨干，深刻重塑着区域经济地理格局与人们的出行方式。凭借自主创新研发，中国高铁攻克了高寒冻土、湿陷性黄土及复杂山区桥隧建设等一系列世界级工程技术难题，建成了世界上规模最大、运营速度最高的高铁网络。“千里江陵一日还”的诗意畅想已成为现代人触手可及的出行日常。高铁不仅大幅压缩了城市之间的时空距离，促进了人员、资金与技术要素的高效流动，更以其低碳绿色的显著优势为节能减排提供了有力支撑。`,
@@ -403,6 +267,11 @@ To counter these systemic vulnerabilities, international regulatory standards ar
     ],
   },
 ]
+
+// The former generic MTI 357 baseline is intentionally not shipped. MTI 357
+// profiles require a named university and admission year because task counts
+// and structures vary across admitting institutions.
+export const DEPRECATED_EXAM_PROFILE_IDS = ['mti-357-foundation-en-zh-v1'] as const
 
 export async function initExamProfiles(databaseApi: {
   listExamProfiles: () => Promise<ExamProfile[]>

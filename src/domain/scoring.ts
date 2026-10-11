@@ -226,7 +226,7 @@ export function aggregateExamScores(
   const totalScore = Math.min(profile.maxTotalPoints, Math.max(0, Math.round(rawTotal)))
   const maxScore = profile.maxTotalPoints
   const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0
-  const passBenchmarkPercent = maxScore > 0 ? Math.round((profile.passBenchmarkPoints / maxScore) * 100) : 60
+  const passBenchmarkPercent = maxScore > 0 ? Math.round((profile.passBenchmarkPoints / maxScore) * 100) : 0
   const estimatedStatus = getEstimatedStatus(percentage, passBenchmarkPercent)
 
   const consolidatedDimensions = scoreDimensions.reduce<FeedbackDimensions>((acc, dimension) => {

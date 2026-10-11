@@ -13,6 +13,8 @@ type CloudResponse = {
   choices?: Array<{ message?: { content?: string | null } }>
 }
 
+export const CLOUD_EVALUATION_TIMEOUT_MS = 60_000
+
 function getCompletionEndpoint(baseUrl: string): string {
   const normalized = baseUrl.trim().replace(/\/+$/, '')
   let parsed: URL
@@ -59,30 +61,43 @@ export function createCloudProvider(config: CloudProviderConfig): EvaluationProv
 
   return {
     async evaluate(input: EvaluationInput): Promise<TranslationFeedback> {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: evaluationSystemPrompt },
-            { role: 'user', content: buildEvaluationPrompt(input) },
-          ],
-          temperature: 0.2,
-          response_format: { type: 'json_object' },
-        }),
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), CLOUD_EVALUATION_TIMEOUT_MS)
 
-      if (!response.ok) {
-        throw new Error(`Cloud evaluation failed with HTTP ${response.status}.`)
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: evaluationSystemPrompt },
+              { role: 'user', content: buildEvaluationPrompt(input) },
+            ],
+            temperature: 0.2,
+            response_format: { type: 'json_object' },
+          }),
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error(`Cloud evaluation failed with HTTP ${response.status}.`)
+        }
+
+        const raw = parseJsonResponse(getContent(await response.json() as unknown))
+        return validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error(`Cloud evaluation timed out after ${CLOUD_EVALUATION_TIMEOUT_MS / 1000} seconds. Check the endpoint and try again.`)
+        }
+        throw error
+      } finally {
+        clearTimeout(timeoutId)
       }
-
-      const raw = parseJsonResponse(getContent(await response.json() as unknown))
-      return validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
     },
   }
 }

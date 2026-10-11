@@ -97,12 +97,12 @@ From Part 1 Research (`catti-mti-exam-profiles.md`), the following verified fact
 - `ConsolidatedExamResult`: `{ id: string; runId: string; completedAt: string; profileId: string; profileVersion: number; examTitle: string; totalScore: number; maxScore: number; percentage: number; passBenchmark: number; estimatedStatus: 'above-benchmark' | 'near-benchmark' | 'below-benchmark'; sectionResults: { sectionId: string; sectionTitle: string; score: number; maxPoints: number; passageFeedbacks: { passageId: string; passageTitle: string; feedback: TranslationFeedback }[] }[]; consolidatedDimensions: FeedbackDimensions; disclaimer: string }`.
 - `database`: Upgrade to version 2; add object stores `'examProfiles'`, `'examRuns'`, and `'examResults'`. Implement `getActiveExamRun()`, `saveExamRun(run)`, `deleteExamRun(id)`, `saveExamResult(result)`, `getExamResult(id)`, `listExamResults()`.
 
-- [ ] Extend `src/domain/types.ts` with complete `ExamProfile`, `ExamSectionConfig`, `ActiveExamRun`, and `ConsolidatedExamResult` types.
-- [ ] Implement `src/domain/exam.ts` with timer deduction logic, section boundary checks, crash recovery state validation, and practice estimate labeling constants.
-- [ ] Migrate `src/storage/database.ts` schema to version 2, creating indexed stores for `examProfiles`, `examRuns` (indexed by status and lastSavedAt), and `examResults` (indexed by completedAt and profileId).
-- [ ] Implement auto-recovery queries in `database` to retrieve the latest unfinished `ActiveExamRun`.
-- [ ] Update `exportData` and `clearData` in `database.ts` to cleanly export and wipe exam runs and results.
-- [ ] Run `npm run build` to verify type and storage compilation.
+- [x] Extend `src/domain/types.ts` with complete `ExamProfile`, `ExamSectionConfig`, `ActiveExamRun`, and `ConsolidatedExamResult` types.
+- [x] Implement `src/domain/exam.ts` with timer deduction logic, section boundary checks, crash recovery state validation, and practice estimate labeling constants.
+- [x] Migrate `src/storage/database.ts` schema to version 2, creating indexed stores for `examProfiles`, `examRuns` (indexed by status and lastSavedAt), and `examResults` (indexed by completedAt and profileId).
+- [x] Implement auto-recovery queries in `database` to retrieve the latest unfinished `ActiveExamRun`.
+- [x] Update `exportData` and `clearData` in `database.ts` to cleanly export and wipe exam runs and results.
+- [x] Run `npm run build` to verify type and storage compilation.
 
 ---
 

@@ -11,6 +11,7 @@ import type {
 export const PRACTICE_ESTIMATE_DISCLAIMER =
   'Practice Assessment Only: This score is an automated estimation generated for independent study. It is NOT an official CATTI or MTI examination result and has no official certification standing.'
 
+export const EXAM_RUBRIC_VERSION = 'rubric-v1'
 export const PRACTICE_ESTIMATE_LABEL = 'Practice Estimate · 模拟练习评估'
 export const PLATFORM_AUTHORED_RUBRIC_NOTICE =
   'Rubric and dimension scores are a platform-authored practice model, not an official CATTI/MTI marker-consensus sheet or deduction table.'
@@ -23,6 +24,15 @@ export const MATERIALS_POLICY_NOTICE =
 export const PROVISIONAL_DRAFT_LABEL = 'Provisional Draft · 待最终核实草案'
 export const PROVISIONAL_DRAFT_NOTICE =
   'This exam profile contains provisional parameters pending authoritative confirmation. Always refer to your target institution or official examination announcements for official requirements.'
+
+/**
+ * Detach a result's profile from the mutable catalog object before persistence.
+ * IndexedDB clones the returned result again, so later catalog upgrades cannot
+ * rewrite the configuration used for this evaluation.
+ */
+export function snapshotExamProfile(profile: ExamProfile): ExamProfile {
+  return structuredClone(profile)
+}
 
 export function createActiveExamRun(profile: ExamProfile): ActiveExamRun {
   const sectionRemainingSeconds: Record<string, number> = {}

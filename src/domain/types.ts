@@ -130,6 +130,7 @@ export type ExamProvisionalDetails = {
 export type ExamProfile = {
   id: string
   version: number
+  rubricVersion: string
   examType: ExamType
   level: ExamLevel
   sourceLanguage: LanguageCode
@@ -191,6 +192,9 @@ export type ConsolidatedExamResult = {
   completedAt: string
   profileId: string
   profileVersion: number
+  /** Detached profile configuration captured at evaluation time for historical reproducibility. */
+  profileSnapshot: ExamProfile
+  rubricVersion: string
   examTitle: string
   totalScore: number
   maxScore: number

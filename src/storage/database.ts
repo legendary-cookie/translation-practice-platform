@@ -125,7 +125,7 @@ export const database = {
     const profilesById = new Map(retained.map((profile) => [profile.id, profile]))
     for (const profile of DEFAULT_EXAM_PROFILES) {
       const storedProfile = profilesById.get(profile.id)
-      if (!storedProfile || storedProfile.version < profile.version) {
+      if (!storedProfile || storedProfile.version < profile.version || !storedProfile.rubricVersion) {
         await db.put('examProfiles', profile)
         profilesById.set(profile.id, profile)
       }

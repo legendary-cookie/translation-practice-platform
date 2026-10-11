@@ -8,6 +8,7 @@ import type {
 } from '../../domain/types'
 import type { CloudConsentRequest, EvaluationRouter } from '../../ai/provider'
 import { aggregateExamScores, validateFeedback, type SectionEvaluationInput } from '../../domain/scoring'
+import { snapshotExamProfile } from '../../domain/exam'
 
 export type ExamEvaluationBlockStatus = 'needs-consent' | 'unavailable'
 
@@ -83,6 +84,7 @@ export async function evaluateExamRun(
   onProgress?: (completed: number, total: number) => void,
   approvedFeedback: Record<string, TranslationFeedback> = {},
 ): Promise<ConsolidatedExamResult> {
+  const profileSnapshot = snapshotExamProfile(profile)
   const evaluatedSections: SectionEvaluationInput[] = []
 
   const allPassages: Array<{
@@ -95,9 +97,9 @@ export async function evaluateExamRun(
     answer: string
   }> = []
 
-  for (const section of profile.sections) {
+  for (const section of profileSnapshot.sections) {
     for (const passage of section.passages) {
-      const sourceLanguage = resolveSourceLanguage(section.direction, passage.targetLanguage, profile)
+      const sourceLanguage = resolveSourceLanguage(section.direction, passage.targetLanguage, profileSnapshot)
       const answer = run.answers[section.id]?.[passage.id] ?? ''
       allPassages.push({
         sectionId: section.id,
@@ -172,7 +174,7 @@ export async function evaluateExamRun(
     onProgress?.(completedCount, allPassages.length)
   }
 
-  for (const section of profile.sections) {
+  for (const section of profileSnapshot.sections) {
     evaluatedSections.push({
       sectionId: section.id,
       sectionTitle: section.title,
@@ -181,7 +183,7 @@ export async function evaluateExamRun(
         passageId: passage.id,
         passageTitle: passage.title,
         sourceText: passage.sourceText,
-        sourceLanguage: resolveSourceLanguage(section.direction, passage.targetLanguage, profile),
+        sourceLanguage: resolveSourceLanguage(section.direction, passage.targetLanguage, profileSnapshot),
         targetLanguage: passage.targetLanguage,
         answer: run.answers[section.id]?.[passage.id] ?? '',
         feedback: feedbackMap[passage.id] ?? EMPTY_FEEDBACK,
@@ -189,26 +191,28 @@ export async function evaluateExamRun(
     })
   }
 
-  const aggregated = aggregateExamScores(evaluatedSections, profile)
+  const aggregated = aggregateExamScores(evaluatedSections, profileSnapshot)
 
   return {
     id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `result-${Date.now()}`,
     runId: run.id,
     completedAt: new Date().toISOString(),
-    profileId: profile.id,
-    profileVersion: profile.version,
-    examTitle: profile.title,
+    profileId: profileSnapshot.id,
+    profileVersion: profileSnapshot.version,
+    profileSnapshot,
+    rubricVersion: profileSnapshot.rubricVersion,
+    examTitle: profileSnapshot.title,
     totalScore: aggregated.totalScore,
     maxScore: aggregated.maxScore,
     percentage: aggregated.percentage,
-    passBenchmark: profile.passBenchmarkPoints,
+    passBenchmark: profileSnapshot.passBenchmarkPoints,
     estimatedStatus: aggregated.estimatedStatus,
     sectionResults: aggregated.sectionResults,
     consolidatedDimensions: aggregated.consolidatedDimensions,
-    disclaimer: profile.disclaimer,
+    disclaimer: profileSnapshot.disclaimer,
     benchmarkLabel: 'Practice benchmark estimate',
-    benchmarkNote: profile.benchmarkNote,
-    authorityNote: profile.authorityNote,
-    isProvisional: profile.status === 'provisional_draft',
+    benchmarkNote: profileSnapshot.benchmarkNote,
+    authorityNote: profileSnapshot.authorityNote,
+    isProvisional: profileSnapshot.status === 'provisional_draft',
   }
 }

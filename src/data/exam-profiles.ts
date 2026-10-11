@@ -1,10 +1,11 @@
 import type { ExamProfile } from '../domain/types'
-import { PRACTICE_ESTIMATE_DISCLAIMER } from '../domain/exam'
+import { EXAM_RUBRIC_VERSION, PRACTICE_ESTIMATE_DISCLAIMER } from '../domain/exam'
 
 export const DEFAULT_EXAM_PROFILES: ExamProfile[] = [
   {
     id: 'catti-2-practical-en-zh-v1',
     version: 2,
+    rubricVersion: EXAM_RUBRIC_VERSION,
     examType: 'CATTI',
     level: 'Level 2',
     sourceLanguage: 'en',
@@ -105,6 +106,7 @@ The technical challenge is matched by a governance challenge. Coastal communitie
   {
     id: 'catti-2-practical-fr-zh-v1',
     version: 2,
+    rubricVersion: EXAM_RUBRIC_VERSION,
     examType: 'CATTI',
     level: 'Level 2',
     sourceLanguage: 'fr',
@@ -189,6 +191,7 @@ The technical challenge is matched by a governance challenge. Coastal communitie
   {
     id: 'catti-2-practical-ar-zh-v1',
     version: 2,
+    rubricVersion: EXAM_RUBRIC_VERSION,
     examType: 'CATTI',
     level: 'Level 2',
     sourceLanguage: 'ar',

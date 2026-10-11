@@ -75,11 +75,11 @@
 - `evaluationProvider.evaluate(input)` returns `Promise<TranslationFeedback>`; all provider results pass through `validateFeedback` before storage or display.
 - `database` exposes `listSessions()`, `saveSession(session)`, `getSettings()`, `saveSettings(settings)`, `exportData()`, and `clearData()`.
 
-- [ ] Add the seven language labels, script direction metadata, and the 12 Chinese-centered directions.
-- [ ] Add seven short original practice passages, one authored in each source language, with news-style and general translation tags.
-- [ ] Add IndexedDB stores for settings and sessions; keep secrets out of this database.
-- [ ] Implement feedback normalization: clamp each dimension score to 0–100, reject missing required fields, and discard annotations whose quoted evidence does not occur in the source or answer.
-- [ ] Run `npm run build` and commit as `feat: add local practice data model`.
+- [x] Add the seven language labels, script direction metadata, and the 12 Chinese-centered directions.
+- [x] Add seven short original practice passages, one authored in each source language, with news-style and general translation tags.
+- [x] Add IndexedDB stores for settings and sessions; keep secrets out of this database.
+- [x] Implement feedback normalization: clamp each dimension score to 0–100, reject missing required fields, and discard annotations whose quoted evidence does not occur in the source or answer.
+- [x] Run `npm run build` and commit as `feat: add local practice data model`.
 
 ### Task 3: Implement local and consent-based cloud evaluation providers
 

@@ -149,6 +149,8 @@ button.mode-card:hover { border-color: #9dbda5; box-shadow: 0 8px 24px rgba(44, 
 
 .text-button span { font-size: 17px; margin-left: 5px; vertical-align: -1px; }
 
+button.text-button, button.back-button { align-items: center; display: inline-flex; min-height: 44px; }
+
 .empty-state { align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 23px; display: flex; flex-direction: column; min-height: 470px; justify-content: center; padding: 40px; text-align: center; }
 
 .empty-state__icon { align-items: center; background: var(--accent-soft); border-radius: 18px; color: var(--accent-deep); display: flex; font-size: 30px; height: 70px; justify-content: center; margin-bottom: 25px; width: 70px; }

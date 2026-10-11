@@ -95,6 +95,7 @@ export function ExamSectionWorkspace({
               setPasteNotice('Copying source text is disabled in exam mode.')
               setTimeout(() => setPasteNotice(undefined), 4000)
             }}
+            onContextMenu={(e) => e.preventDefault()}
           >
             {activePassage.sourceText}
           </div>

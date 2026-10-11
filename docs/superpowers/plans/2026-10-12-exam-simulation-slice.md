@@ -236,22 +236,22 @@ From Part 1 Research (`catti-mti-exam-profiles.md`), the following verified fact
 - Modify: `src/styles.css`
 - Modify: `README.md`
 
-- [ ] Refine responsive exam styles:
+- [x] Refine responsive exam styles:
   - Desktop: dual split-screen with independent scrolling, high-visibility sticky timer bar, and distraction-free header.
   - Mobile: compact responsive header, swipeable or tabbed passage switcher, large touch targets for navigation, and sticky bottom timer.
-- [ ] Verify right-to-left (RTL) Arabic ergonomics:
+- [x] Verify right-to-left (RTL) Arabic ergonomics:
   - Check `dir="rtl"` styling on Arabic source passages and target textareas.
   - Ensure correct cursor placement, text selection, and punctuation alignment in mixed Arabic-English/Chinese contexts.
-- [ ] Implement copy-paste restrictions and test-day ergonomics:
+- [x] Implement copy-paste restrictions and test-day ergonomics:
   - Disable right-click context menu and paste events on source text in strict mode.
   - Add live character and word counters updating on input.
-- [ ] Update `README.md` with:
+- [x] Update `README.md` with:
   - Documentation of the Exam Simulation mode.
   - Verified CATTI and MTI profiles and syllabus baselines.
   - Permitted aids policy and strict mode behavior.
   - Mandatory practice estimate disclaimer and copyright compliance notice.
   - Offline local-first execution boundaries.
-- [ ] Execute clean production build with `npm run build` and ensure zero TypeScript errors and zero packaging warnings.
+- [x] Execute clean production build with `npm run build` and ensure zero TypeScript errors and zero packaging warnings.
 
 ---
 

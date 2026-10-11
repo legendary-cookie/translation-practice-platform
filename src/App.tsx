@@ -508,7 +508,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></aside>
+      {!isTakingExam && <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></aside>}
       <main className="main-content">
         {!isTakingExam && (
           <header className="topbar">
@@ -608,7 +608,7 @@ export default function App() {
         )}
         {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
       </main>
-      <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>
+      {!isTakingExam && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}
       {pendingExamConsent && (
         <ConsentDialog

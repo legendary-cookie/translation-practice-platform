@@ -52,12 +52,12 @@
 - `App` owns the current top-level page (`home`, `practice`, `progress`, or `settings`) and passes page-change callbacks to the navigation and feature panels.
 - The app shell exposes written translation and news translation as available modes; interpreting and exam simulation appear as planned modes with their scope clearly labeled.
 
-- [ ] Scaffold Vite React TypeScript without overwriting `docs/` or `.git/`.
-- [ ] Add a left navigation rail on desktop and a compact touch navigation on phones.
-- [ ] Implement a consistent visual system with system fonts and local SVG/CSS icons only.
-- [ ] Add the PWA manifest and a versioned service worker cache for the app shell.
-- [ ] Add `dev`, `build`, and `preview` scripts; run `npm run build` after the foundation is in place.
-- [ ] Commit the foundation as `feat: scaffold responsive local-first app`.
+- [x] Scaffold Vite React TypeScript without overwriting `docs/` or `.git/`.
+- [x] Add a left navigation rail on desktop and a compact touch navigation on phones.
+- [x] Implement a consistent visual system with system fonts and local SVG/CSS icons only.
+- [x] Add the PWA manifest and a versioned service worker cache for the app shell.
+- [x] Add `dev`, `build`, and `preview` scripts; run `npm run build` after the foundation is in place.
+- [x] Commit the foundation as `feat: scaffold responsive local-first app`.
 
 ### Task 2: Define language, exercise, feedback, and local-storage contracts
 

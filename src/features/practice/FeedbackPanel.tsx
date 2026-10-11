@@ -28,16 +28,18 @@ export function FeedbackPanel({
   exercise,
   feedback,
   onRevise,
+  onChangeSetup,
 }: {
   answer: string
   exercise: Exercise
   feedback: TranslationFeedback
   onRevise: () => void
+  onChangeSetup: () => void
 }) {
   return (
     <div className="feedback-layout">
       <section className="feedback-summary">
-        <div className="feedback-summary__topline"><div><button className="back-button" type="button" onClick={onRevise}>← Revise translation</button><p className="eyebrow">Feedback · {exercise.title}</p><h2>Your practice readout.</h2></div><div className="estimate-badge"><strong>{feedback.overallScore}</strong><span>Practice estimate<br />out of 100</span></div></div>
+        <div className="feedback-summary__topline"><div><div className="feedback-summary__actions"><button className="back-button" type="button" onClick={onRevise}>← Revise translation</button><button className="back-button" type="button" onClick={onChangeSetup}>← Change setup</button></div><p className="eyebrow">Feedback · {exercise.title}</p><h2>Your practice readout.</h2></div><div className="estimate-badge"><strong>{feedback.overallScore}</strong><span>Practice estimate<br />out of 100</span></div></div>
         <div className="estimate-notice"><span>Practice estimate only</span><p>This feedback is for study and reflection. It is not an official CATTI or MTI result.</p></div>
         <p className="feedback-summary__copy">{feedback.summary}</p>
         <div className="dimension-grid">{(Object.keys(dimensionLabels) as ScoreDimension[]).map((dimension) => <div className="dimension-score" key={dimension}><div><span>{dimensionLabels[dimension]}</span><strong>{feedback.dimensions[dimension]}</strong></div><div className="score-track"><span style={{ width: `${feedback.dimensions[dimension]}%` }} /></div></div>)}</div>

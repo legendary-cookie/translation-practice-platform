@@ -46,6 +46,10 @@
 
 .workspace-heading, .feedback-summary__topline { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 27px; }
 
+.feedback-summary__actions { display: flex; flex-wrap: wrap; gap: 0 14px; }
+
+.feedback-summary__actions .back-button { margin-bottom: 12px; }
+
 .back-button { background: transparent; border: 0; color: var(--accent); font-size: 12px; font-weight: 800; margin-bottom: 23px; padding: 0; }
 
 .workspace-heading h2 { font-size: clamp(27px, 4vw, 40px); margin-bottom: 0; }

@@ -13,15 +13,16 @@ const listeners = new Set<() => void>()
 const localProvider = createLocalProvider(undefined, () => { for (const listener of listeners) listener() })
 let sessionKey = ''
 let pendingConsent: string | undefined
+let authorizationRevision = 0
 let cloudBusy = false
 
 export function getLocalModelState(): LocalModelState { return localProvider.getState() }
 export function subscribeLocalModel(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener) } }
 export function prepareLocalModel(): Promise<void> { return localProvider.prepare() }
-export function setSessionKey(key: string): void { sessionKey = key; pendingConsent = undefined }
+export function setSessionKey(key: string): void { sessionKey = key; clearPendingConsent() }
 export function getSessionKey(): string { return sessionKey }
-export function clearPendingConsent(): void { pendingConsent = undefined }
-export function resetEvaluationSession(): void { sessionKey = ''; pendingConsent = undefined; localProvider.dispose() }
+export function clearPendingConsent(): void { authorizationRevision++; pendingConsent = undefined }
+export function resetEvaluationSession(): void { sessionKey = ''; clearPendingConsent(); localProvider.dispose() }
 
 export async function routeEvaluation(input: EvaluationInput, options: { cloudConsent: boolean; sessionKey?: string }): Promise<EvaluationRouteResult> {
   try {
@@ -52,16 +53,19 @@ export async function routeEvaluation(input: EvaluationInput, options: { cloudCo
     const payloadSummary = `Destination: ${endpoint}\n\nExact request body (also includes the tutor rubric and language/style metadata):\n${JSON.stringify(body, null, 2)}\n\nYour session key is sent only as an authorization header. This endpoint may retain the submitted text under its own policy.`
     const consentIdentity = JSON.stringify({ endpoint, body })
     if (!options.cloudConsent || pendingConsent !== consentIdentity) {
+      clearPendingConsent()
       pendingConsent = consentIdentity
       return { status: 'needs-consent', input: snapshot, payloadSummary }
     }
     // Consent is consumed before the request; every retry needs a fresh preview.
+    const consentRevision = authorizationRevision
     pendingConsent = undefined
     if (cloudBusy) return { status: 'unavailable', reason: 'Another cloud evaluation is in progress. Please wait before submitting again.' }
     const key = options.sessionKey ?? sessionKey
     if (!key.trim()) return { status: 'unavailable', reason: 'Enter a session-only API key in Privacy & data, then submit again to review the cloud payload.' }
     // Recheck stored privacy/configuration immediately before dispatch.
     const latest = await database.getSettings()
+    if (consentRevision !== authorizationRevision) return { status: 'unavailable', reason: 'Cloud authorization was revoked. Submit again to review the payload and grant fresh consent.' }
     if (latest.privacyMode !== 'local-first' || latest.cloudBaseUrl !== config.baseUrl || latest.cloudModel !== config.model) return { status: 'unavailable', reason: 'Privacy or provider settings changed. Submit again to review the new evaluation destination.' }
     if (cloudBusy) return { status: 'unavailable', reason: 'Another cloud evaluation is in progress. Please wait before submitting again.' }
     cloudBusy = true

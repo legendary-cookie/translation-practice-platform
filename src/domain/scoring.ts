@@ -77,47 +77,54 @@ function normalizeStringList(value: unknown, fieldName: string): string[] {
 }
 
 function normalizeDimension(value: unknown): ScoreDimension {
-  return typeof value === 'string' && scoreDimensions.includes(value as ScoreDimension)
-    ? value as ScoreDimension
-    : 'accuracy'
+  if (typeof value !== 'string' || !scoreDimensions.includes(value as ScoreDimension)) {
+    throw new FeedbackValidationError('Feedback annotation has an invalid dimension.')
+  }
+  return value as ScoreDimension
+}
+
+function normalizeAnnotationQuote(
+  value: Record<string, unknown>,
+  primaryField: string,
+  aliasField: string,
+): string {
+  const rawQuote = value[primaryField] !== undefined ? value[primaryField] : value[aliasField]
+  if (rawQuote === undefined) {
+    return ''
+  }
+  if (typeof rawQuote !== 'string') {
+    throw new FeedbackValidationError(`Feedback annotation ${primaryField} must be text.`)
+  }
+  return rawQuote.trim()
 }
 
 function normalizeAnnotation(
   value: unknown,
   context: FeedbackValidationContext,
-): FeedbackAnnotation | undefined {
+): FeedbackAnnotation {
   if (!isRecord(value)) {
-    return undefined
+    throw new FeedbackValidationError('Feedback annotation must be an object.')
   }
 
-  const sourceQuote = typeof value.sourceQuote === 'string'
-    ? value.sourceQuote.trim()
-    : typeof value.sourceEvidence === 'string'
-      ? value.sourceEvidence.trim()
-      : ''
-  const learnerQuote = typeof value.learnerQuote === 'string'
-    ? value.learnerQuote.trim()
-    : typeof value.answerQuote === 'string'
-      ? value.answerQuote.trim()
-      : ''
+  const sourceQuote = normalizeAnnotationQuote(value, 'sourceQuote', 'sourceEvidence')
+  const learnerQuote = normalizeAnnotationQuote(value, 'learnerQuote', 'answerQuote')
 
   if (!sourceQuote && !learnerQuote) {
-    return undefined
+    throw new FeedbackValidationError('Feedback annotation must include source or learner evidence.')
   }
-  if ((sourceQuote && !context.sourceText.includes(sourceQuote)) || (learnerQuote && !context.learnerAnswer.includes(learnerQuote))) {
-    return undefined
+  if (sourceQuote && !context.sourceText.includes(sourceQuote)) {
+    throw new FeedbackValidationError('Feedback annotation source evidence must be copied literally from the source text.')
+  }
+  if (learnerQuote && !context.learnerAnswer.includes(learnerQuote)) {
+    throw new FeedbackValidationError('Feedback annotation learner evidence must be copied literally from the learner answer.')
   }
 
   if (typeof value.explanation !== 'string' || value.explanation.trim().length === 0) {
-    return undefined
+    throw new FeedbackValidationError('Feedback annotation is missing an explanation.')
   }
-  const suggestion = typeof value.suggestion === 'string'
-    ? value.suggestion
-    : typeof value.revision === 'string'
-      ? value.revision
-      : ''
-  if (!suggestion.trim()) {
-    return undefined
+  const rawSuggestion = value.suggestion !== undefined ? value.suggestion : value.revision
+  if (typeof rawSuggestion !== 'string' || rawSuggestion.trim().length === 0) {
+    throw new FeedbackValidationError('Feedback annotation is missing a suggested revision.')
   }
 
   return {
@@ -125,7 +132,7 @@ function normalizeAnnotation(
     sourceQuote,
     learnerQuote,
     explanation: value.explanation.trim(),
-    suggestion: suggestion.trim(),
+    suggestion: rawSuggestion.trim(),
   }
 }
 
@@ -146,9 +153,7 @@ export function validateFeedback(raw: unknown, context: FeedbackValidationContex
     throw new FeedbackValidationError('Feedback is missing required list: issues.')
   }
 
-  const issues = issueValues
-    .map((issue) => normalizeAnnotation(issue, context))
-    .filter((issue): issue is FeedbackAnnotation => issue !== undefined)
+  const issues = issueValues.map((issue) => normalizeAnnotation(issue, context))
 
   const suppliedOverall = raw.overallScore
   const overallScore = typeof suppliedOverall === 'number'

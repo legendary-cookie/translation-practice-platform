@@ -302,14 +302,26 @@ export default function App() {
     const profile =
       examProfiles.find((p) => p.id === run.profileId) ??
       DEFAULT_EXAM_PROFILES.find((p) => p.id === run.profileId)
-    if (profile) {
-      setSelectedExamProfile(profile)
-      setActiveExamRun(run)
-      setExamEvaluationNotice(undefined)
-      setPendingExamConsent(undefined)
-      setExamView('runner')
+    if (!profile) {
+      setSelectedExamProfile(undefined)
+      setExamView('catalog')
+      setExamEvaluationNotice('This saved exam uses a profile that is no longer available. Discard the saved attempt before starting a new simulation.')
       setCurrentPage('exam')
+      return
     }
+    if (run.profileVersion !== profile.version) {
+      setSelectedExamProfile(undefined)
+      setExamView('catalog')
+      setExamEvaluationNotice(`This saved exam uses profile version ${run.profileVersion}, but version ${profile.version} is now installed. It cannot be resumed safely; discard the saved attempt before starting a new simulation.`)
+      setCurrentPage('exam')
+      return
+    }
+    setSelectedExamProfile(profile)
+    setActiveExamRun(run)
+    setExamEvaluationNotice(undefined)
+    setPendingExamConsent(undefined)
+    setExamView('runner')
+    setCurrentPage('exam')
   }
 
   async function handleDiscardExamRun(runId: string) {

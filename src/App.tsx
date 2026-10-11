@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createCloudProvider } from './ai/cloud-provider'
-import type { LocalModelProgress } from './ai/local-provider'
+import { forgetLocalModelReady, hadLocalModelReady, type LocalModelProgress } from './ai/local-provider'
 import { createLocalProvider } from './ai/local-provider'
+import { createInitialCapability, detectDeviceCapability, type CapabilityAssessment } from './ai/capability'
 import { createEvaluationRouter, type CloudConsentRequest } from './ai/provider'
 import { database, DEFAULT_SETTINGS } from './storage/database'
 import { Dashboard } from './features/dashboard/Dashboard'
@@ -10,6 +11,7 @@ import { PracticeSetup, type PracticeStart } from './features/practice/PracticeS
 import { TranslationWorkspace } from './features/practice/TranslationWorkspace'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
+import { DirectionQualityNotice } from './features/settings/ModelCapabilityStatus'
 import type { Exercise, SessionRecord, StoredSettings, TranslationFeedback } from './domain/types'
 import { DEFAULT_LOCAL_MODEL_ID } from './domain/types'
 import { getLanguage } from './domain/languages'
@@ -95,6 +97,7 @@ export default function App() {
   const [settings, setSettings] = useState<StoredSettings>(DEFAULT_SETTINGS)
   const [cloudDraft, setCloudDraft] = useState({ baseUrl: '', model: '', apiKey: '' })
   const [localProgress, setLocalProgress] = useState<LocalModelProgress>({ status: 'not-prepared', text: 'Local model has not been prepared.' })
+  const [capability, setCapability] = useState<CapabilityAssessment>(createInitialCapability)
   const [recentSessions, setRecentSessions] = useState<SessionRecord[]>([])
   const [activeExercise, setActiveExercise] = useState<Exercise | undefined>()
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | undefined>()
@@ -120,6 +123,34 @@ export default function App() {
   const localProvider = useMemo(() => createLocalProvider(DEFAULT_LOCAL_MODEL_ID, handleLocalProgress), [])
 
   useEffect(() => () => localProvider.dispose(), [localProvider])
+
+  useEffect(() => {
+    let cancelled = false
+    void detectDeviceCapability().then((nextCapability) => {
+      if (!cancelled) {
+        setCapability(nextCapability)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void localProvider.isCached().then((cached) => {
+      if (!cancelled && hadLocalModelReady() && !cached) {
+        setLocalProgress({
+          status: 'unavailable',
+          text: 'The local model cache is missing after a previous successful preparation.',
+          error: 'The browser may have evicted the model assets. Prepare the local model again before retrying.',
+        })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [localProvider])
 
   useEffect(() => {
     const loadGeneration = dataLoadGeneration.current
@@ -152,7 +183,8 @@ export default function App() {
     getMode: () => settings.evaluationMode,
     getLocalProvider: () => localProvider,
     getCloudProvider: () => cloudProvider,
-  }), [cloudProvider, localProvider, settings.evaluationMode])
+    getCapability: () => capability,
+  }), [capability, cloudProvider, localProvider, settings.evaluationMode])
 
   function updateSettings(nextSettings: StoredSettings) {
     setSettings(nextSettings)
@@ -160,6 +192,10 @@ export default function App() {
   }
 
   async function prepareLocalModel() {
+    if (capability.localModel.status !== 'available') {
+      setLocalProgress({ status: 'unavailable', text: capability.localModel.reason, error: capability.localModel.reason })
+      return
+    }
     try {
       await localProvider.prepare()
     } catch {
@@ -171,6 +207,7 @@ export default function App() {
     dataLoadGeneration.current += 1
     await database.clearData()
     localProvider.dispose()
+    forgetLocalModelReady()
     setSettings(DEFAULT_SETTINGS)
     setCloudDraft({ baseUrl: '', model: '', apiKey: '' })
     setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
@@ -278,11 +315,11 @@ export default function App() {
       <main className="main-content">
         <header className="topbar"><div><p className="eyebrow">{pageCopyForCurrentPage.eyebrow}</p><h1>{pageCopyForCurrentPage.title}</h1></div><div className="topbar__meta"><span className="status-dot" aria-hidden="true" /><span>Saved on this device</span></div></header>
         {currentPage === 'home' && <Dashboard localProgress={localProgress} recentSessions={recentSessions} onNavigate={setCurrentPage} />}
-        {currentPage === 'practice' && !activeExercise && <PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} />}
+        {currentPage === 'practice' && !activeExercise && <><DirectionQualityNotice capability={capability} /><PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} />}
         {currentPage === 'progress' && <ProgressPage sessions={recentSessions} onStartPractice={() => setCurrentPage('practice')} />}
-        {currentPage === 'settings' && <SettingsPage cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
       </main>
       <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}

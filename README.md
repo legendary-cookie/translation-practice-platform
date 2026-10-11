@@ -29,6 +29,10 @@ Open Settings and choose **Prepare local model** to download and cache the pinne
 
 Preparation requires a browser with WebGPU and enough memory for the model. The model runs in a web worker. Preparation progress, cache state, ready state, and recoverable errors are shown in Settings. Device support, browser policy, available memory, and integrated-GPU limits can still make local inference unavailable.
 
+The app detects a runtime capability tier before offering local evaluation. Devices without WebGPU or enough storage are L0 and unavailable; iOS, Android, and devices without a strong memory signal remain restricted at L1 until real-device validation proves the model safe and useful; supported desktop-class devices can reach L2 after preflight. Hindi and Arabic directions remain manual-review or explicit-cloud-consent tasks because Qwen3's listed language support does not establish useful 1.7B critique quality. If a previously prepared model disappears from browser storage, Settings reports the missing cache instead of silently falling back.
+
+On 2026-10-12, WebLLM `0.2.86` was exercised in local Chrome: model download, cache detection, and worker preparation succeeded, but both a 1,008-word / 5,163-character prompt and a 58-word / 270-character control evaluation failed. The exact `0.2.82` pin therefore remains until the failure is reproducible and fixed; the reported `0.2.83`/`0.2.84` long-prompt regression is not considered cleared by a changelog claim alone: <https://github.com/mlc-ai/web-llm/issues/844>.
+
 When local-only mode is selected, an unavailable local model stops evaluation with an explanation. The app does not send practice text or answers to a cloud service in that mode.
 
 ## Cloud opt-in

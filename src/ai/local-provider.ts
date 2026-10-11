@@ -18,6 +18,25 @@ export type LocalModelProgress = {
 
 export type LocalModelProgressCallback = (progress: LocalModelProgress) => void
 
+export const LOCAL_MODEL_CACHE_EVICTED_MESSAGE = 'The local model cache is missing. Your browser may have evicted the downloaded model; prepare it again before retrying local evaluation.'
+const LOCAL_MODEL_READY_MARKER = 'lingo-practice-local-model-ready'
+
+export function hadLocalModelReady(): boolean {
+  try {
+    return localStorage.getItem(LOCAL_MODEL_READY_MARKER) === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function forgetLocalModelReady(): void {
+  try {
+    localStorage.removeItem(LOCAL_MODEL_READY_MARKER)
+  } catch {
+    return
+  }
+}
+
 function createWorker(): Worker {
   return new Worker(new URL('./local-worker.ts', import.meta.url), { type: 'module' })
 }
@@ -44,13 +63,24 @@ export function createLocalProvider(
     if (progress.error) {
       errorMessage = progress.error
     }
+    if (progress.status === 'ready') {
+      try {
+        localStorage.setItem(LOCAL_MODEL_READY_MARKER, 'true')
+      } catch {
+        errorMessage = undefined
+      }
+    }
     onProgress?.(progress)
   }
 
   const provider: LocalProviderLike = {
     async prepare() {
       if (status === 'ready') {
-        return
+        if (await provider.isCached()) {
+          return
+        }
+        status = 'not-prepared'
+        errorMessage = LOCAL_MODEL_CACHE_EVICTED_MESSAGE
       }
       if (status === 'preparing' && enginePromise) {
         await enginePromise
@@ -80,6 +110,10 @@ export function createLocalProvider(
     async evaluate(input: EvaluationInput): Promise<TranslationFeedback> {
       if (status !== 'ready' || !enginePromise) {
         throw new ProviderUnavailableError(errorMessage ?? 'The local model is not ready.')
+      }
+      if (!(await provider.isCached())) {
+        report({ status: 'unavailable', error: LOCAL_MODEL_CACHE_EVICTED_MESSAGE, text: 'The local model cache is missing.' })
+        throw new ProviderUnavailableError(LOCAL_MODEL_CACHE_EVICTED_MESSAGE)
       }
       const engine = await enginePromise
       const response = await engine.chat.completions.create({

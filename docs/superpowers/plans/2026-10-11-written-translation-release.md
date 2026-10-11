@@ -152,7 +152,7 @@
 - Vite's official guide currently documents the React TypeScript template and requires Node.js 20.19+ or 22.12+; the available Node runtime is 26.8.1: <https://vite.dev/guide/>.
 - WebLLM documents in-browser WebGPU inference, worker support, and supported-model registration: <https://github.com/mlc-ai/web-llm>.
 - Qwen's official Qwen3 announcement lists Chinese, English, Russian, French, Hindi, Spanish, and Arabic among its supported languages: <https://qwenlm.github.io/blog/qwen3/>.
-- WebLLM 0.2.82 is pinned because an open WebLLM issue reports a regression on 0.2.83/0.2.84 with longer prompts on an integrated GPU; 0.2.82 is reported unaffected in that issue: <https://github.com/mlc-ai/web-llm/issues/844>. The local model remains optional and capability-dependent.
+- WebLLM `0.2.82` remains pinned because an open issue reports a `0.2.83`/`0.2.84` regression on longer prompts on an integrated GPU, with `0.2.82` reported unaffected: <https://github.com/mlc-ai/web-llm/issues/844>. On 2026-10-12, `0.2.86` was exercised in local Chrome; Qwen3 model download, cache detection, and worker preparation succeeded, but both a 1,008-word / 5,163-character prompt and a 58-word / 270-character control evaluation failed through the local provider. The pin was consequently reverted to `0.2.82`; the 0.2.83/0.2.84 regression is not treated as fixed for this app until a reproducible evaluation passes on target hardware.
 - IndexedDB and service workers support browser-local structured storage and offline app-shell behavior: <https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB> and <https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers>.
 
 ## Handoff Notes

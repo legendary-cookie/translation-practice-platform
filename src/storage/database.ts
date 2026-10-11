@@ -7,6 +7,7 @@ import type {
   SessionRecord,
   StoredSettings,
 } from '../domain/types'
+import { DEFAULT_EXAM_PROFILES } from '../data/exam-profiles'
 
 const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 2
@@ -108,16 +109,26 @@ export const database = {
     const db = await getDatabase()
     await db.put('settings', { ...settings, id: SETTINGS_KEY }, SETTINGS_KEY)
   },
-
   // Exam profiles
   async listExamProfiles(): Promise<ExamProfile[]> {
     const db = await getDatabase()
-    return db.getAll('examProfiles')
+    const stored = await db.getAll('examProfiles')
+    if (stored.length > 0) {
+      return stored
+    }
+    for (const profile of DEFAULT_EXAM_PROFILES) {
+      await db.put('examProfiles', profile)
+    }
+    return DEFAULT_EXAM_PROFILES
   },
 
   async getExamProfile(id: string): Promise<ExamProfile | undefined> {
     const db = await getDatabase()
-    return db.get('examProfiles', id)
+    const stored = await db.get('examProfiles', id)
+    if (stored) {
+      return stored
+    }
+    return DEFAULT_EXAM_PROFILES.find((profile) => profile.id === id)
   },
 
   async saveExamProfile(profile: ExamProfile): Promise<void> {

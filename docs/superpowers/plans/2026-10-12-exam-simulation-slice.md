@@ -116,23 +116,23 @@ From Part 1 Research (`catti-mti-exam-profiles.md`), the following verified fact
 - `DEFAULT_EXAM_PROFILES`: `ExamProfile[]` exported catalog.
 - `initExamProfiles()`: Utility to seed built-in profiles into IndexedDB if not already present.
 
-- [ ] Author `catti-2-practical-en-zh-v1` (CATTI English Level 2 实务):
+- [x] Author `catti-2-practical-en-zh-v1` (CATTI English Level 2 实务):
   - 180 min total duration, 100 max points, 60 pass threshold.
   - Section 1: English-to-Chinese Translation (50 pts, 90 min recommended): 2 original passages (Passage 1: ~480 words on international trade logistics; Passage 2: ~460 words on renewable energy grids; total ~940 words).
   - Section 2: Chinese-to-English Translation (50 pts, 90 min recommended): 2 original passages (Passage 1: ~310 Chinese characters on rural revitalization; Passage 2: ~290 Chinese characters on cultural heritage digitization; total ~600 chars).
   - Aids: Paper bilingual dictionaries permitted; electronic aids strictly prohibited.
-- [ ] Author `mti-357-foundation-en-zh-v1` (MTI 357 English Translation Foundation Guidance Baseline):
+- [x] Author `mti-357-foundation-en-zh-v1` (MTI 357 English Translation Foundation Guidance Baseline):
   - 180 min total duration, 150 max points, benchmark 80 (estimated national line).
   - Section 1: Terminology Translation (30 pts, 35 min recommended): 15 original E->C acronyms/terms + 15 original C->E terms.
   - Section 2: English-to-Chinese Passage (60 pts, 70 min recommended): 1 original high-register passage (~320 words on AI ethics).
   - Section 3: Chinese-to-English Passage (60 pts, 75 min recommended): 1 original formal passage (~220 characters on sustainable urbanization).
   - Aids: Strictly closed-book; no dictionaries allowed.
-- [ ] Author starter multi-language CATTI profiles:
+- [x] Author starter multi-language CATTI profiles:
   - `catti-2-practical-fr-zh-v1` (French Level 2, 180 min, 60/40 point weighting, 2 original French passages ~800 words total, 2 Chinese passages ~500 chars total).
   - `catti-2-practical-ar-zh-v1` (Arabic Level 2, 180 min, 50/50 point weighting, RTL enabled, original formal Arabic texts ~800 words total, 2 Chinese passages ~600 chars total).
-- [ ] Ensure all passages are original compositions or public-domain translations; strictly audit against verbatim copying of past copyrighted CATTI/MTI exam papers.
-- [ ] Embed explicit practice disclaimers and rubric version tags (`rubric-v1`) into each profile definition.
-- [ ] Run `npm run build` to verify profile data integrity.
+- [x] Ensure all passages are original compositions or public-domain translations; strictly audit against verbatim copying of past copyrighted CATTI/MTI exam papers.
+- [x] Embed explicit practice disclaimers and rubric version tags (`rubric-v1`) into each profile definition.
+- [x] Run `npm run build` to verify profile data integrity.
 
 ---
 

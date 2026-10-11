@@ -78,7 +78,7 @@
 - [x] Add the seven language labels, script direction metadata, and the 12 Chinese-centered directions.
 - [x] Add seven short original practice passages, one authored in each source language, with news-style and general translation tags.
 - [x] Add IndexedDB stores for settings and sessions; keep secrets out of this database.
-- [x] Implement feedback normalization: clamp each dimension score to 0–100, reject missing required fields, and discard annotations whose quoted evidence does not occur in the source or answer.
+- [x] Implement feedback normalization: reject out-of-range dimension scores rather than clamping them, reject missing required fields, and reject annotations whose quoted evidence does not occur in the source or answer. This intentionally corrects the original clamp instruction: an evaluator score outside 0–100 is malformed output and must take the existing no-score/retry path instead of being converted into a plausible result.
 - [x] Run `npm run build` and commit as `feat: add local practice data model`.
 
 ### Task 3: Implement local and consent-based cloud evaluation providers

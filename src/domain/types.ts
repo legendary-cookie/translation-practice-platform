@@ -151,6 +151,21 @@ export type ExamProfile = {
   provisionalDetails?: ExamProvisionalDetails
 }
 
+/**
+ * A result must retain the profile as it existed when grading happened. The
+ * deep readonly view prevents callers from accidentally treating a persisted
+ * result as a live catalog profile while preserving the profile's full shape.
+ */
+export type ReadonlyDeep<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer Item)[]
+    ? readonly ReadonlyDeep<Item>[]
+    : T extends object
+      ? { readonly [Key in keyof T]: ReadonlyDeep<T[Key]> }
+      : T
+
+export type ExamProfileSnapshot = ReadonlyDeep<ExamProfile>
+
 export type ActiveExamRun = {
   id: string
   profileId: string
@@ -188,6 +203,13 @@ export type ConsolidatedExamResult = {
   completedAt: string
   profileId: string
   profileVersion: number
+  /**
+   * Optional only for results written before immutable snapshots were added.
+   * New persisted results should use PersistedConsolidatedExamResult.
+   */
+  profileSnapshot?: ExamProfileSnapshot
+  /** The platform rubric version used alongside profileSnapshot. */
+  rubricVersion?: number
   examTitle: string
   totalScore: number
   maxScore: number
@@ -201,6 +223,12 @@ export type ConsolidatedExamResult = {
   benchmarkNote?: string
   authorityNote?: string
   isProvisional?: boolean
+}
+
+/** Result shape required for newly persisted exam evaluations. */
+export type PersistedConsolidatedExamResult = Omit<ConsolidatedExamResult, 'profileSnapshot' | 'rubricVersion'> & {
+  profileSnapshot: ExamProfileSnapshot
+  rubricVersion: number
 }
 
 export type ExportData = {

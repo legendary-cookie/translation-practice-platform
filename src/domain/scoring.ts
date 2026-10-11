@@ -35,11 +35,14 @@ function requiredText(value: unknown, fieldName: string): string {
   return value.trim()
 }
 
-function clampScore(value: unknown, fieldName: string): number {
+function validateScore(value: unknown, fieldName: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new FeedbackValidationError(`Feedback has an invalid score for ${fieldName}.`)
   }
-  return Math.round(Math.min(100, Math.max(0, value)))
+  if (value < 0 || value > 100) {
+    throw new FeedbackValidationError(`Feedback has an out-of-range score for ${fieldName}.`)
+  }
+  return Math.round(value)
 }
 
 function normalizeDimensions(raw: Record<string, unknown>): FeedbackDimensions {
@@ -49,7 +52,7 @@ function normalizeDimensions(raw: Record<string, unknown>): FeedbackDimensions {
   }
 
   return scoreDimensions.reduce<FeedbackDimensions>((dimensions, dimension) => {
-    dimensions[dimension] = clampScore(dimensionsValue[dimension], dimension)
+    dimensions[dimension] = validateScore(dimensionsValue[dimension], dimension)
     return dimensions
   }, {} as FeedbackDimensions)
 }
@@ -73,17 +76,18 @@ function normalizeStringList(value: unknown, fieldName: string): string[] {
 }
 
 function normalizeDimension(value: unknown): ScoreDimension {
-  return typeof value === 'string' && scoreDimensions.includes(value as ScoreDimension)
-    ? value as ScoreDimension
-    : 'accuracy'
+  if (typeof value === 'string' && scoreDimensions.includes(value as ScoreDimension)) {
+    return value as ScoreDimension
+  }
+  throw new FeedbackValidationError('Feedback contains an annotation with an invalid dimension.')
 }
 
 function normalizeAnnotation(
   value: unknown,
   context: FeedbackValidationContext,
-): FeedbackAnnotation | undefined {
+): FeedbackAnnotation {
   if (!isRecord(value)) {
-    return undefined
+    throw new FeedbackValidationError('Feedback contains an invalid issue annotation.')
   }
 
   const sourceQuote = typeof value.sourceQuote === 'string'
@@ -98,14 +102,14 @@ function normalizeAnnotation(
       : ''
 
   if (!sourceQuote && !learnerQuote) {
-    return undefined
+    throw new FeedbackValidationError('Feedback issue annotations must include quoted evidence.')
   }
   if ((sourceQuote && !context.sourceText.includes(sourceQuote)) || (learnerQuote && !context.learnerAnswer.includes(learnerQuote))) {
-    return undefined
+    throw new FeedbackValidationError('Feedback issue annotation contains evidence absent from the source or learner answer.')
   }
 
   if (typeof value.explanation !== 'string' || value.explanation.trim().length === 0) {
-    return undefined
+    throw new FeedbackValidationError('Feedback issue annotation is missing an explanation.')
   }
   const suggestion = typeof value.suggestion === 'string'
     ? value.suggestion
@@ -113,7 +117,7 @@ function normalizeAnnotation(
       ? value.revision
       : ''
   if (!suggestion.trim()) {
-    return undefined
+    throw new FeedbackValidationError('Feedback issue annotation is missing a suggestion.')
   }
 
   return {
@@ -142,14 +146,9 @@ export function validateFeedback(raw: unknown, context: FeedbackValidationContex
     throw new FeedbackValidationError('Feedback is missing required list: issues.')
   }
 
-  const issues = issueValues
-    .map((issue) => normalizeAnnotation(issue, context))
-    .filter((issue): issue is FeedbackAnnotation => issue !== undefined)
+  const issues = issueValues.map((issue) => normalizeAnnotation(issue, context))
 
-  const suppliedOverall = raw.overallScore
-  const overallScore = typeof suppliedOverall === 'number' && Number.isFinite(suppliedOverall)
-    ? Math.round(Math.min(100, Math.max(0, suppliedOverall)))
-    : Math.round(scoreDimensions.reduce((total, dimension) => total + dimensions[dimension], 0) / scoreDimensions.length)
+  const overallScore = validateScore(raw.overallScore, 'overallScore')
 
   return {
     summary: requiredText(raw.summary, 'summary'),
@@ -187,7 +186,11 @@ export function aggregateExamScores(
   consolidatedDimensions: FeedbackDimensions
 } {
   const sectionResults: SectionResult[] = []
-  const allAnsweredDimensions: FeedbackDimensions[] = []
+  const weightedDimensions = scoreDimensions.reduce<Record<ScoreDimension, number>>((totals, dimension) => {
+    totals[dimension] = 0
+    return totals
+  }, {} as Record<ScoreDimension, number>)
+  let answeredPointWeight = 0
 
   for (const section of sections) {
     const passageCount = Math.max(1, section.passages.length)
@@ -201,7 +204,10 @@ export function aggregateExamScores(
       sectionScore += passageScore
 
       if (hasAnswer) {
-        allAnsweredDimensions.push(passage.feedback.dimensions)
+        answeredPointWeight += passageMaxPoints
+        for (const dimension of scoreDimensions) {
+          weightedDimensions[dimension] += passage.feedback.dimensions[dimension] * passageMaxPoints
+        }
       }
 
       passageFeedbacks.push({
@@ -230,11 +236,10 @@ export function aggregateExamScores(
   const estimatedStatus = getEstimatedStatus(percentage, passBenchmarkPercent)
 
   const consolidatedDimensions = scoreDimensions.reduce<FeedbackDimensions>((acc, dimension) => {
-    if (allAnsweredDimensions.length === 0) {
+    if (answeredPointWeight === 0) {
       acc[dimension] = 0
     } else {
-      const sum = allAnsweredDimensions.reduce((total, dim) => total + dim[dimension], 0)
-      acc[dimension] = Math.round(sum / allAnsweredDimensions.length)
+      acc[dimension] = Math.round(weightedDimensions[dimension] / answeredPointWeight)
     }
     return acc
   }, {} as FeedbackDimensions)

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, relative, resolve, sep } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -15,8 +18,52 @@ function emitPrecacheManifest(): Plugin {
   }
 }
 
+function versionServiceWorker(): Plugin {
+  let outputDirectory = ''
+
+  function listFiles(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const entryPath = join(directory, entry.name)
+      return entry.isDirectory() ? listFiles(entryPath) : [entryPath]
+    })
+  }
+
+  return {
+    name: 'version-service-worker',
+    apply: 'build',
+    configResolved(config) {
+      outputDirectory = resolve(config.root, config.build.outDir)
+    },
+    closeBundle() {
+      const serviceWorkerPath = join(outputDirectory, 'sw.js')
+      const template = readFileSync(serviceWorkerPath, 'utf8')
+      const releaseHash = createHash('sha256')
+
+      for (const filePath of listFiles(outputDirectory)
+        .filter((filePath) => filePath !== serviceWorkerPath)
+        .sort()) {
+        releaseHash.update(relative(outputDirectory, filePath).split(sep).join('/'))
+        releaseHash.update('\0')
+        releaseHash.update(readFileSync(filePath))
+        releaseHash.update('\0')
+      }
+      releaseHash.update(template)
+
+      const releaseId = releaseHash.digest('hex').slice(0, 12)
+      const cacheNamePlaceholder = 'lingo-practice-shell-__RELEASE_ID__'
+      const versionedCacheName = `lingo-practice-shell-${releaseId}`
+      const output = template.replace(cacheNamePlaceholder, versionedCacheName)
+
+      if (output === template) {
+        throw new Error(`The service worker is missing the ${cacheNamePlaceholder} placeholder.`)
+      }
+      writeFileSync(serviceWorkerPath, output)
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), emitPrecacheManifest()],
+  plugins: [react(), emitPrecacheManifest(), versionServiceWorker()],
   build: {
     target: 'es2022',
   },

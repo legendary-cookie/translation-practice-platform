@@ -1,4 +1,5 @@
-const CACHE_NAME = 'lingo-practice-shell-v2'
+// Vite replaces the release marker with a content hash in production builds.
+const CACHE_NAME = 'lingo-practice-shell-__RELEASE_ID__'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg']
 const PRECACHE_MANIFEST = '/precache-manifest.json'
 

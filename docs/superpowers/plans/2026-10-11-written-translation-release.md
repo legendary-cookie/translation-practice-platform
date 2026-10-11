@@ -68,12 +68,16 @@
 
 **Interfaces:**
 - `LanguageCode` is the union `"zh" | "en" | "ru" | "fr" | "hi" | "es" | "ar"`.
-- `Exercise` contains `id`, `mode`, `sourceLanguage`, `targetLanguage`, `title`, `topic`, `difficulty`, `sourceText`, and `glossary`.
-- `EvaluationInput` contains the exercise, learner answer, and mode.
-- `TranslationFeedback` contains `summary`, five 0–100 dimension scores, `strengths`, `issues`, and `uncertainty`.
-- `SessionRecord` contains `id`, `createdAt`, exercise id, language direction, answer, feedback, and elapsed time.
-- `evaluationProvider.evaluate(input)` returns `Promise<TranslationFeedback>`; all provider results pass through `validateFeedback` before storage or display.
-- `database` exposes `listSessions()`, `saveSession(session)`, `getSettings()`, `saveSettings(settings)`, `exportData()`, and `clearData()`.
+- `PracticeMode` is `"written" | "news"`; `LanguageCode` is `"zh" | "en" | "ru" | "fr" | "hi" | "es" | "ar"`.
+- `Exercise` contains `id`, `mode`, `sourceLanguage`, `title`, `topic`, `difficulty`, `sourceText`, and `glossary: { term: string; hint: string }[]`. It is a source item and has no fixed target language.
+- `EvaluationInput` contains `exercise: Exercise`, `targetLanguage: LanguageCode`, and `learnerAnswer: string`.
+- `EvaluationDimension` is `"accuracy" | "coverage" | "terminology" | "grammar" | "fluency"`; the UI labels coverage as omissions/additions and fluency as fluency/register.
+- `FeedbackIssue` contains `dimension: EvaluationDimension`, `severity: "major" | "minor" | "suggestion"`, `sourceQuote`, `learnerQuote`, `explanation`, and `suggestion`, all strings.
+- `TranslationFeedback` contains `summary: string`, `dimensions: Record<EvaluationDimension, number>` with values from 0 to 100, `strengths: string[]`, `issues: FeedbackIssue[]`, and `uncertainty: string[]`.
+- `SessionRecord` contains `id`, `createdAt`, `exerciseId`, `mode`, `sourceLanguage`, `targetLanguage`, `learnerAnswer`, `feedback: TranslationFeedback`, and `elapsedSeconds`.
+- `AppSettings` contains `privacyMode: "local-only" | "local-first"`, optional `cloudBaseUrl`, optional `cloudModel`, and selected local model id. It never contains an API key.
+- `validateFeedback(value, input)` returns a validated `TranslationFeedback` or throws a readable validation error; it clamps scores to 0–100 and drops issues whose evidence quotes do not occur in the relevant input text.
+- `database` exposes `listSessions(): Promise<SessionRecord[]>`, `saveSession(session: SessionRecord): Promise<void>`, `getSettings(): Promise<AppSettings>`, `saveSettings(settings: AppSettings): Promise<void>`, `exportData(): Promise<ExportBundle>`, and `clearData(): Promise<void>`.
 
 - [ ] Add the seven language labels, script direction metadata, and the 12 Chinese-centered directions.
 - [ ] Add seven short original practice passages, one authored in each source language, with news-style and general translation tags.
@@ -85,13 +89,14 @@
 
 **Files:**
 - Create: `src/ai/provider.ts`, `src/ai/evaluation-prompt.ts`, `src/ai/local-provider.ts`, `src/ai/cloud-provider.ts`, `src/ai/local-worker.ts`.
-- Modify: `src/domain/types.ts`, `src/domain/scoring.ts`, `src/features/settings/`.
+- Modify: `package.json`, `package-lock.json`, `src/domain/types.ts`, `src/domain/scoring.ts`, and `src/features/settings/`.
 
 **Interfaces:**
-- `EvaluationProvider.evaluate(input)` uses the same contract for local and cloud providers.
-- `createLocalProvider(modelId, onProgress)` loads `Qwen3-1.7B-q4f16_1-MLC` through WebLLM in a web worker and returns an evaluator.
-- `createCloudProvider(config)` accepts `{ baseUrl, model, apiKey }`, sends an OpenAI-compatible chat-completion request, and never persists `apiKey`.
-- The router uses local evaluation when selected and ready. If cloud is enabled and local evaluation is unavailable, it returns a `needs-consent` result containing the exact exercise text and answer; only an explicit confirmation may call the cloud provider.
+- `EvaluationProvider.evaluate(input: EvaluationInput): Promise<TranslationFeedback>` is the shared contract for local and cloud providers.
+- `createLocalProvider(modelId, onProgress)` returns an `EvaluationProvider` for `Qwen3-1.7B-q4f16_1-MLC` through WebLLM in a web worker.
+- `createCloudProvider(config: { baseUrl: string; model: string })` returns a cloud provider whose `evaluate(input, apiKey)` uses an in-memory key for an OpenAI-compatible chat-completion request.
+- `EvaluationRouteResult` is `{ status: "complete"; feedback: TranslationFeedback } | { status: "needs-consent"; input: EvaluationInput; payloadSummary: string } | { status: "unavailable"; reason: string }`.
+- `routeEvaluation(input, options: { cloudConsent: boolean; sessionKey?: string }): Promise<EvaluationRouteResult>` prefers a ready local provider. It returns `needs-consent` with the exact exercise text and answer if cloud evaluation is the only configured path; only a second call with explicit `cloudConsent: true` may call the cloud provider.
 
 - [ ] Pin `@mlc-ai/web-llm` to version `0.2.82` and use its web-worker API so generation does not block the UI.
 - [ ] Add explicit model preparation, download progress, cached/ready state, and recoverable error handling.

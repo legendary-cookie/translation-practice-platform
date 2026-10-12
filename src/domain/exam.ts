@@ -119,6 +119,27 @@ export function advanceSection(run: ActiveExamRun, profile: ExamProfile): Active
   }
 }
 
+/** Advance early while explicitly forfeiting the unused time in this section. */
+export function advanceSectionAndForfeitTime(run: ActiveExamRun, profile: ExamProfile): ActiveExamRun {
+  if (!canAdvanceSection(run, profile)) {
+    return run
+  }
+  const currentSection = profile.sections[run.currentSectionIndex]
+  if (!currentSection) {
+    return run
+  }
+  const unusedSeconds = Math.max(0, run.sectionRemainingSeconds[currentSection.id] ?? 0)
+  const forfeitedRun: ActiveExamRun = {
+    ...run,
+    overallRemainingSeconds: Math.max(0, run.overallRemainingSeconds - unusedSeconds),
+    sectionRemainingSeconds: {
+      ...run.sectionRemainingSeconds,
+      [currentSection.id]: 0,
+    },
+  }
+  return advanceSection(forfeitedRun, profile)
+}
+
 export function countTextUnits(text: string, language: LanguageCode): number {
   const trimmed = text.trim()
   if (!trimmed) {

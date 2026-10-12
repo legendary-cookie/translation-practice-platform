@@ -13,6 +13,7 @@ export function Dashboard({
   recentExamResults = [],
   onNavigate,
   onStartInterpreting,
+  onStartNews,
 }: {
   localProgress: LocalModelProgress
   recentSessions: SessionRecord[]
@@ -20,6 +21,7 @@ export function Dashboard({
   recentExamResults?: ConsolidatedExamResult[]
   onNavigate: (page: DashboardPage) => void
   onStartInterpreting?: () => void
+  onStartNews?: () => void
 }) {
   const localStatusLabel = localProgress.status === 'ready'
     ? 'Ready on this device'
@@ -91,7 +93,7 @@ export function Dashboard({
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
-          <button className="mode-card mode-card--active" type="button" onClick={() => onNavigate('practice')}>
+          <button className="mode-card mode-card--active" type="button" onClick={onStartNews ?? (() => onNavigate('practice'))}>
             <span className="mode-card__icon">▤</span>
             <span className="mode-card__content">
               <strong>News translation</strong>

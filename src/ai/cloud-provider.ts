@@ -58,14 +58,61 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary)
 }
 
-function audioFormat(mimeType: string): string {
-  const subtype = mimeType.split('/')[1]?.split(';')[0]?.toLowerCase()
-  return subtype === 'mpeg' ? 'mp3' : subtype || 'webm'
+async function blobToMonoWavBase64(blob: Blob): Promise<string> {
+  if (typeof AudioContext === 'undefined') {
+    throw new Error('This browser cannot transcode the recording to WAV. Keep it local or use a compatible audio browser.')
+  }
+  const context = new AudioContext()
+  try {
+    const decoded = await context.decodeAudioData(await blob.arrayBuffer())
+    const sampleRate = 16000
+    const sampleCount = Math.max(1, Math.ceil(decoded.duration * sampleRate))
+    const wav = new ArrayBuffer(44 + sampleCount * 2)
+    const view = new DataView(wav)
+    const writeAscii = (offset: number, value: string) => {
+      for (let index = 0; index < value.length; index += 1) {
+        view.setUint8(offset + index, value.charCodeAt(index))
+      }
+    }
+    writeAscii(0, 'RIFF')
+    view.setUint32(4, wav.byteLength - 8, true)
+    writeAscii(8, 'WAVE')
+    writeAscii(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate * 2, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    writeAscii(36, 'data')
+    view.setUint32(40, sampleCount * 2, true)
+    const channels = Array.from({ length: decoded.numberOfChannels }, (_, channel) => decoded.getChannelData(channel))
+    for (let index = 0; index < sampleCount; index += 1) {
+      const sourceStart = Math.min(decoded.length - 1, Math.floor(index * decoded.sampleRate / sampleRate))
+      const sourceEnd = Math.min(decoded.length, Math.max(sourceStart + 1, Math.floor((index + 1) * decoded.sampleRate / sampleRate)))
+      let sampleTotal = 0
+      let frameCount = 0
+      for (let sourceIndex = sourceStart; sourceIndex < sourceEnd; sourceIndex += 1) {
+        sampleTotal += channels.reduce((sum, channel) => sum + channel[sourceIndex], 0) / channels.length
+        frameCount += 1
+      }
+      const sample = sampleTotal / frameCount
+      const clipped = Math.max(-1, Math.min(1, sample))
+      view.setInt16(44 + index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true)
+    }
+    return blobToBase64(new Blob([wav], { type: 'audio/wav' }))
+  } catch {
+    throw new Error('This recording could not be decoded for WAV conversion. The original stays on this device; try another browser or keep local-only mode.')
+  } finally {
+    await context.close().catch(() => undefined)
+  }
 }
 
 async function buildCloudRequestBody(
   input: EvaluationRequest,
   model: string,
+  supportsAudio: boolean,
 ): Promise<Record<string, unknown>> {
   if ('learnerAnswer' in input) {
     return {
@@ -82,8 +129,8 @@ async function buildCloudRequestBody(
   const audioParts = await Promise.all(input.recordings.map(async (recording) => ({
     type: 'input_audio',
     input_audio: {
-      data: await blobToBase64(recording.blob),
-      format: audioFormat(recording.mimeType),
+      data: await blobToMonoWavBase64(recording.blob),
+      format: 'wav',
     },
   })))
   return {
@@ -93,7 +140,7 @@ async function buildCloudRequestBody(
       {
         role: 'user',
         content: [
-          { type: 'text', text: buildEvaluationPrompt(input) },
+          { type: 'text', text: buildEvaluationPrompt(input, { attachedAudioAvailable: supportsAudio && input.recordings.length > 0 }) },
           ...audioParts,
         ],
       },
@@ -136,7 +183,7 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(await buildCloudRequestBody(input, model)),
+          body: JSON.stringify(await buildCloudRequestBody(input, model, supportsAudio)),
           signal: controller.signal,
         })
 

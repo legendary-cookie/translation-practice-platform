@@ -9,15 +9,17 @@ export type PracticeStart = {
 }
 
 export function PracticeSetup({
+  initialMode = 'written',
   evaluationMode,
   localStatus,
   onStart,
 }: {
+  initialMode?: WrittenPracticeMode
   evaluationMode: EvaluationMode
   localStatus: LocalModelStatus
   onStart: (selection: PracticeStart) => void
 }) {
-  const [mode, setMode] = useState<WrittenPracticeMode>('written')
+  const [mode, setMode] = useState<WrittenPracticeMode>(initialMode)
   const [directionId, setDirectionId] = useState(CHINESE_DIRECTIONS[0].id)
   const [topic, setTopic] = useState('all')
   const [difficulty, setDifficulty] = useState<'all' | Difficulty>('all')

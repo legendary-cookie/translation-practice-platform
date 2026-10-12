@@ -137,6 +137,18 @@ export const database = {
     await db.put('interpretingSessions', session)
   },
 
+  async saveInterpretingSessionWithRecordings(
+    session: InterpretingSessionRecord,
+    recordings: AudioRecordingRecord[],
+  ): Promise<void> {
+    const db = await getDatabase()
+    const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
+    const recordingWrites = recordings.map((recording) => transaction.objectStore('recordings').put(recording))
+    recordingWrites.push(transaction.objectStore('interpretingSessions').put(session))
+    await Promise.all(recordingWrites)
+    await transaction.done
+  },
+
   async listAudioRecordings(exerciseId?: string): Promise<AudioRecordingRecord[]> {
     const db = await getDatabase()
     const recordings = exerciseId

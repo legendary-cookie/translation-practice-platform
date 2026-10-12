@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react'
 import type { ExamSectionConfig } from '../../domain/types'
-import { CLIPBOARD_POLICY_NOTICE, countTextUnits } from '../../domain/exam'
+import { CLIPBOARD_POLICY_NOTICE, countTextUnits, formatSeconds } from '../../domain/exam'
 
 export type ExamSectionWorkspaceProps = {
   section: ExamSectionConfig
   answers: Record<string, string>
   onAnswerChange: (passageId: string, text: string) => void
+  onAnswerBlur?: (passageId: string) => void
   onNextSection: () => void
   isLastSection: boolean
   isLocked?: boolean
+  unusedSectionSeconds?: number
 }
 
 export function ExamSectionWorkspace({
   section,
   answers,
   onAnswerChange,
+  onAnswerBlur,
   onNextSection,
   isLastSection,
   isLocked = false,
+  unusedSectionSeconds = 0,
 }: ExamSectionWorkspaceProps) {
   const [selectedPassageIndex, setSelectedPassageIndex] = useState(0)
   const [pasteNotice, setPasteNotice] = useState<string | undefined>()
@@ -123,6 +127,7 @@ export function ExamSectionWorkspace({
             value={currentAnswer}
             disabled={isLocked}
             onChange={(e) => onAnswerChange(activePassage.id, e.target.value)}
+            onBlur={() => onAnswerBlur?.(activePassage.id)}
             onPaste={handlePaste}
             placeholder={
               isLocked
@@ -170,12 +175,18 @@ export function ExamSectionWorkspace({
             </button>
           )}
 
+          {!isLastSection && unusedSectionSeconds > 0 && (
+            <small role="note" style={{ alignSelf: 'center', maxWidth: '15rem' }}>
+              Advancing now forfeits the remaining {formatSeconds(unusedSectionSeconds)} from the overall exam time.
+            </small>
+          )}
+
           <button
             className="button button--primary"
             type="button"
             onClick={onNextSection}
           >
-            {isLastSection ? 'Proceed to Final Submission' : 'Next Section →'}
+            {isLastSection ? 'Proceed to Final Submission' : unusedSectionSeconds > 0 ? 'Finish Section Early →' : 'Next Section →'}
           </button>
         </div>
       </footer>

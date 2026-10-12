@@ -101,6 +101,7 @@ export type InterpretingResponseSegment = {
 }
 
 export type DeliveryAnalysis = {
+  recordingId?: string
   durationMs: number
   activeSpeechRatio: number
   pauseCount: number
@@ -121,7 +122,7 @@ export type AudioRecordingRecord = {
   durationMs: number
   byteLength: number
   blob: Blob
-  kind?: 'response' | 'source-import'
+  kind?: 'response' | 'source-import' | 'source-bundled'
   fileName?: string
 }
 
@@ -178,7 +179,8 @@ export type InterpretingAnnotation = {
 export type InterpretingFeedback = {
   contentScores?: InterpretingContentScores
   contentScoreStatus: 'complete' | 'incomplete'
-  deliveryScores: InterpretingDeliveryScores
+  deliveryScores?: InterpretingDeliveryScores
+  deliveryScoreStatus?: 'complete' | 'incomplete'
   overallScore?: number
   summary: string
   strengths: string[]
@@ -217,6 +219,7 @@ export type InterpretingSessionRecord = {
   recordingIds: string[]
   sourceRecordingId?: string
   sourceExercise?: InterpretingExerciseSnapshot
+  exerciseSnapshotVersion?: 1
   deliveryAnalysis: DeliveryAnalysis[]
   feedback: InterpretingFeedback
   evaluator: 'local' | 'cloud' | 'manual'
@@ -321,6 +324,8 @@ export type ActiveExamRun = {
   answers: Record<string, Record<string, string>>
   /** Set when an automatic expiry submission has been attempted, so a blocked evaluation can be retried explicitly. */
   submissionAttemptedAt?: string
+  /** A manually submitted attempt is paused while feedback or consent is being resolved. */
+  evaluationPausedAt?: string
 }
 
 export type PassageFeedbackItem = {

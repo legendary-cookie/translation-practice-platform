@@ -30,7 +30,7 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 type SpeechRecognitionStaticLike = SpeechRecognitionConstructor & {
-  available?: (options: { langs: string[]; quality: 'dictation'; processLocally: true }) => Promise<boolean> | boolean
+  available?: (options: { langs: string[]; quality: 'dictation'; processLocally: true }) => Promise<boolean | 'available' | 'downloading' | 'downloadable' | 'unavailable'> | boolean | 'available' | 'downloading' | 'downloadable' | 'unavailable'
   install?: (options: { langs: string[]; processLocally: true }) => Promise<boolean> | boolean
 }
 
@@ -67,11 +67,17 @@ export async function getLocalRecognitionCapability(languageTag: string): Promis
     return { status: 'unavailable', languageTag, reason: 'This browser cannot verify an on-device language pack. Enter a transcript manually; the default speech service is not used.' }
   }
   try {
-    const available = await constructor.available({ langs: [languageTag], quality: 'dictation', processLocally: true })
-    if (available) {
+    const availability = await constructor.available({ langs: [languageTag], quality: 'dictation', processLocally: true })
+    if (availability === true || availability === 'available') {
       return { status: 'available', languageTag, reason: 'On-device recognition is available for this language in this browser.' }
     }
-    return { status: 'downloadable', languageTag, reason: 'An on-device language pack may be available. Download it only after an explicit action; learner audio stays local.' }
+    if (availability === 'downloading') {
+      return { status: 'downloading', languageTag, reason: 'The on-device language pack is still downloading. Continue with the manual transcript path for now.' }
+    }
+    if (availability === 'downloadable' || availability === false) {
+      return { status: 'downloadable', languageTag, reason: 'An on-device language pack may be available. Download it only after an explicit action; learner audio stays local.' }
+    }
+    return { status: 'unavailable', languageTag, reason: 'This language pack is unavailable for on-device recognition. Enter a transcript manually; no remote recognition will be used.' }
   } catch {
     return { status: 'unavailable', languageTag, reason: 'The browser could not verify an on-device language pack. Enter a transcript manually.' }
   }

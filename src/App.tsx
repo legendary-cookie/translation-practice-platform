@@ -28,7 +28,6 @@ import type {
   ExamProfile,
   Exercise,
   InterpretingExercise,
-  InterpretingExerciseSnapshot,
   InterpretingEvaluationInput,
   InterpretingFeedback,
   InterpretingMode,
@@ -66,6 +65,27 @@ const pageCopy: Record<Page, { eyebrow: string; title: string }> = {
   exam: { eyebrow: 'Exam simulation', title: 'Test under realistic conditions.' },
   progress: { eyebrow: 'Local history', title: 'See the work you have done.' },
   settings: { eyebrow: 'Privacy and setup', title: 'Keep your practice yours.' },
+}
+
+async function snapshotBundledSourceAudio(exercise: InterpretingExercise): Promise<AudioRecordingRecord> {
+  const response = await fetch(exercise.audioUrl)
+  if (!response.ok) {
+    throw new Error('The bundled source audio could not be saved for this self-review.')
+  }
+  const blob = await response.blob()
+  const mimeType = blob.type || 'audio/wav'
+  return {
+    id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `source-${Date.now()}`,
+    exerciseId: exercise.id,
+    segmentIds: exercise.segments.map((segment) => segment.id),
+    createdAt: new Date().toISOString(),
+    mimeType,
+    durationMs: exercise.durationMs,
+    byteLength: blob.size,
+    blob,
+    kind: 'source-bundled',
+    fileName: `${exercise.id}-source.${mimeType.split('/')[1]?.split(';')[0] ?? 'audio'}`,
+  }
 }
 
 type PendingExamConsent = {
@@ -135,9 +155,16 @@ function ConsentDialog({
               <section><h3>Exact source · {sourceLanguage.nativeLabel}</h3><p className="consent-quote" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{request.sourceText}</p></section>
               <section><h3>Exact answer · {targetLanguage.nativeLabel}</h3><p className="consent-quote" dir={targetLanguage.direction} lang={exercise.targetLanguage}>{request.learnerAnswer}</p></section>
             </>
-          ) : request.payloadPreview.parts.map((part, index) => (
-            <section key={`${part.kind}-${index}`}><h3>{part.label}</h3>{part.text && <p className="consent-quote">{part.text}</p>}{part.previewUrl && <><audio controls preload="metadata" src={part.previewUrl}>Audio preview is unavailable.</audio><p className="consent-quote">{part.mimeType} · {part.durationMs} ms · {part.byteLength} bytes</p></>}</section>
-          ))}
+          ) : request.payloadPreview.parts.map((part, index) => {
+            const partLanguage = part.language ? getLanguage(part.language) : undefined
+            return (
+              <section key={`${part.kind}-${index}`}>
+                <h3>{part.label}</h3>
+                {part.text && <p className="consent-quote" dir={partLanguage?.direction} lang={partLanguage?.code}>{part.text}</p>}
+                {part.previewUrl && <><audio controls preload="metadata" src={part.previewUrl}>Audio preview is unavailable.</audio><p className="consent-quote">{part.mimeType} · {part.durationMs} ms · {part.byteLength} bytes</p></>}
+              </section>
+            )
+          })}
         </div>
         <p className="consent-warning">This is a one-time decision for this task. The API key remains session-only, and the service worker does not cache this request or response.</p>
         <div className="consent-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>Keep local-only</button><button className="button button--primary" type="button" onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? 'Sending…' : 'Consent and evaluate'} <span aria-hidden="true">→</span></button></div>
@@ -180,21 +207,48 @@ export default function App() {
   const [examEvaluationProgress, setExamEvaluationProgress] = useState<{ completed: number; total: number } | undefined>()
   const [examEvaluationNotice, setExamEvaluationNotice] = useState<string | undefined>()
   const [pendingExamConsent, setPendingExamConsent] = useState<PendingExamConsent | undefined>()
+  const [examRecoveryStatus, setExamRecoveryStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [localProviderEpoch, setLocalProviderEpoch] = useState(0)
+  const [initialPracticeMode, setInitialPracticeMode] = useState<'written' | 'news'>('written')
   const dataLoadGeneration = useRef(0)
+  const localProviderEpochRef = useRef(0)
+  const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number) => void>(() => undefined)
+  const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
 
-  const handleLocalProgress = (progress: LocalModelProgress) => {
+  const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number) => {
+    if (localProviderEpochRef.current !== providerEpoch) {
+      return
+    }
     setLocalProgress(progress)
     if (progress.status === 'ready' || progress.status === 'unavailable') {
       setSettings((current) => {
+        if (localProviderEpochRef.current !== providerEpoch) {
+          return current
+        }
         const nextSettings = { ...current, localModelStatus: progress.status }
-        void database.saveSettings(nextSettings)
+        void trackPersistence(database.saveSettings(nextSettings)).catch(() => undefined)
         return nextSettings
       })
     }
   }
 
-  const localProvider = useMemo(() => createLocalProvider(DEFAULT_LOCAL_MODEL_ID, handleLocalProgress), [])
+  localProgressHandlerRef.current = handleLocalProgress
+  const localProvider = useMemo(() => {
+    const providerEpoch = localProviderEpoch
+    return createLocalProvider(DEFAULT_LOCAL_MODEL_ID, (progress) => {
+      if (localProviderEpochRef.current === providerEpoch) {
+        localProgressHandlerRef.current(progress, providerEpoch)
+      }
+    })
+  }, [localProviderEpoch])
+
+  function trackPersistence<T>(operation: Promise<T>): Promise<T> {
+    let tracked: Promise<T>
+    tracked = operation.finally(() => pendingPersistenceRef.current.delete(tracked))
+    pendingPersistenceRef.current.add(tracked)
+    return tracked
+  }
 
   useEffect(() => () => localProvider.dispose(), [localProvider])
 
@@ -261,8 +315,14 @@ export default function App() {
     void database.getActiveExamRun().then((run) => {
       if (dataLoadGeneration.current === loadGeneration) {
         setActiveExamRun(run)
+        setExamRecoveryStatus('ready')
       }
-    }).catch(() => undefined)
+    }).catch(() => {
+      if (dataLoadGeneration.current === loadGeneration) {
+        setExamRecoveryStatus('failed')
+        setExamEvaluationNotice('Saved exam recovery could not be checked. Reload this page before starting another exam.')
+      }
+    })
     void database.listExamResults().then((results) => {
       if (dataLoadGeneration.current === loadGeneration) {
         setRecentExamResults(results)
@@ -290,7 +350,7 @@ export default function App() {
 
   function updateSettings(nextSettings: StoredSettings) {
     setSettings(nextSettings)
-    void database.saveSettings(nextSettings)
+    void trackPersistence(database.saveSettings(nextSettings)).catch(() => undefined)
   }
 
   async function prepareLocalModel() {
@@ -307,11 +367,15 @@ export default function App() {
 
   async function clearLocalData() {
     dataLoadGeneration.current += 1
+    const nextProviderEpoch = localProviderEpochRef.current + 1
+    localProviderEpochRef.current = nextProviderEpoch
+    localProvider.dispose()
     setIsEvaluating(false)
     setIsEvaluatingExam(false)
     setExamEvaluationProgress(undefined)
+    await Promise.allSettled([...pendingPersistenceRef.current])
     await database.clearData()
-    localProvider.dispose()
+    setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
     setSettings(DEFAULT_SETTINGS)
     setCloudDraft({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
@@ -323,6 +387,7 @@ export default function App() {
     setActiveExamResult(undefined)
     setSelectedExamProfile(undefined)
     setExamView('catalog')
+    setExamRecoveryStatus('ready')
     setExamEvaluationNotice(undefined)
     setPendingExamConsent(undefined)
     setPendingInterpretingConsent(undefined)
@@ -330,6 +395,12 @@ export default function App() {
   }
 
   function handleSelectExamProfile(profile: ExamProfile) {
+    if (examRecoveryStatus !== 'ready') {
+      setExamEvaluationNotice(examRecoveryStatus === 'loading'
+        ? 'Checking for a saved exam attempt. Start will be available when recovery finishes.'
+        : 'Saved exam recovery could not be checked. Reload this page before starting another exam.')
+      return
+    }
     if (activeExamRun) {
       setExamEvaluationNotice('An unfinished exam is already saved. Resume it or discard it before starting a new simulation.')
       setExamView('catalog')
@@ -368,6 +439,20 @@ export default function App() {
     setCurrentPage('exam')
   }
 
+  function navigateToPage(page: Page) {
+    if (page === 'practice') {
+      setInitialPracticeMode('written')
+    }
+    if (page === 'exam') {
+      setExamView('catalog')
+      setSelectedExamProfile(undefined)
+      setActiveExamResult(undefined)
+      setExamEvaluationNotice(undefined)
+      setPendingExamConsent(undefined)
+    }
+    setCurrentPage(page)
+  }
+
   async function handleDiscardExamRun(runId: string) {
     await database.deleteExamRun(runId)
     setActiveExamRun(undefined)
@@ -398,7 +483,7 @@ export default function App() {
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
-      const storedResult = await database.completeExamRun(completedRun.id, result)
+      const storedResult = await trackPersistence(database.completeExamRun(completedRun.id, result))
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -595,7 +680,7 @@ export default function App() {
     setFeedback(nextFeedback)
     setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
     try {
-      await database.saveSession(session)
+      await trackPersistence(database.saveSession(session))
       if (dataLoadGeneration.current !== generation) {
         return
       }
@@ -614,27 +699,7 @@ export default function App() {
     generation: number,
   ) {
     const sessionId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `interpreting-session-${Date.now()}`
-    let sourceExercise: InterpretingExerciseSnapshot | undefined
-    if (input.sourceRecording) {
-      const { audioUrl: _audioUrl, ...snapshot } = input.exercise
-      sourceExercise = snapshot
-    }
-    const session: InterpretingSessionRecord = {
-      id: sessionId,
-      createdAt: new Date().toISOString(),
-      exerciseId: input.exercise.id,
-      mode: 'interpreting',
-      sourceLanguage: input.exercise.sourceLanguage,
-      targetLanguage: input.exercise.targetLanguage,
-      interpretingMode: input.interpretingMode,
-      responseSegments: input.responseSegments,
-      recordingIds: input.recordings.map((recording) => recording.id),
-      sourceRecordingId: input.sourceRecording?.id,
-      sourceExercise,
-      deliveryAnalysis: input.deliveryAnalysis,
-      feedback: nextFeedback,
-      evaluator: provider,
-    }
+    const { audioUrl: _audioUrl, ...sourceExercise } = input.exercise
     setActiveInterpretingInput(input)
     setInterpretingFeedback(nextFeedback)
     setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : provider === 'local' ? 'Local' : 'Manual'} interpreting feedback is ready. Practice estimates are saved only on this device.`)
@@ -642,9 +707,29 @@ export default function App() {
       return
     }
     try {
-      const recordings = input.sourceRecording ? [...input.recordings, input.sourceRecording] : input.recordings
-      await Promise.all(recordings.map((recording: AudioRecordingRecord) => database.saveAudioRecording({ ...recording, sessionId })))
-      await database.saveInterpretingSession(session)
+      const sourceRecording = input.sourceRecording ?? await snapshotBundledSourceAudio(input.exercise)
+      if (dataLoadGeneration.current !== generation) {
+        return
+      }
+      const session: InterpretingSessionRecord = {
+        id: sessionId,
+        createdAt: new Date().toISOString(),
+        exerciseId: input.exercise.id,
+        mode: 'interpreting',
+        sourceLanguage: input.exercise.sourceLanguage,
+        targetLanguage: input.exercise.targetLanguage,
+        interpretingMode: input.interpretingMode,
+        responseSegments: input.responseSegments,
+        recordingIds: input.recordings.map((recording) => recording.id),
+        sourceRecordingId: sourceRecording.id,
+        sourceExercise,
+        exerciseSnapshotVersion: 1,
+        deliveryAnalysis: input.deliveryAnalysis,
+        feedback: nextFeedback,
+        evaluator: provider,
+      }
+      const recordings = [...input.recordings, sourceRecording].map((recording) => ({ ...recording, sessionId }))
+      await trackPersistence(database.saveInterpretingSessionWithRecordings(session, recordings))
       if (dataLoadGeneration.current !== generation) {
         return
       }
@@ -657,10 +742,16 @@ export default function App() {
   }
 
   async function handleOpenInterpretingSession(session: InterpretingSessionRecord) {
-    let exercise = getInterpretingExerciseById(session.exerciseId)
+    const bundledExercise = getInterpretingExerciseById(session.exerciseId)
+    if (!session.exerciseSnapshotVersion && !session.sourceExercise && !session.sourceRecordingId) {
+      setPracticeNotice('This older saved take has no immutable source-audio snapshot, so reopening it could mismatch the original evidence. Start a new take instead.')
+      setCurrentPage('progress')
+      return
+    }
+    let exercise = bundledExercise
     let sourceRecording: AudioRecordingRecord | undefined
     let sourceUrl: string | undefined
-    if (session.sourceRecordingId && session.sourceExercise) {
+    if (session.sourceRecordingId) {
       sourceRecording = await database.getAudioRecording(session.sourceRecordingId)
       if (!sourceRecording) {
         setPracticeNotice('This saved local source audio is no longer available in this browser.')
@@ -668,7 +759,11 @@ export default function App() {
         return
       }
       sourceUrl = URL.createObjectURL(sourceRecording.blob)
-      exercise = { ...session.sourceExercise, audioUrl: sourceUrl }
+      if (session.sourceExercise) {
+        exercise = { ...session.sourceExercise, audioUrl: sourceUrl }
+      }
+    } else if (session.sourceExercise && bundledExercise) {
+      exercise = { ...session.sourceExercise, audioUrl: bundledExercise.audioUrl }
     }
     if (!exercise) {
       setPracticeNotice('This saved interpreting exercise is no longer available in the installed catalog.')
@@ -843,7 +938,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {!isTakingExam && !isTakingInterpreting && <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></aside>}
+      {!isTakingExam && !isTakingInterpreting && <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></aside>}
       <main className="main-content">
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
@@ -864,20 +959,15 @@ export default function App() {
             activeExamRun={activeExamRun}
             recentExamResults={recentExamResults}
             onStartInterpreting={() => { setPracticeSetupMode('interpreting'); setCurrentPage('practice') }}
-            onNavigate={(page) => {
-              if (page === 'exam' && activeExamRun) {
-                handleResumeExamRun(activeExamRun)
-              } else {
-                setCurrentPage(page)
-              }
-            }}
+            onStartNews={() => { setPracticeSetupMode('written'); setInitialPracticeMode('news'); setCurrentPage('practice') }}
+            onNavigate={navigateToPage}
           />
         )}
-        {currentPage === 'practice' && !activeExercise && !activeInterpretingExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
+        {currentPage === 'practice' && !activeExercise && !activeInterpretingExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'practice' && !activeExercise && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
-        {currentPage === 'practice' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} />}
+        {currentPage === 'practice' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} />}
         {currentPage === 'practice' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'exam' && !isEvaluatingExam && examEvaluationNotice && (
           <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>
@@ -915,6 +1005,7 @@ export default function App() {
             onSubmitRun={handleSubmitExamRun}
             onCancel={handleCancelExamRun}
             onPersistenceError={handleExamPersistenceError}
+            isEvaluationPaused={Boolean(pendingExamConsent)}
           />
         )}
         {currentPage === 'exam' && !isEvaluatingExam && examView === 'results' && activeExamResult && (
@@ -928,6 +1019,7 @@ export default function App() {
           <ExamCatalog
             profiles={examProfiles}
             activeRun={activeExamRun}
+            recoveryStatus={examRecoveryStatus}
             onSelectProfile={handleSelectExamProfile}
             onResumeRun={handleResumeExamRun}
             onDiscardRun={handleDiscardExamRun}
@@ -938,21 +1030,16 @@ export default function App() {
             sessions={recentSessions}
             interpretingSessions={recentInterpretingSessions}
             examResults={recentExamResults}
-            onStartPractice={() => setCurrentPage('practice')}
+            onStartPractice={() => navigateToPage('practice')}
             onStartInterpreting={() => { setPracticeSetupMode('interpreting'); setCurrentPage('practice') }}
             onOpenInterpretingSession={(session) => void handleOpenInterpretingSession(session).catch(() => { setPracticeNotice('This saved interpreting session could not be opened from local storage.'); setCurrentPage('progress') })}
             onOpenExamResult={(result) => void handleOpenExamResult(result)}
-            onStartExam={() => {
-              setExamView('catalog')
-              setSelectedExamProfile(undefined)
-              setActiveExamResult(undefined)
-              setCurrentPage('exam')
-            }}
+            onStartExam={() => navigateToPage('exam')}
           />
         )}
         {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
       </main>
-      {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>}
+      {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}
       {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
       {pendingExamConsent && (

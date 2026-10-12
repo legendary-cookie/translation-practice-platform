@@ -51,17 +51,21 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
   let stream: MediaStream | undefined
   let recorder: MediaRecorder | undefined
   let chunks: Blob[] = []
-  let startedAt = 0
+  let activeStartedAt = 0
+  let accumulatedDurationMs = 0
   let segmentIds: string[] = []
   let listeners = new Set<RecorderListener>()
   let state: RecorderState = 'idle'
   let error: string | undefined
   let levelTimer: ReturnType<typeof setInterval> | undefined
   let liveMonitor: LiveInputMonitor | undefined
+  let permissionRequest: Promise<void> | undefined
+  let startInProgress = false
+  let disposed = false
   const replayUrls = new Set<string>()
 
   const notify = () => {
-    const elapsedMs = startedAt === 0 ? 0 : Math.max(0, Date.now() - startedAt)
+    const elapsedMs = accumulatedDurationMs + (state === 'recording' && activeStartedAt > 0 ? Math.max(0, Date.now() - activeStartedAt) : 0)
     listeners.forEach((listener) => listener({ status: state, elapsedMs, inputLevel: state === 'recording' ? (liveMonitor?.getLevel() ?? 0) : 0, error }))
   }
 
@@ -86,7 +90,12 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('This browser does not expose microphone recording. You can still review the source transcript manually.')
     }
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const requestedStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (disposed) {
+      requestedStream.getTracks().forEach((track) => track.stop())
+      throw new Error('This recording workspace has closed. The microphone was released.')
+    }
+    stream = requestedStream
   }
 
   return {
@@ -97,71 +106,107 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
       state = 'requesting'
       error = undefined
       notify()
-      try {
-        await openStream()
-        state = 'idle'
-        notify()
-      } catch (caught) {
-        state = 'error'
-        error = readableMicrophoneError(caught)
-        notify()
-        throw new Error(error)
-      }
+      if (permissionRequest) return permissionRequest
+      permissionRequest = (async () => {
+        try {
+          await openStream()
+          state = 'idle'
+          notify()
+        } catch (caught) {
+          state = 'error'
+          error = readableMicrophoneError(caught)
+          notify()
+          throw new Error(error)
+        } finally {
+          permissionRequest = undefined
+        }
+      })()
+      return permissionRequest
     },
 
     async start(segmentId, mode) {
-      if (typeof MediaRecorder === 'undefined') {
-        state = 'error'
-        error = 'This browser does not support MediaRecorder.'
-        notify()
-        throw new Error(error)
+      if (startInProgress || state === 'requesting') {
+        throw new Error('Microphone startup is already in progress.')
       }
-      if (!stream) {
-        await this.requestPermission()
+      if (disposed) {
+        throw new Error('This recording workspace has closed.')
       }
-      if (!stream) {
-        throw new Error('Microphone permission is required before recording.')
-      }
-      if (recorder && recorder.state !== 'inactive') {
-        throw new Error('A recording is already in progress.')
-      }
-      chunks = []
-      segmentIds = segmentId ? [segmentId] : []
-      error = undefined
-      const mimeType = chooseMimeType()
+      startInProgress = true
       try {
-        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
-      } catch (caught) {
-        state = 'error'
-        error = readableMicrophoneError(caught)
-        notify()
-        throw new Error(error)
-      }
-      recorder.addEventListener('dataavailable', (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data)
+        if (typeof MediaRecorder === 'undefined') {
+          state = 'error'
+          error = 'This browser does not support MediaRecorder.'
+          notify()
+          throw new Error(error)
         }
-      })
-      recorder.addEventListener('error', (event) => {
-        state = 'error'
-        error = event.error?.message ?? 'The recording failed.'
+        if (!stream) {
+          await this.requestPermission()
+        }
+        if (disposed) {
+          throw new Error('This recording workspace has closed.')
+        }
+        if (!stream) {
+          throw new Error('Microphone permission is required before recording.')
+        }
+        if (recorder && recorder.state !== 'inactive') {
+          throw new Error('A recording is already in progress.')
+        }
+        chunks = []
+        segmentIds = segmentId ? [segmentId] : []
+        error = undefined
+        const mimeType = chooseMimeType()
+        try {
+          recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+        } catch (caught) {
+          state = 'error'
+          error = readableMicrophoneError(caught)
+          releaseStream()
+          notify()
+          throw new Error(error)
+        }
+        recorder.addEventListener('dataavailable', (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data)
+          }
+        })
+        recorder.addEventListener('error', (event) => {
+          activeStartedAt = 0
+          clearLevelTimer()
+          releaseStream()
+          state = 'error'
+          error = event.error?.message ?? 'The recording failed.'
+          notify()
+        })
+        accumulatedDurationMs = 0
+        activeStartedAt = Date.now()
+        liveMonitor = createLiveInputMonitor(stream)
+        state = 'recording'
+        try {
+          recorder.start()
+        } catch (caught) {
+          activeStartedAt = 0
+          releaseStream()
+          state = 'error'
+          error = readableMicrophoneError(caught)
+          notify()
+          throw new Error(error)
+        }
+        levelTimer = setInterval(notify, 250)
         notify()
-      })
-      startedAt = Date.now()
-      liveMonitor = createLiveInputMonitor(stream)
-      state = 'recording'
-      recorder.start()
-      levelTimer = setInterval(notify, 250)
-      notify()
-      if (mode === 'simultaneous') {
-        // The continuous take intentionally keeps segmentIds empty until the workspace adds its authored boundaries.
-        segmentIds = []
+        if (mode === 'simultaneous') {
+          // The continuous take intentionally keeps segmentIds empty until the workspace adds its authored boundaries.
+          segmentIds = []
+        }
+      } finally {
+        startInProgress = false
       }
     },
 
     pause() {
       if (recorder?.state === 'recording') {
         recorder.pause()
+        accumulatedDurationMs += Math.max(0, Date.now() - activeStartedAt)
+        activeStartedAt = 0
         state = 'paused'
         notify()
       }
@@ -170,6 +215,7 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
     resume() {
       if (recorder?.state === 'paused') {
         recorder.resume()
+        activeStartedAt = Date.now()
         state = 'recording'
         notify()
       }
@@ -183,12 +229,16 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
         notify()
         return Promise.resolve(undefined)
       }
+      if (recorder.state === 'recording' && activeStartedAt > 0) {
+        accumulatedDurationMs += Math.max(0, Date.now() - activeStartedAt)
+        activeStartedAt = 0
+      }
       state = 'stopping'
       notify()
       return new Promise((resolve, reject) => {
         const activeRecorder = recorder as MediaRecorder
         activeRecorder.addEventListener('stop', () => {
-          const durationMs = Math.max(0, Date.now() - startedAt)
+          const durationMs = accumulatedDurationMs
           const mimeType = activeRecorder.mimeType || chunks[0]?.type || 'audio/webm'
           const blob = new Blob(chunks, { type: mimeType })
           const result: AudioRecordingRecord = {
@@ -203,6 +253,8 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
           }
           recorder = undefined
           chunks = []
+          activeStartedAt = 0
+          accumulatedDurationMs = 0
           releaseStream()
           clearLevelTimer()
           state = 'idle'
@@ -210,6 +262,8 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
           resolve(result)
         }, { once: true })
         activeRecorder.addEventListener('error', () => {
+          activeStartedAt = 0
+          accumulatedDurationMs = 0
           clearLevelTimer()
           releaseStream()
           state = 'error'
@@ -217,7 +271,18 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
           notify()
           reject(new Error(error))
         }, { once: true })
-        activeRecorder.stop()
+        try {
+          activeRecorder.stop()
+        } catch (caught) {
+          activeStartedAt = 0
+          accumulatedDurationMs = 0
+          clearLevelTimer()
+          releaseStream()
+          state = 'error'
+          error = readableMicrophoneError(caught)
+          notify()
+          reject(new Error(error))
+        }
       })
     },
 
@@ -244,8 +309,13 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
     },
 
     dispose() {
+      disposed = true
       if (recorder && recorder.state !== 'inactive') {
-        recorder.stop()
+        try {
+          recorder.stop()
+        } catch {
+          // Stream tracks are stopped below even if finalizing the browser recorder fails.
+        }
       }
       recorder = undefined
       releaseStream()

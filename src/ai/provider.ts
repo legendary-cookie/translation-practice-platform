@@ -1,4 +1,4 @@
-import type { EvaluationFeedback, EvaluationMode, EvaluationRequest, InterpretingExercise, Exercise, TranslationFeedback } from '../domain/types'
+import type { EvaluationFeedback, EvaluationMode, EvaluationRequest, InterpretingExercise, InterpretingFeedback, Exercise, LanguageCode, TranslationFeedback } from '../domain/types'
 import { getLocalEvaluationDecision, type CapabilityAssessment } from './capability'
 
 export interface EvaluationProvider {
@@ -24,6 +24,7 @@ export type CloudConsentRequest = {
     parts: Array<{
       kind: 'source-transcript' | 'learner-transcript' | 'learner-audio' | 'delivery-metrics'
       label: string
+      language?: LanguageCode
       text?: string
       mimeType?: string
       durationMs?: number
@@ -44,8 +45,8 @@ export function isTranslationFeedback(feedback: EvaluationFeedback): feedback is
   return 'dimensions' in feedback
 }
 
-export function isInterpretingFeedback(feedback: EvaluationFeedback): feedback is Extract<EvaluationFeedback, { deliveryScores: unknown }> {
-  return 'deliveryScores' in feedback
+export function isInterpretingFeedback(feedback: EvaluationFeedback): feedback is InterpretingFeedback {
+  return 'contentScoreStatus' in feedback
 }
 
 export type EvaluationRouter = {
@@ -123,8 +124,8 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
             { kind: 'learner-transcript', label: 'Exact learner answer', text: input.learnerAnswer },
           ]
         : [
-            { kind: 'source-transcript', label: 'Exact source segment transcripts', text: input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n') },
-            { kind: 'learner-transcript', label: 'Learner transcripts with recognition status', text: input.responseSegments.map((segment) => `${segment.id} (${segment.recognitionStatus}): ${segment.transcript || '[empty]'}`).join('\n') },
+            { kind: 'source-transcript', label: 'Exact source segment transcripts', language: input.exercise.sourceLanguage, text: input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n') },
+            { kind: 'learner-transcript', label: 'Learner transcripts with recognition status', language: input.exercise.targetLanguage, text: input.responseSegments.map((segment) => `${segment.id} (${segment.recognitionStatus}): ${segment.transcript || '[empty]'}`).join('\n') },
             ...input.recordings.map((recording) => {
               const previewUrl = URL.createObjectURL(recording.blob)
               previewUrls.push(previewUrl)

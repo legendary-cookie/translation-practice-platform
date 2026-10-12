@@ -187,7 +187,7 @@ const interpretingCategories: InterpretingAnnotationCategory[] = [
   'hesitation',
 ]
 
-export type InterpretingFeedbackValidationContext = Pick<InterpretingEvaluationInput, 'exercise' | 'responseSegments' | 'deliveryAnalysis'>
+export type InterpretingFeedbackValidationContext = Pick<InterpretingEvaluationInput, 'exercise' | 'responseSegments' | 'deliveryAnalysis' | 'recordings'>
 
 function normalizeConfidence(value: unknown, fieldName: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
@@ -248,11 +248,10 @@ function normalizeInterpretingAnnotation(
     throw new FeedbackValidationError('Interpreting uncertain evidence has an inconsistent evidence status.')
   }
 
-  const analysisConfidence = responseSegment
-    ? context.deliveryAnalysis.length > 0
-      ? Math.min(...context.deliveryAnalysis.map((analysis) => analysis.analysisConfidence))
-      : undefined
-    : undefined
+  const matchingAnalysis = responseSegment?.recordingId
+    ? context.deliveryAnalysis.find((analysis) => analysis.recordingId === responseSegment.recordingId)
+    : context.deliveryAnalysis.length === 1 ? context.deliveryAnalysis[0] : undefined
+  const analysisConfidence = matchingAnalysis?.analysisConfidence
   const lowRecognitionConfidence = responseSegment !== undefined && (
     responseSegment.recognitionStatus !== 'verified'
     || (responseSegment.recognitionConfidence !== undefined && responseSegment.recognitionConfidence < 0.65)
@@ -307,7 +306,19 @@ export function validateInterpretingFeedback(
     ? normalizeInterpretingScores(rawContentScores, 'contentScores', ['meaningTransfer', 'omissions', 'additionsMistranslations', 'terminology']) as InterpretingContentScores
     : undefined
   const contentScoreStatus: InterpretingFeedback['contentScoreStatus'] = allResponsesVerified && contentScoreValues ? 'complete' : 'incomplete'
-  const deliveryScores = normalizeInterpretingScores(raw.deliveryScores ?? raw.delivery, 'deliveryScores', ['fluency', 'pacing', 'hesitation']) as InterpretingDeliveryScores
+  const recordingsById = new Map(context.recordings.map((recording) => [recording.id, recording]))
+  const hasReliableDeliveryEvidence = context.recordings.length > 0
+    && context.responseSegments.length > 0
+    && context.responseSegments.every((segment) => {
+      if (!segment.recordingId || !recordingsById.has(segment.recordingId)) return false
+      const analysis = context.deliveryAnalysis.find((candidate) => candidate.recordingId === segment.recordingId)
+        ?? (context.recordings.length === 1 && context.deliveryAnalysis.length === 1 && !context.deliveryAnalysis[0].recordingId ? context.deliveryAnalysis[0] : undefined)
+      return analysis !== undefined && analysis.analysisConfidence >= 0.5
+    })
+  const deliveryScores = hasReliableDeliveryEvidence
+    ? normalizeInterpretingScores(raw.deliveryScores ?? raw.delivery, 'deliveryScores', ['fluency', 'pacing', 'hesitation']) as InterpretingDeliveryScores
+    : undefined
+  const deliveryScoreStatus: InterpretingFeedback['deliveryScoreStatus'] = deliveryScores ? 'complete' : 'incomplete'
 
   const normalizedAnnotations = raw.issues.map((issue) => normalizeInterpretingAnnotation(issue, context))
   const uncertainEvidence = Array.isArray(raw.uncertainEvidence)
@@ -336,6 +347,7 @@ export function validateInterpretingFeedback(
     contentScores: contentScoreValues,
     contentScoreStatus,
     deliveryScores,
+    deliveryScoreStatus,
     overallScore,
     summary: requiredText(raw.summary, 'summary'),
     strengths: normalizeStringList(raw.strengths, 'strengths'),

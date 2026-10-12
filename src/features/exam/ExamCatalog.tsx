@@ -12,6 +12,7 @@ import {
 export type ExamCatalogProps = {
   profiles: ExamProfile[]
   activeRun?: ActiveExamRun
+  recoveryStatus?: 'loading' | 'ready' | 'failed'
   onSelectProfile: (profile: ExamProfile) => void
   onResumeRun: (run: ActiveExamRun) => void
   onDiscardRun: (runId: string) => void
@@ -20,6 +21,7 @@ export type ExamCatalogProps = {
 export function ExamCatalog({
   profiles,
   activeRun,
+  recoveryStatus = 'ready',
   onSelectProfile,
   onResumeRun,
   onDiscardRun,
@@ -84,6 +86,13 @@ export function ExamCatalog({
       )}
 
       {/* Official Practice Estimate Disclaimer */}
+      {recoveryStatus !== 'ready' && (
+        <section className="notice-banner" role={recoveryStatus === 'loading' ? 'status' : 'alert'} style={{ marginBottom: '1.5rem' }}>
+          {recoveryStatus === 'loading'
+            ? 'Checking this device for a saved exam attempt. New simulations will be available when recovery finishes.'
+            : 'Saved exam recovery could not be checked. Reload this page before starting another simulation.'}
+        </section>
+      )}
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
         <strong>✦ Mandatory Practice Notice: </strong>
         <span>
@@ -289,6 +298,7 @@ export function ExamCatalog({
                 <button
                   className="button button--primary"
                   type="button"
+                  disabled={recoveryStatus !== 'ready' || Boolean(activeRun)}
                   style={{ width: '100%' }}
                   onClick={() => onSelectProfile(profile)}
                 >

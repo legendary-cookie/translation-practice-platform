@@ -4,6 +4,7 @@ import {
   advanceSection,
   createActiveExamRun,
   decrementTimers,
+  advanceSectionAndForfeitTime,
   isLastSection,
 } from '../../domain/exam'
 import { database } from '../../storage/database'
@@ -17,6 +18,7 @@ export type ExamRunnerProps = {
   onSubmitRun: (run: ActiveExamRun) => void | Promise<void>
   onCancel: () => void
   onPersistenceError?: (message: string) => void
+  isEvaluationPaused?: boolean
 }
 
 async function saveAndSubmitRun(
@@ -46,6 +48,9 @@ async function saveAndSubmitRun(
 }
 
 function reconcilePersistedRun(run: ActiveExamRun, profile: ExamProfile): ActiveExamRun {
+  if (run.evaluationPausedAt) {
+    return run
+  }
   const savedAt = Date.parse(run.lastSavedAt)
   const elapsedSinceSave = Number.isFinite(savedAt)
     ? Math.max(0, Math.floor((Date.now() - savedAt) / 1000))
@@ -72,6 +77,7 @@ export function ExamRunner({
   onSubmitRun,
   onCancel,
   onPersistenceError,
+  isEvaluationPaused = false,
 }: ExamRunnerProps) {
   const [run, setRun] = useState<ActiveExamRun>(() => initialRun ? reconcilePersistedRun(initialRun, profile) : createActiveExamRun(profile))
   const [showAidsModal, setShowAidsModal] = useState(false)
@@ -88,8 +94,10 @@ export function ExamRunner({
   const reportedPersistenceFailuresRef = useRef(new Set<string>())
   const onSubmitRunRef = useRef(onSubmitRun)
   const onPersistenceErrorRef = useRef(onPersistenceError)
+  const isEvaluationPausedRef = useRef(isEvaluationPaused)
   onSubmitRunRef.current = onSubmitRun
   onPersistenceErrorRef.current = onPersistenceError
+  isEvaluationPausedRef.current = isEvaluationPaused
 
   const reportPersistenceError = (operation: string, error: unknown) => {
     const reason = error instanceof Error && error.message ? ` (${error.message})` : ''
@@ -127,11 +135,38 @@ export function ExamRunner({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
+  useEffect(() => {
+    const persistLatestRun = (operation: string) => {
+      const runToSave = runRef.current
+      void database.saveExamRun(runToSave).then(() => {
+        if (runRef.current === runToSave) {
+          isDirtyRef.current = false
+        }
+      }).catch((error) => reportPersistenceError(operation, error))
+    }
+    const handlePageHide = () => persistLatestRun('The page-exit exam save')
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistLatestRun('The background exam save')
+      }
+    }
+    window.addEventListener('pagehide', handlePageHide)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
   // Timer loop with wall-clock diffing
   useEffect(() => {
     lastTickTime.current = Date.now()
 
     const intervalId = window.setInterval(() => {
+      if (isEvaluationPausedRef.current || runRef.current.evaluationPausedAt) {
+        lastTickTime.current = Date.now()
+        return
+      }
       if (runRef.current.overallRemainingSeconds <= 0 && runRef.current.submissionAttemptedAt) {
         stopTimer()
         return
@@ -245,6 +280,22 @@ export function ExamRunner({
     setRun(updatedRun)
   }
 
+  const handleAnswerBlur = () => {
+    if (submissionStartedRef.current) {
+      return
+    }
+    const runToSave = runRef.current
+    isDirtyRef.current = true
+    void database.saveExamRun(runToSave).then(() => {
+      if (runRef.current === runToSave) {
+        isDirtyRef.current = false
+      }
+    }).catch((error) => {
+      isDirtyRef.current = true
+      reportPersistenceError('The answer-blur exam save', error)
+    })
+  }
+
   const handleNextSection = () => {
     if (submissionStartedRef.current) {
       return
@@ -253,7 +304,7 @@ export function ExamRunner({
     if (isLastSection(currentRun, profile)) {
       setShowSubmitModal(true)
     } else {
-      const nextRun = advanceSection(currentRun, profile)
+      const nextRun = advanceSectionAndForfeitTime(currentRun, profile)
       runRef.current = nextRun
       isDirtyRef.current = true
       setRun(nextRun)
@@ -270,9 +321,15 @@ export function ExamRunner({
     submissionStartedRef.current = true
     setShowSubmitModal(false)
     const currentRun = runRef.current
-    const submissionRun = currentRun.overallRemainingSeconds <= 0 && !currentRun.submissionAttemptedAt
-      ? { ...currentRun, submissionAttemptedAt: new Date().toISOString() }
-      : currentRun
+    const now = new Date().toISOString()
+    const submissionRun = {
+      ...currentRun,
+      lastSavedAt: now,
+      evaluationPausedAt: now,
+      ...(currentRun.overallRemainingSeconds <= 0 && !currentRun.submissionAttemptedAt
+        ? { submissionAttemptedAt: now }
+        : {}),
+    }
     runRef.current = submissionRun
     setRun(submissionRun)
     isDirtyRef.current = false
@@ -281,11 +338,20 @@ export function ExamRunner({
   }
 
   const handleSaveAndExit = async () => {
+    const previousRun = runRef.current
     isDirtyRef.current = false
+    const exitingRun = {
+      ...previousRun,
+      evaluationPausedAt: undefined,
+      lastSavedAt: new Date().toISOString(),
+    }
+    runRef.current = exitingRun
     try {
-      await database.saveExamRun(runRef.current)
+      await database.saveExamRun(exitingRun)
       onCancel()
     } catch (error) {
+      runRef.current = previousRun
+      isDirtyRef.current = true
       isDirtyRef.current = true
       reportPersistenceError('The save-and-exit exam state', error)
     }
@@ -323,9 +389,11 @@ export function ExamRunner({
         section={currentSection}
         answers={currentSectionAnswers}
         onAnswerChange={handleAnswerChange}
+        onAnswerBlur={handleAnswerBlur}
         onNextSection={handleNextSection}
         isLastSection={isLastSection(run, profile)}
         isLocked={isCurrentSectionLocked}
+        unusedSectionSeconds={currentSectionSeconds}
       />
 
       {/* Allowed Aids Policy Modal */}

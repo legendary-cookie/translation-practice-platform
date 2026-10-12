@@ -4,8 +4,8 @@ import {
   prebuiltAppConfig,
   type WebWorkerMLCEngine,
 } from '@mlc-ai/web-llm'
-import { FeedbackValidationError, validateFeedback } from '../domain/scoring'
-import { DEFAULT_LOCAL_MODEL_ID, type EvaluationInput, type TranslationFeedback } from '../domain/types'
+import { FeedbackValidationError, validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
+import { DEFAULT_LOCAL_MODEL_ID, type EvaluationFeedback, type EvaluationRequest } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { parseJsonResponse, ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
 
@@ -300,7 +300,7 @@ export function createLocalProvider(
       }
     },
 
-    async evaluate(input: EvaluationInput): Promise<TranslationFeedback> {
+    async evaluate(input: EvaluationRequest): Promise<EvaluationFeedback> {
       if (status !== 'ready' || !enginePromise) {
         throw new ProviderUnavailableError(errorMessage ?? 'The local model is not ready.')
       }
@@ -315,8 +315,12 @@ export function createLocalProvider(
         const attemptStartedAt = performance.now()
         logLocalEvent('evaluation.start', {
           attempt,
-          sourceCharacters: input.exercise.sourceText.length,
-          answerCharacters: input.learnerAnswer.length,
+          sourceCharacters: 'learnerAnswer' in input
+            ? input.exercise.sourceText.length
+            : input.exercise.segments.reduce((total, segment) => total + segment.transcript.length, 0),
+          answerCharacters: 'learnerAnswer' in input
+            ? input.learnerAnswer.length
+            : input.responseSegments.reduce((total, segment) => total + segment.transcript.length, 0),
           maxTokens: LOCAL_EVALUATION_MAX_TOKENS,
           responseFormat: 'prompt-only-json',
           thinking: false,
@@ -376,7 +380,9 @@ export function createLocalProvider(
             })
             throw error
           }
-          const feedback = validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
+          const feedback = 'learnerAnswer' in input
+            ? validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
+            : validateInterpretingFeedback(raw, input)
           logLocalEvent('evaluation.validated', { attempt, elapsedMs: Math.round(performance.now() - evaluationStartedAt) })
           return feedback
         } catch (error) {

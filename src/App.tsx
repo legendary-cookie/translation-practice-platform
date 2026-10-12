@@ -3,7 +3,7 @@ import { createCloudProvider } from './ai/cloud-provider'
 import { forgetLocalModelReady, hadLocalModelReady, type LocalModelProgress } from './ai/local-provider'
 import { createLocalProvider } from './ai/local-provider'
 import { createInitialCapability, detectDeviceCapability, type CapabilityAssessment } from './ai/capability'
-import { createEvaluationRouter, type CloudConsentRequest } from './ai/provider'
+import { createEvaluationRouter, isTranslationFeedback, type CloudConsentRequest } from './ai/provider'
 import { database, DEFAULT_SETTINGS } from './storage/database'
 import { Dashboard } from './features/dashboard/Dashboard'
 import { FeedbackPanel } from './features/practice/FeedbackPanel'
@@ -22,6 +22,7 @@ import type {
   ConsolidatedExamResult,
   ExamProfile,
   Exercise,
+  InterpretingExercise,
   SessionRecord,
   StoredSettings,
   TranslationFeedback,
@@ -96,7 +97,7 @@ function ConsentDialog({
   onCancel,
   onConfirm,
 }: {
-  exercise: Exercise
+  exercise: Exercise | InterpretingExercise
   request: CloudConsentRequest
   isSubmitting: boolean
   onCancel: () => void
@@ -104,6 +105,7 @@ function ConsentDialog({
 }) {
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
+  const isWritten = 'sourceText' in exercise
   return (
     <div className="consent-backdrop" role="presentation">
       <div className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-heading">
@@ -111,8 +113,14 @@ function ConsentDialog({
         <h2 id="consent-heading">Send this translation to the cloud?</h2>
         <p>The local evaluator is not available for this task. A cloud provider will receive exactly the source passage and your answer shown below, along with the rubric prompt.</p>
         <div className="consent-evidence">
-          <section><h3>Exact source · {sourceLanguage.nativeLabel}</h3><p className="consent-quote" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{request.sourceText}</p></section>
-          <section><h3>Exact answer · {targetLanguage.nativeLabel}</h3><p className="consent-quote" dir={targetLanguage.direction} lang={exercise.targetLanguage}>{request.learnerAnswer}</p></section>
+          {isWritten ? (
+            <>
+              <section><h3>Exact source · {sourceLanguage.nativeLabel}</h3><p className="consent-quote" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{request.sourceText}</p></section>
+              <section><h3>Exact answer · {targetLanguage.nativeLabel}</h3><p className="consent-quote" dir={targetLanguage.direction} lang={exercise.targetLanguage}>{request.learnerAnswer}</p></section>
+            </>
+          ) : request.payloadPreview.parts.map((part) => (
+            <section key={part.kind}><h3>{part.label}</h3><p className="consent-quote">{part.text ?? `${part.mimeType ?? 'audio'} · ${part.durationMs ?? 0} ms · ${part.byteLength ?? 0} bytes`}</p></section>
+          ))}
         </div>
         <p className="consent-warning">This is a one-time decision for this task. The API key remains session-only, and the service worker does not cache this request or response.</p>
         <div className="consent-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>Keep local-only</button><button className="button button--primary" type="button" onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? 'Sending…' : 'Consent and evaluate'} <span aria-hidden="true">→</span></button></div>
@@ -404,6 +412,10 @@ export default function App() {
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
+      if (!isTranslationFeedback(feedback)) {
+        setExamEvaluationNotice('The cloud provider returned interpreting feedback for an exam passage. No practice estimate was saved; the exam remains available for retry.')
+        return
+      }
       setPendingExamConsent(undefined)
       await handleSubmitExamRun(pending.run, {
         ...pending.approvedFeedback,
@@ -541,7 +553,11 @@ export default function App() {
         return
       }
       if (result.status === 'evaluated') {
-        await saveCompletedSession(result.feedback, result.provider, answer, elapsedSeconds, submissionGeneration)
+        if (isTranslationFeedback(result.feedback)) {
+          await saveCompletedSession(result.feedback, result.provider, answer, elapsedSeconds, submissionGeneration)
+        } else {
+          setPracticeNotice('The evaluator returned interpreting feedback for a written task. No practice estimate was saved.')
+        }
       } else if (result.status === 'needs-consent') {
         setPendingConsent({ request: result.request, answer, elapsedSeconds })
         setPracticeNotice(`${result.reason} Review the exact task before deciding whether to use cloud evaluation.`)
@@ -569,6 +585,10 @@ export default function App() {
     try {
       const nextFeedback = await pending.request.confirm()
       if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
+      if (!isTranslationFeedback(nextFeedback)) {
+        setPracticeNotice('The cloud provider returned interpreting feedback for a written task. No practice estimate was saved.')
         return
       }
       setPendingConsent(undefined)

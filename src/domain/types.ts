@@ -2,7 +2,8 @@ import type { LanguageCode } from './languages'
 
 export type { LanguageCode }
 
-export type PracticeMode = 'written' | 'news'
+export type WrittenPracticeMode = 'written' | 'news'
+export type PracticeMode = WrittenPracticeMode | 'interpreting'
 
 export type Difficulty = 'beginner' | 'intermediate' | 'advanced'
 
@@ -16,7 +17,7 @@ export type GlossaryEntry = {
 
 export type Exercise = {
   id: string
-  mode: PracticeMode
+  mode: WrittenPracticeMode
   sourceLanguage: LanguageCode
   targetLanguage: LanguageCode
   title: string
@@ -27,10 +28,36 @@ export type Exercise = {
   tags: ExerciseTag[]
 }
 
+export type InterpretingMode = 'consecutive' | 'simultaneous'
+
+export type AudioSegment = {
+  id: string
+  startMs: number
+  endMs: number
+  transcript: string
+}
+
+export type InterpretingExercise = {
+  id: string
+  mode: 'interpreting'
+  sourceLanguage: LanguageCode
+  targetLanguage: LanguageCode
+  title: string
+  topic: string
+  difficulty: Difficulty
+  audioUrl: string
+  audioMimeType: string
+  durationMs: number
+  segments: AudioSegment[]
+  glossary: GlossaryEntry[]
+  tags: ExerciseTag[]
+  rightsRecordId: string
+}
+
 export type EvaluationInput = {
   exercise: Exercise
   learnerAnswer: string
-  mode: PracticeMode
+  mode: WrittenPracticeMode
 }
 
 export type ScoreDimension = 'accuracy' | 'terminology' | 'grammar' | 'fluency' | 'taskStyle'
@@ -55,16 +82,136 @@ export type TranslationFeedback = {
   uncertainty: string
 }
 
+export type RecognitionStatus = 'verified' | 'uncertain' | 'unavailable'
+export type TranscriptSource = 'manual' | 'on-device'
+
+export type InterpretingResponseSegment = {
+  id: string
+  sourceSegmentId: string
+  recordingId?: string
+  responseStartMs: number
+  responseEndMs: number
+  transcript: string
+  transcriptSource: TranscriptSource
+  recognitionStatus: RecognitionStatus
+  recognitionConfidence?: number
+}
+
+export type DeliveryAnalysis = {
+  durationMs: number
+  activeSpeechRatio: number
+  pauseCount: number
+  longestPauseMs: number
+  wordsPerMinute?: number
+  signalQuality: number
+  analysisConfidence: number
+  method: string
+}
+
+export type AudioRecordingRecord = {
+  id: string
+  exerciseId: string
+  segmentIds: string[]
+  sessionId?: string
+  createdAt: string
+  mimeType: string
+  durationMs: number
+  byteLength: number
+  blob: Blob
+}
+
+export type ExportedAudioRecording = Omit<AudioRecordingRecord, 'blob'> & {
+  dataUrl: string
+}
+
+export type InterpretingEvaluationInput = {
+  exercise: InterpretingExercise
+  interpretingMode: InterpretingMode
+  responseSegments: InterpretingResponseSegment[]
+  recordings: AudioRecordingRecord[]
+  deliveryAnalysis: DeliveryAnalysis[]
+}
+
+export type InterpretingContentScores = {
+  meaningTransfer: number
+  omissions: number
+  additionsMistranslations: number
+  terminology: number
+}
+
+export type InterpretingDeliveryScores = {
+  fluency: number
+  pacing: number
+  hesitation: number
+}
+
+export type InterpretingAnnotationCategory =
+  | 'meaning-transfer'
+  | 'omission'
+  | 'addition-mistranslation'
+  | 'terminology'
+  | 'fluency'
+  | 'pacing'
+  | 'hesitation'
+
+export type InterpretingEvidenceStatus = 'verified' | 'uncertain' | 'insufficient'
+
+export type InterpretingAnnotation = {
+  category: InterpretingAnnotationCategory
+  sourceSegmentId: string
+  responseSegmentId?: string
+  sourceQuote?: string
+  learnerQuote?: string
+  explanation: string
+  suggestion: string
+  evidenceStatus: InterpretingEvidenceStatus
+  recognitionConfidence?: number
+  analysisConfidence?: number
+}
+
+export type InterpretingFeedback = {
+  contentScores?: InterpretingContentScores
+  contentScoreStatus: 'complete' | 'incomplete'
+  deliveryScores: InterpretingDeliveryScores
+  overallScore?: number
+  summary: string
+  strengths: string[]
+  issues: InterpretingAnnotation[]
+  uncertainEvidence: InterpretingAnnotation[]
+  alternatives: string[]
+  uncertainty: string
+  recognitionConfidence?: number
+  audioAnalysisConfidence?: number
+}
+
+export type EvaluationRequest = EvaluationInput | InterpretingEvaluationInput
+export type EvaluationFeedback = TranslationFeedback | InterpretingFeedback
+
 export type SessionRecord = {
   id: string
   createdAt: string
   exerciseId: string
-  mode: PracticeMode
+  mode: WrittenPracticeMode
   sourceLanguage: LanguageCode
   targetLanguage: LanguageCode
   answer: string
   feedback: TranslationFeedback
   elapsedSeconds: number
+}
+
+export type InterpretingSessionRecord = {
+  id: string
+  createdAt: string
+  exerciseId: string
+  mode: 'interpreting'
+  sourceLanguage: LanguageCode
+  targetLanguage: LanguageCode
+  interpretingMode: InterpretingMode
+  responseSegments: InterpretingResponseSegment[]
+  recordingIds: string[]
+  deliveryAnalysis: DeliveryAnalysis[]
+  feedback: InterpretingFeedback
+  evaluator: 'local' | 'cloud' | 'manual'
 }
 
 export type EvaluationMode = 'local-only' | 'local-first-cloud-fallback'
@@ -213,10 +360,12 @@ export type ConsolidatedExamResult = {
 }
 
 export type ExportData = {
-  version: 2
+  version: 3
   exportedAt: string
   settings: StoredSettings
   sessions: SessionRecord[]
+  interpretingSessions?: InterpretingSessionRecord[]
+  recordings?: ExportedAudioRecording[]
   examRuns?: ActiveExamRun[]
   examResults?: ConsolidatedExamResult[]
   examProfiles?: ExamProfile[]

@@ -3,6 +3,12 @@ import type {
   ExamProfile,
   FeedbackAnnotation,
   FeedbackDimensions,
+  InterpretingAnnotation,
+  InterpretingAnnotationCategory,
+  InterpretingEvaluationInput,
+  InterpretingFeedback,
+  InterpretingContentScores,
+  InterpretingDeliveryScores,
   LanguageCode,
   PassageFeedbackItem,
   ScoreDimension,
@@ -168,6 +174,178 @@ export function validateFeedback(raw: unknown, context: FeedbackValidationContex
     issues,
     alternatives,
     uncertainty,
+  }
+}
+
+const interpretingCategories: InterpretingAnnotationCategory[] = [
+  'meaning-transfer',
+  'omission',
+  'addition-mistranslation',
+  'terminology',
+  'fluency',
+  'pacing',
+  'hesitation',
+]
+
+export type InterpretingFeedbackValidationContext = Pick<InterpretingEvaluationInput, 'exercise' | 'responseSegments' | 'deliveryAnalysis'>
+
+function normalizeConfidence(value: unknown, fieldName: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new FeedbackValidationError(`Interpreting feedback has an invalid confidence for ${fieldName}.`)
+  }
+  return Math.round(value * 100) / 100
+}
+
+function normalizeInterpretingCategory(value: unknown): InterpretingAnnotationCategory {
+  if (typeof value !== 'string' || !interpretingCategories.includes(value as InterpretingAnnotationCategory)) {
+    throw new FeedbackValidationError('Interpreting annotation has an invalid category.')
+  }
+  return value as InterpretingAnnotationCategory
+}
+
+function normalizeInterpretingAnnotation(
+  value: unknown,
+  context: InterpretingFeedbackValidationContext,
+  expectedStatus?: 'uncertain' | 'insufficient',
+): InterpretingAnnotation {
+  if (!isRecord(value)) {
+    throw new FeedbackValidationError('Interpreting annotation must be an object.')
+  }
+
+  const category = normalizeInterpretingCategory(value.category)
+  const sourceSegmentId = requiredText(value.sourceSegmentId, 'sourceSegmentId')
+  const sourceSegment = context.exercise.segments.find((segment) => segment.id === sourceSegmentId)
+  if (!sourceSegment) {
+    throw new FeedbackValidationError(`Interpreting annotation references unknown source segment: ${sourceSegmentId}.`)
+  }
+
+  const rawResponseSegmentId = value.responseSegmentId
+  const responseSegmentId = rawResponseSegmentId === undefined ? undefined : requiredText(rawResponseSegmentId, 'responseSegmentId')
+  const responseSegment = responseSegmentId
+    ? context.responseSegments.find((segment) => segment.id === responseSegmentId)
+    : undefined
+  if (responseSegmentId && !responseSegment) {
+    throw new FeedbackValidationError(`Interpreting annotation references unknown response segment: ${responseSegmentId}.`)
+  }
+
+  const sourceQuote = value.sourceQuote === undefined ? undefined : requiredText(value.sourceQuote, 'sourceQuote')
+  const learnerQuote = value.learnerQuote === undefined ? undefined : requiredText(value.learnerQuote, 'learnerQuote')
+  if (!sourceQuote && !learnerQuote) {
+    throw new FeedbackValidationError('Interpreting annotation must include source or learner evidence.')
+  }
+  if (sourceQuote && !sourceSegment.transcript.includes(sourceQuote)) {
+    throw new FeedbackValidationError('Interpreting source evidence must be copied literally from the referenced segment.')
+  }
+  if (learnerQuote && (!responseSegment || !responseSegment.transcript.includes(learnerQuote))) {
+    throw new FeedbackValidationError('Interpreting learner evidence must be copied literally from the referenced response.')
+  }
+
+  const rawStatus = value.evidenceStatus === undefined ? 'verified' : value.evidenceStatus
+  if (rawStatus !== 'verified' && rawStatus !== 'uncertain' && rawStatus !== 'insufficient') {
+    throw new FeedbackValidationError('Interpreting annotation has an invalid evidence status.')
+  }
+  if (expectedStatus && rawStatus !== expectedStatus) {
+    throw new FeedbackValidationError('Interpreting uncertain evidence has an inconsistent evidence status.')
+  }
+
+  const analysisConfidence = responseSegment
+    ? context.deliveryAnalysis.length > 0
+      ? Math.min(...context.deliveryAnalysis.map((analysis) => analysis.analysisConfidence))
+      : undefined
+    : undefined
+  const lowRecognitionConfidence = responseSegment !== undefined && (
+    responseSegment.recognitionStatus !== 'verified'
+    || (responseSegment.recognitionConfidence !== undefined && responseSegment.recognitionConfidence < 0.65)
+  )
+  const lowAnalysisConfidence = analysisConfidence !== undefined && analysisConfidence < 0.5
+  const contentCategory = category === 'meaning-transfer' || category === 'omission' || category === 'addition-mistranslation' || category === 'terminology'
+  const evidenceStatus = rawStatus === 'verified' && contentCategory && (lowRecognitionConfidence || lowAnalysisConfidence)
+    ? 'uncertain'
+    : rawStatus
+
+  return {
+    category,
+    sourceSegmentId,
+    responseSegmentId,
+    sourceQuote,
+    learnerQuote,
+    explanation: requiredText(value.explanation, 'explanation'),
+    suggestion: requiredText(value.suggestion ?? value.revision, 'suggestion'),
+    evidenceStatus,
+    recognitionConfidence: responseSegment?.recognitionConfidence,
+    analysisConfidence,
+  }
+}
+
+function normalizeInterpretingScores(raw: unknown, fieldName: string, fields: string[]): Record<string, number> {
+  if (!isRecord(raw)) {
+    throw new FeedbackValidationError(`Interpreting feedback is missing ${fieldName}.`)
+  }
+  return fields.reduce<Record<string, number>>((scores, field) => {
+    scores[field] = normalizeScore(raw[field], `${fieldName}.${field}`)
+    return scores
+  }, {})
+}
+
+export function validateInterpretingFeedback(
+  raw: unknown,
+  context: InterpretingFeedbackValidationContext,
+): InterpretingFeedback {
+  if (!isRecord(raw)) {
+    throw new FeedbackValidationError('Interpreting feedback must be a JSON object.')
+  }
+  if (!Array.isArray(raw.issues)) {
+    throw new FeedbackValidationError('Interpreting feedback is missing required list: issues.')
+  }
+
+  const responseSegmentsById = new Map(context.responseSegments.map((segment) => [segment.id, segment]))
+  const allResponsesVerified = context.responseSegments.length > 0
+    && context.responseSegments.every((segment) => segment.transcript.trim().length > 0 && segment.recognitionStatus === 'verified')
+  const rawContentScores = raw.contentScores ?? raw.content
+  const contentScoreValues = allResponsesVerified && rawContentScores !== undefined
+    ? normalizeInterpretingScores(rawContentScores, 'contentScores', ['meaningTransfer', 'omissions', 'additionsMistranslations', 'terminology']) as InterpretingContentScores
+    : undefined
+  const contentScoreStatus: InterpretingFeedback['contentScoreStatus'] = allResponsesVerified && contentScoreValues ? 'complete' : 'incomplete'
+  const deliveryScores = normalizeInterpretingScores(raw.deliveryScores ?? raw.delivery, 'deliveryScores', ['fluency', 'pacing', 'hesitation']) as InterpretingDeliveryScores
+
+  const normalizedAnnotations = raw.issues.map((issue) => normalizeInterpretingAnnotation(issue, context))
+  const uncertainEvidence = Array.isArray(raw.uncertainEvidence)
+    ? raw.uncertainEvidence.map((issue) => normalizeInterpretingAnnotation(issue, context, 'uncertain'))
+    : []
+  const issues = normalizedAnnotations.filter((issue) => issue.evidenceStatus === 'verified')
+  const movedUncertain = normalizedAnnotations.filter((issue) => issue.evidenceStatus !== 'verified')
+  const allUncertainEvidence = [...uncertainEvidence, ...movedUncertain]
+
+  for (const segment of context.responseSegments) {
+    if (!responseSegmentsById.has(segment.id)) {
+      throw new FeedbackValidationError(`Interpreting response segment is not internally addressable: ${segment.id}.`)
+    }
+  }
+
+  const suppliedOverall = raw.overallScore
+  const overallScore = contentScoreStatus === 'complete' && suppliedOverall !== undefined
+    ? normalizeScore(suppliedOverall, 'overallScore')
+    : undefined
+  const recognitionValues = context.responseSegments
+    .map((segment) => segment.recognitionConfidence)
+    .filter((value): value is number => value !== undefined)
+  const analysisValues = context.deliveryAnalysis.map((analysis) => analysis.analysisConfidence)
+
+  return {
+    contentScores: contentScoreValues,
+    contentScoreStatus,
+    deliveryScores,
+    overallScore,
+    summary: requiredText(raw.summary, 'summary'),
+    strengths: normalizeStringList(raw.strengths, 'strengths'),
+    issues,
+    uncertainEvidence: allUncertainEvidence,
+    alternatives: Array.isArray(raw.alternatives)
+      ? raw.alternatives.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+      : [],
+    uncertainty: requiredText(raw.uncertainty, 'uncertainty'),
+    recognitionConfidence: recognitionValues.length > 0 ? Math.round((recognitionValues.reduce((sum, value) => sum + value, 0) / recognitionValues.length) * 100) / 100 : undefined,
+    audioAnalysisConfidence: analysisValues.length > 0 ? Math.round((analysisValues.reduce((sum, value) => sum + value, 0) / analysisValues.length) * 100) / 100 : undefined,
   }
 }
 

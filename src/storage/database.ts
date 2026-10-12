@@ -1,16 +1,18 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type {
   ActiveExamRun,
+  AudioRecordingRecord,
   ConsolidatedExamResult,
   ExamProfile,
   ExportData,
+  InterpretingSessionRecord,
   SessionRecord,
   StoredSettings,
 } from '../domain/types'
 import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
 
 const DATABASE_NAME = 'lingo-practice-local'
-const DATABASE_VERSION = 2
+const DATABASE_VERSION = 3
 const SETTINGS_KEY = 'default'
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -54,6 +56,21 @@ interface TranslationDatabaseSchema extends DBSchema {
       'by-profile-id': string
     }
   }
+  recordings: {
+    key: string
+    value: AudioRecordingRecord
+    indexes: {
+      'by-created-at': string
+      'by-exercise-id': string
+    }
+  }
+  interpretingSessions: {
+    key: string
+    value: InterpretingSessionRecord
+    indexes: {
+      'by-created-at': string
+    }
+  }
 }
 
 let databasePromise: Promise<IDBPDatabase<TranslationDatabaseSchema>> | undefined
@@ -82,6 +99,15 @@ function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
         results.createIndex('by-completed-at', 'completedAt')
         results.createIndex('by-profile-id', 'profileId')
       }
+      if (!database.objectStoreNames.contains('recordings')) {
+        const recordings = database.createObjectStore('recordings', { keyPath: 'id' })
+        recordings.createIndex('by-created-at', 'createdAt')
+        recordings.createIndex('by-exercise-id', 'exerciseId')
+      }
+      if (!database.objectStoreNames.contains('interpretingSessions')) {
+        const sessions = database.createObjectStore('interpretingSessions', { keyPath: 'id' })
+        sessions.createIndex('by-created-at', 'createdAt')
+      }
     },
   })
   return databasePromise
@@ -97,6 +123,40 @@ export const database = {
   async saveSession(session: SessionRecord): Promise<void> {
     const db = await getDatabase()
     await db.put('sessions', session)
+  },
+
+  async listInterpretingSessions(): Promise<InterpretingSessionRecord[]> {
+    const db = await getDatabase()
+    const sessions = await db.getAllFromIndex('interpretingSessions', 'by-created-at')
+    return sessions.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  },
+
+  async saveInterpretingSession(session: InterpretingSessionRecord): Promise<void> {
+    const db = await getDatabase()
+    await db.put('interpretingSessions', session)
+  },
+
+  async listAudioRecordings(exerciseId?: string): Promise<AudioRecordingRecord[]> {
+    const db = await getDatabase()
+    const recordings = exerciseId
+      ? await db.getAllFromIndex('recordings', 'by-exercise-id', exerciseId)
+      : await db.getAllFromIndex('recordings', 'by-created-at')
+    return recordings.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  },
+
+  async getAudioRecording(id: string): Promise<AudioRecordingRecord | undefined> {
+    const db = await getDatabase()
+    return db.get('recordings', id)
+  },
+
+  async saveAudioRecording(recording: AudioRecordingRecord): Promise<void> {
+    const db = await getDatabase()
+    await db.put('recordings', recording)
+  },
+
+  async deleteAudioRecording(id: string): Promise<void> {
+    const db = await getDatabase()
+    await db.delete('recordings', id)
   },
 
   async getSettings(): Promise<StoredSettings> {
@@ -211,18 +271,35 @@ export const database = {
   },
 
   async exportData(): Promise<ExportData> {
-    const [settings, sessions, examRuns, examResults, examProfiles] = await Promise.all([
+    const [settings, sessions, interpretingSessions, recordings, examRuns, examResults, examProfiles] = await Promise.all([
       this.getSettings(),
       this.listSessions(),
+      this.listInterpretingSessions(),
+      this.listAudioRecordings(),
       this.listExamRuns(),
       this.listExamResults(),
       this.listExamProfiles(),
     ])
+    const exportedRecordings = await Promise.all(recordings.map(async (recording) => {
+      const bytes = new Uint8Array(await recording.blob.arrayBuffer())
+      let binary = ''
+      const chunkSize = 0x8000
+      for (let index = 0; index < bytes.length; index += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
+      }
+      return {
+        ...recording,
+        dataUrl: `data:${recording.mimeType || 'application/octet-stream'};base64,${btoa(binary)}`,
+        blob: undefined,
+      }
+    }))
     return {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       settings,
       sessions,
+      interpretingSessions,
+      recordings: exportedRecordings.map(({ blob: _blob, ...recording }) => recording),
       examRuns,
       examResults,
       examProfiles,
@@ -231,12 +308,14 @@ export const database = {
 
   async clearData(): Promise<void> {
     const db = await getDatabase()
-    const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults'> = [
+    const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions'> = [
       'settings',
       'sessions',
       'examProfiles',
       'examRuns',
       'examResults',
+      'recordings',
+      'interpretingSessions',
     ]
     const transaction = db.transaction(storeNames, 'readwrite')
     await Promise.all(storeNames.map((name) => transaction.objectStore(name).clear()))

@@ -1,8 +1,8 @@
-import type { EvaluationInput, EvaluationMode, TranslationFeedback } from '../domain/types'
+import type { EvaluationFeedback, EvaluationMode, EvaluationRequest, InterpretingExercise, Exercise, TranslationFeedback } from '../domain/types'
 import { getLocalEvaluationDecision, type CapabilityAssessment } from './capability'
 
 export interface EvaluationProvider {
-  evaluate(input: EvaluationInput): Promise<TranslationFeedback>
+  evaluate(input: EvaluationRequest): Promise<EvaluationFeedback>
 }
 
 export type LocalProviderLike = EvaluationProvider & {
@@ -15,19 +15,36 @@ export type LocalProviderLike = EvaluationProvider & {
 }
 
 export type CloudConsentRequest = {
-  exercise: EvaluationInput['exercise']
-  sourceText: string
-  learnerAnswer: string
-  confirm: () => Promise<TranslationFeedback>
+  exercise: Exercise | InterpretingExercise
+  sourceText?: string
+  learnerAnswer?: string
+  payloadPreview: {
+    providerUrl: string
+    model: string
+    parts: Array<{
+      kind: 'source-transcript' | 'learner-transcript' | 'learner-audio' | 'delivery-metrics'
+      label: string
+      text?: string
+      mimeType?: string
+      durationMs?: number
+      byteLength?: number
+      previewUrl?: string
+    }>
+  }
+  confirm: () => Promise<EvaluationFeedback>
 }
 
 export type EvaluationResult =
-  | { status: 'evaluated'; feedback: TranslationFeedback; provider: 'local' | 'cloud' }
+  | { status: 'evaluated'; feedback: EvaluationFeedback; provider: 'local' | 'cloud' }
   | { status: 'needs-consent'; request: CloudConsentRequest; reason: string }
   | { status: 'unavailable'; reason: string }
 
+export function isTranslationFeedback(feedback: EvaluationFeedback): feedback is TranslationFeedback {
+  return 'dimensions' in feedback
+}
+
 export type EvaluationRouter = {
-  evaluate(input: EvaluationInput): Promise<EvaluationResult>
+  evaluate(input: EvaluationRequest): Promise<EvaluationResult>
 }
 
 export type EvaluationRouterDependencies = {
@@ -90,8 +107,18 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
         reason: localFailure ?? 'Local evaluation is unavailable.',
         request: {
           exercise: input.exercise,
-          sourceText: input.exercise.sourceText,
-          learnerAnswer: input.learnerAnswer,
+          sourceText: 'learnerAnswer' in input ? input.exercise.sourceText : undefined,
+          learnerAnswer: 'learnerAnswer' in input ? input.learnerAnswer : undefined,
+          payloadPreview: {
+            providerUrl: 'configured cloud endpoint',
+            model: 'configured cloud model',
+            parts: 'learnerAnswer' in input
+              ? [
+                  { kind: 'source-transcript', label: 'Source passage', text: input.exercise.sourceText },
+                  { kind: 'learner-transcript', label: 'Learner answer', text: input.learnerAnswer },
+                ]
+              : [],
+          },
           confirm: () => cloudProvider.evaluate(input),
         },
       }

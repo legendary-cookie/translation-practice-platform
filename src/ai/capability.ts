@@ -1,4 +1,4 @@
-import type { EvaluationInput } from '../domain/types'
+import type { EvaluationRequest } from '../domain/types'
 import type { LanguageCode } from '../domain/languages'
 import { DEFAULT_LOCAL_MODEL_ID } from '../domain/types'
 import { hasModelInCache, prebuiltAppConfig } from '@mlc-ai/web-llm'
@@ -327,7 +327,7 @@ export function getDirectionQualityDisclosure(sourceLanguage: LanguageCode, targ
   return 'Local Qwen3-1.7B critique is not offered for Hindi or Arabic directions yet. Language support is not the same as validated critique quality; use manual review or explicit cloud consent for this direction.'
 }
 
-export function getLocalEvaluationDecision(capability: CapabilityAssessment, input: EvaluationInput): LocalEvaluationDecision {
+export function getLocalEvaluationDecision(capability: CapabilityAssessment, input: EvaluationRequest): LocalEvaluationDecision {
   if (capability.webGpu.status === 'checking') {
     return { allowed: false, reason: 'Device capability is still being checked. Local evaluation will not start until the check is complete.' }
   }
@@ -349,7 +349,10 @@ export function getLocalEvaluationDecision(capability: CapabilityAssessment, inp
     return { allowed: false, reason: directionDisclosure }
   }
 
-  if (input.learnerAnswer.length > LOCAL_MODEL_MAX_INPUT_CHARACTERS) {
+  const learnerTextLength = 'learnerAnswer' in input
+    ? input.learnerAnswer.length
+    : input.responseSegments.reduce((total, segment) => total + segment.transcript.length, 0)
+  if (learnerTextLength > LOCAL_MODEL_MAX_INPUT_CHARACTERS) {
     return { allowed: false, reason: 'This answer is longer than the conservative local context guard. Keep local-only mode manual, or use explicit cloud consent for this task.' }
   }
 

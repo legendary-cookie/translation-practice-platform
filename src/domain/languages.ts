@@ -8,16 +8,17 @@ export type LanguageDefinition = {
   nativeLabel: string
   script: string
   direction: TextDirection
+  speechTag: string
 }
 
 export const LANGUAGE_CATALOG: Record<LanguageCode, LanguageDefinition> = {
-  zh: { code: 'zh', label: 'Chinese', nativeLabel: '中文', script: 'Simplified Chinese', direction: 'ltr' },
-  en: { code: 'en', label: 'English', nativeLabel: 'English', script: 'Latin', direction: 'ltr' },
-  ru: { code: 'ru', label: 'Russian', nativeLabel: 'Русский', script: 'Cyrillic', direction: 'ltr' },
-  fr: { code: 'fr', label: 'French', nativeLabel: 'Français', script: 'Latin', direction: 'ltr' },
-  hi: { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी', script: 'Devanagari', direction: 'ltr' },
-  es: { code: 'es', label: 'Spanish', nativeLabel: 'Español', script: 'Latin', direction: 'ltr' },
-  ar: { code: 'ar', label: 'Arabic', nativeLabel: 'العربية', script: 'Arabic', direction: 'rtl' },
+  zh: { code: 'zh', label: 'Chinese', nativeLabel: '中文', script: 'Simplified Chinese', direction: 'ltr', speechTag: 'zh-CN' },
+  en: { code: 'en', label: 'English', nativeLabel: 'English', script: 'Latin', direction: 'ltr', speechTag: 'en-US' },
+  ru: { code: 'ru', label: 'Russian', nativeLabel: 'Русский', script: 'Cyrillic', direction: 'ltr', speechTag: 'ru-RU' },
+  fr: { code: 'fr', label: 'French', nativeLabel: 'Français', script: 'Latin', direction: 'ltr', speechTag: 'fr-FR' },
+  hi: { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी', script: 'Devanagari', direction: 'ltr', speechTag: 'hi-IN' },
+  es: { code: 'es', label: 'Spanish', nativeLabel: 'Español', script: 'Latin', direction: 'ltr', speechTag: 'es-ES' },
+  ar: { code: 'ar', label: 'Arabic', nativeLabel: 'العربية', script: 'Arabic', direction: 'rtl', speechTag: 'ar-SA' },
 }
 
 export const LANGUAGE_CODES = Object.keys(LANGUAGE_CATALOG) as LanguageCode[]

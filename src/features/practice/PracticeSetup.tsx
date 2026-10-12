@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CHINESE_DIRECTIONS, getLanguage } from '../../domain/languages'
-import type { Difficulty, Exercise, EvaluationMode, LocalModelStatus, PracticeMode } from '../../domain/types'
+import type { Difficulty, Exercise, EvaluationMode, LocalModelStatus, WrittenPracticeMode } from '../../domain/types'
 import { getExercisesForDirection } from '../../data/exercises'
 
 export type PracticeStart = {
@@ -17,7 +17,7 @@ export function PracticeSetup({
   localStatus: LocalModelStatus
   onStart: (selection: PracticeStart) => void
 }) {
-  const [mode, setMode] = useState<PracticeMode>('written')
+  const [mode, setMode] = useState<WrittenPracticeMode>('written')
   const [directionId, setDirectionId] = useState(CHINESE_DIRECTIONS[0].id)
   const [topic, setTopic] = useState('all')
   const [difficulty, setDifficulty] = useState<'all' | Difficulty>('all')
@@ -56,7 +56,7 @@ export function PracticeSetup({
       <section className="setup-card" aria-labelledby="setup-heading">
         <div className="setup-card__heading"><div><p className="eyebrow">Your choices</p><h2 id="setup-heading">Set the conditions.</h2></div><span className="setup-card__step">01 / 01</span></div>
         <div className="setup-fields">
-          <label className="field-label" htmlFor="practice-mode">Practice mode<select id="practice-mode" value={mode} onChange={(event) => { setMode(event.target.value as PracticeMode); setTopic('all'); setDifficulty('all') }}><option value="written">Written translation</option><option value="news">News translation</option></select></label>
+          <label className="field-label" htmlFor="practice-mode">Practice mode<select id="practice-mode" value={mode} onChange={(event) => { setMode(event.target.value as WrittenPracticeMode); setTopic('all'); setDifficulty('all') }}><option value="written">Written translation</option><option value="news">News translation</option></select></label>
           <label className="field-label" htmlFor="practice-direction">Language direction<select id="practice-direction" value={directionId} onChange={(event) => { setDirectionId(event.target.value as typeof directionId); setTopic('all'); setDifficulty('all') }}>{CHINESE_DIRECTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <label className="field-label" htmlFor="practice-topic">Topic<select id="practice-topic" value={topic} onChange={(event) => { setTopic(event.target.value); setDifficulty('all') }}><option value="all">All topics</option>{topicOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <label className="field-label" htmlFor="practice-difficulty">Difficulty<select id="practice-difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value as 'all' | Difficulty)}><option value="all">Any difficulty</option><option value="beginner" disabled={!availableDifficulties.has('beginner')}>Beginner</option><option value="intermediate" disabled={!availableDifficulties.has('intermediate')}>Intermediate</option><option value="advanced" disabled={!availableDifficulties.has('advanced')}>Advanced</option></select></label>

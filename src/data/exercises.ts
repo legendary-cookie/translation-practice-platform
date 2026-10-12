@@ -1,4 +1,4 @@
-import type { Difficulty, Exercise, ExerciseTag, GlossaryEntry, PracticeMode } from '../domain/types'
+import type { Difficulty, Exercise, ExerciseTag, GlossaryEntry, WrittenPracticeMode } from '../domain/types'
 import type { LanguageCode } from '../domain/languages'
 import { CHINESE_DIRECTIONS } from '../domain/languages'
 
@@ -107,7 +107,7 @@ const sourcePassages: SourcePassage[] = [
   },
 ]
 
-function createExercise(passage: SourcePassage, targetLanguage: LanguageCode, mode: PracticeMode): Exercise {
+function createExercise(passage: SourcePassage, targetLanguage: LanguageCode, mode: WrittenPracticeMode): Exercise {
   return {
     id: `${passage.id}-${mode}-${targetLanguage}`,
     mode,
@@ -127,13 +127,13 @@ export const EXERCISES: Exercise[] = CHINESE_DIRECTIONS.flatMap((direction) => {
   if (!passage) {
     return []
   }
-  return (['written', 'news'] as PracticeMode[]).map((mode) => createExercise(passage, direction.targetLanguage, mode))
+  return (['written', 'news'] as WrittenPracticeMode[]).map((mode) => createExercise(passage, direction.targetLanguage, mode))
 })
 
 export function getExercisesForDirection(
   sourceLanguage: LanguageCode,
   targetLanguage: LanguageCode,
-  mode: PracticeMode,
+  mode: WrittenPracticeMode,
 ): Exercise[] {
   return EXERCISES.filter((exercise) => exercise.sourceLanguage === sourceLanguage && exercise.targetLanguage === targetLanguage && exercise.mode === mode)
 }

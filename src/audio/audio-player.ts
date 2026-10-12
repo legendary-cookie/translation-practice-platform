@@ -9,6 +9,7 @@ export type AudioPlayerListener = (state: {
 export type AudioPlayer = {
   playSegment(segmentId: string): Promise<void>
   playAllSegments(): Promise<void>
+  resume(): Promise<void>
   pause(): void
   seek(seconds: number): void
   setRepeat(enabled: boolean): void
@@ -100,6 +101,11 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
     async playAllSegments() {
       currentSegment = undefined
       audio.currentTime = 0
+      await playWithTimeout()
+      notify()
+    },
+
+    async resume() {
       await playWithTimeout()
       notify()
     },

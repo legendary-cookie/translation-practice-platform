@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { analyzeRecording } from '../../audio/audio-analysis'
 import { createAudioPlayer, type AudioPlayer } from '../../audio/audio-player'
-import { createResponseRecorder, type RecorderState } from '../../audio/audio-recorder'
+import { createResponseRecorder, type RecorderState, type ResponseRecorder } from '../../audio/audio-recorder'
 import { getLocalRecognitionCapability, recognizeLocal, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 import { getLanguage } from '../../domain/languages'
 import type {
@@ -77,7 +77,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   const [repeatSegment, setRepeatSegment] = useState(false)
   const [error, setError] = useState<string>()
   const [player, setPlayer] = useState<AudioPlayer>()
-  const recorder = useMemo(() => createResponseRecorder(exercise.id), [exercise.id])
+  const [recorder, setRecorder] = useState<ResponseRecorder>()
   const sourceAudioHost = useRef<HTMLDivElement>(null)
   const listenTargetSegmentRef = useRef<string | undefined>(undefined)
   const recordingTakeKeyRef = useRef<string | undefined>(undefined)
@@ -143,14 +143,20 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   }, [player])
 
   useEffect(() => {
-    const unsubscribe = recorder.subscribe(setRecorderState)
+    const currentRecorder = createResponseRecorder(exercise.id)
+    const unsubscribe = currentRecorder.subscribe(setRecorderState)
+    setRecorder(currentRecorder)
     return () => {
       unsubscribe()
-      recorder.dispose()
+      currentRecorder.dispose()
     }
-  }, [recorder])
+  }, [exercise.id])
 
   useEffect(() => {
+    if (!recorder) {
+      setReplayUrls({})
+      return
+    }
     const urls = Object.fromEntries(Object.entries(takes).map(([key, recording]) => [key, recorder.getReplayUrl(recording)]))
     setReplayUrls(urls)
     return () => Object.values(urls).forEach((url) => recorder.revokeReplayUrl(url))
@@ -189,6 +195,10 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
 
   async function startRecording() {
     setError(undefined)
+    if (!recorder) {
+      setError('The recording workspace is still preparing. Try again in a moment.')
+      return
+    }
     if (pendingAnalysisRef.current.size > 0) {
       setError('Wait for the current take analysis to finish before starting another recording.')
       return
@@ -239,6 +249,10 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   async function stopRecording() {
     setError(undefined)
     player?.pause()
+    if (!recorder) {
+      setError('The recording workspace is still preparing. Try again in a moment.')
+      return
+    }
     try {
       const recording = await recorder.stop()
       if (!recording) {
@@ -279,6 +293,29 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     }
   }
 
+  function pauseRecording() {
+    if (interpretingMode === 'simultaneous') {
+      player?.pause()
+    }
+    recorder?.pause()
+  }
+
+  async function resumeRecording() {
+    if (!recorder) {
+      setError('The recording workspace is still preparing. Try again in a moment.')
+      return
+    }
+    if (interpretingMode === 'simultaneous' && player && player.getCurrentTime() * 1000 < exercise.durationMs - 20) {
+      try {
+        await player.resume()
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'The source audio could not resume.')
+        return
+      }
+    }
+    recorder.resume()
+  }
+
   function discardCurrentTake() {
     setTakes((current) => {
       const next = { ...current }
@@ -303,7 +340,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   }
 
   async function captureLocalTranscript() {
-    const track = recorder.getActiveTrack()
+    const track = recorder?.getActiveTrack()
     if (!track) {
       setError('Start recording before requesting the optional on-device transcript.')
       return
@@ -416,7 +453,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
           <div className="interpreting-card-heading"><div><p className="eyebrow">Your delivery</p><h3 id="response-heading">{currentTake ? 'Take ready for review' : recorderState.status === 'recording' ? 'Recording now' : 'Prepare your response'}</h3></div><span className={`interpreting-recording-indicator interpreting-recording-indicator--${recorderState.status}`} role="status">{recorderState.status === 'recording' ? '● Recording' : recorderState.status}</span></div>
           <div className="interpreting-meter" aria-label={`Microphone input level ${Math.round(recorderState.inputLevel * 100)} percent`}><span style={{ width: `${Math.round(recorderState.inputLevel * 100)}%` }} /></div>
           <p className="interpreting-time">{formatSeconds(recorderState.elapsedMs / 1000)} · local microphone only</p>
-          <div className="interpreting-control-row"><button className="button button--primary interpreting-action" type="button" onClick={() => void startRecording()} disabled={isSubmitting || pendingAnalysisKeys.size > 0 || ['requesting', 'recording', 'paused', 'stopping'].includes(recorderState.status) || !canRecord}>{recorderState.status === 'requesting' ? 'Waiting for microphone…' : interpretingMode === 'consecutive' && !canRecord ? 'Listen first' : 'Start recording'} <span aria-hidden="true">●</span></button><button className="button button--quiet interpreting-action" type="button" onClick={() => void stopRecording()} disabled={recorderState.status !== 'recording' && recorderState.status !== 'paused'}>Stop and save</button><button className="button button--quiet interpreting-action" type="button" onClick={() => recorder.pause()} disabled={recorderState.status !== 'recording'}>Pause</button><button className="button button--quiet interpreting-action" type="button" onClick={() => recorder.resume()} disabled={recorderState.status !== 'paused'}>Resume</button></div>
+          <div className="interpreting-control-row"><button className="button button--primary interpreting-action" type="button" onClick={() => void startRecording()} disabled={!recorder || isSubmitting || pendingAnalysisKeys.size > 0 || ['requesting', 'recording', 'paused', 'stopping'].includes(recorderState.status) || !canRecord}>{recorderState.status === 'requesting' ? 'Waiting for microphone…' : interpretingMode === 'consecutive' && !canRecord ? 'Listen first' : 'Start recording'} <span aria-hidden="true">●</span></button><button className="button button--quiet interpreting-action" type="button" onClick={() => void stopRecording()} disabled={!recorder || (recorderState.status !== 'recording' && recorderState.status !== 'paused')}>Stop and save</button><button className="button button--quiet interpreting-action" type="button" onClick={pauseRecording} disabled={!recorder || recorderState.status !== 'recording'}>{interpretingMode === 'simultaneous' ? 'Pause source and response' : 'Pause'}</button><button className="button button--quiet interpreting-action" type="button" onClick={() => void resumeRecording()} disabled={!recorder || recorderState.status !== 'paused'}>{interpretingMode === 'simultaneous' ? 'Resume source and response' : 'Resume'}</button></div>
           {currentReplayUrl && <div className="interpreting-replay"><strong>Replay this take</strong><audio controls preload="metadata" src={currentReplayUrl}>Your browser cannot replay this local take.</audio><button className="text-button interpreting-text-action" type="button" onClick={discardCurrentTake} disabled={pendingAnalysisKeys.has(currentTakeKey)}>Discard and rerecord</button></div>}
           <div className="interpreting-transcript-block"><div className="interpreting-card-heading"><strong>Editable response transcript</strong><span className="pill">{recognition?.status === 'available' ? 'Optional on-device recognition' : 'Manual path'}</span></div><textarea dir={targetLanguage.direction} lang={targetLanguage.code} value={transcripts[currentSegment.id] ?? ''} onChange={(event) => updateManualTranscript(currentSegment.id, event.target.value)} placeholder="Type or confirm what you delivered…" aria-label={`Transcript for ${currentSegment.id}`} disabled={isSubmitting} /><div className="interpreting-control-row"><button className="button button--quiet interpreting-action" type="button" onClick={() => void captureLocalTranscript()} disabled={isSubmitting || recorderState.status !== 'recording' || recognition?.status !== 'available'}>Capture on-device transcript</button>{transcriptSources[currentSegment.id] === 'on-device' && recognitionStatuses[currentSegment.id] !== 'verified' && <button className="button button--quiet interpreting-action" type="button" onClick={() => confirmTranscript(currentSegment.id)} disabled={isSubmitting || !transcripts[currentSegment.id]?.trim()}>Confirm transcript</button>}<span className="interpreting-confidence">{transcriptSources[currentSegment.id] === 'on-device' && recognitionStatuses[currentSegment.id] !== 'verified' ? `Unconfirmed on-device transcript${recognitionConfidences[currentSegment.id] === undefined ? '' : ` · confidence estimate ${Math.round(recognitionConfidences[currentSegment.id] * 100)}%`}. Confirm or edit before it counts as content evidence.` : recognitionStatuses[currentSegment.id] === 'uncertain' ? 'Recognition may be wrong — check it.' : transcriptSources[currentSegment.id] === 'on-device' ? 'You confirmed this on-device transcript; its confidence remains an estimate.' : 'Manual text is treated as learner-confirmed evidence.'}</span></div></div>
           <label className="interpreting-toggle"><input type="checkbox" checked={skippedSegments.has(currentSegment.id)} disabled={isSubmitting || recorderBusy || Boolean(currentTake)} onChange={(event) => setSkippedSegments((current) => { const next = new Set(current); if (event.target.checked) next.add(currentSegment.id); else next.delete(currentSegment.id); return next })} /> I am skipping this segment</label>

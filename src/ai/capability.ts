@@ -2,6 +2,7 @@ import type { EvaluationRequest } from '../domain/types'
 import type { LanguageCode } from '../domain/languages'
 import { DEFAULT_LOCAL_MODEL_ID } from '../domain/types'
 import { hasModelInCache, prebuiltAppConfig } from '@mlc-ai/web-llm'
+import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 
 export type CapabilityTier = 'L0' | 'L1' | 'L2' | 'L3' | 'L4'
 
@@ -86,7 +87,9 @@ export const LOCAL_MODEL_REQUIREMENTS = {
 export const WEAK_LOCAL_LANGUAGES: LanguageCode[] = ['hi', 'ar']
 
 const LOCAL_MODEL_STORAGE_RESERVE_BYTES = 1_250_000_000
-const LOCAL_MODEL_MAX_INPUT_CHARACTERS = 6000
+const LOCAL_MODEL_OUTPUT_TOKEN_RESERVE = 1400
+const LOCAL_MODEL_CONTEXT_SAFETY_MARGIN = 256
+const HAN_CHARACTER = /\p{Script=Han}/u
 
 const tierRank: Record<CapabilityTier, number> = {
   L0: 0,
@@ -327,6 +330,25 @@ export function getDirectionQualityDisclosure(sourceLanguage: LanguageCode, targ
   return 'Local Qwen3-1.7B critique is not offered for Hindi or Arabic directions yet. Language support is not the same as validated critique quality; use manual review or explicit cloud consent for this direction.'
 }
 
+/**
+ * Conservative context estimate: count Han characters individually and other
+ * Unicode characters at no more than three characters per token. Include the
+ * complete system and task prompt, not only the learner's answer.
+ */
+export function estimateEvaluationPromptTokens(input: EvaluationRequest): number {
+  const prompt = `${evaluationSystemPrompt}\n${buildEvaluationPrompt(input)}`
+  let hanCharacters = 0
+  let otherCharacters = 0
+  for (const character of prompt) {
+    if (HAN_CHARACTER.test(character)) {
+      hanCharacters += 1
+    } else {
+      otherCharacters += 1
+    }
+  }
+  return hanCharacters + Math.ceil(otherCharacters / 3)
+}
+
 export function getLocalEvaluationDecision(capability: CapabilityAssessment, input: EvaluationRequest): LocalEvaluationDecision {
   if (capability.webGpu.status === 'checking') {
     return { allowed: false, reason: 'Device capability is still being checked. Local evaluation will not start until the check is complete.' }
@@ -349,11 +371,11 @@ export function getLocalEvaluationDecision(capability: CapabilityAssessment, inp
     return { allowed: false, reason: directionDisclosure }
   }
 
-  const learnerTextLength = 'learnerAnswer' in input
-    ? input.learnerAnswer.length
-    : input.responseSegments.reduce((total, segment) => total + segment.transcript.length, 0)
-  if (learnerTextLength > LOCAL_MODEL_MAX_INPUT_CHARACTERS) {
-    return { allowed: false, reason: 'This answer is longer than the conservative local context guard. Keep local-only mode manual, or use explicit cloud consent for this task.' }
+  const availablePromptTokens = capability.localModel.contextWindowTokens
+    - LOCAL_MODEL_OUTPUT_TOKEN_RESERVE
+    - LOCAL_MODEL_CONTEXT_SAFETY_MARGIN
+  if (estimateEvaluationPromptTokens(input) > availablePromptTokens) {
+    return { allowed: false, reason: 'The complete source, answer, and evaluation instructions exceed the conservative local context budget. Keep this task for manual review or choose explicit cloud consent.' }
   }
 
   return { allowed: true, reason: capability.localModel.reason }

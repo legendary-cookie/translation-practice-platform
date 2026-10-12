@@ -442,6 +442,7 @@ export default function App() {
   function navigateToPage(page: Page) {
     if (page === 'practice') {
       setInitialPracticeMode('written')
+      setPracticeSetupMode('written')
     }
     if (page === 'exam') {
       setExamView('catalog')
@@ -506,7 +507,24 @@ export default function App() {
         setExamEvaluationNotice(`${error.message} Review the exact task before deciding whether to use cloud evaluation.`)
       } else {
         const reason = error instanceof Error ? error.message : 'Evaluation could not be completed.'
-        setExamEvaluationNotice(`Exam evaluation unavailable: ${reason} No practice estimate was saved; the exam remains available for retry.`)
+        const resumableRun = {
+          ...completedRun,
+          evaluationPausedAt: undefined,
+          lastSavedAt: new Date().toISOString(),
+        }
+        try {
+          await database.saveExamRun(resumableRun)
+          if (dataLoadGeneration.current !== submissionGeneration) {
+            return
+          }
+          setActiveExamRun(resumableRun)
+          setSelectedExamProfile(undefined)
+          setExamView('catalog')
+          setExamEvaluationNotice(`Exam evaluation unavailable: ${reason} No practice estimate was saved. The attempt is saved locally; resume it from the catalog to continue with the timer running.`)
+        } catch (saveError) {
+          const saveReason = saveError instanceof Error ? ` (${saveError.message})` : ''
+          setExamEvaluationNotice(`Exam evaluation unavailable: ${reason} No practice estimate was saved. The attempt remains paused because its resume state could not be saved${saveReason}; use Save and Exit to retry the local save.`)
+        }
       }
     } finally {
       if (dataLoadGeneration.current === submissionGeneration) {
@@ -551,6 +569,42 @@ export default function App() {
       if (dataLoadGeneration.current === submissionGeneration) {
         setIsEvaluatingExam(false)
         setExamEvaluationProgress(undefined)
+      }
+    }
+  }
+
+  async function cancelExamCloudEvaluation() {
+    const pending = pendingExamConsent
+    if (!pending) {
+      return
+    }
+    const submissionGeneration = dataLoadGeneration.current
+    pending.request.revokePreview?.()
+    setIsEvaluatingExam(true)
+    try {
+      const resumableRun = {
+        ...pending.run,
+        evaluationPausedAt: undefined,
+        lastSavedAt: new Date().toISOString(),
+      }
+      await database.saveExamRun(resumableRun)
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
+      setActiveExamRun(resumableRun)
+      setPendingExamConsent(undefined)
+      setSelectedExamProfile(undefined)
+      setExamView('catalog')
+      setExamEvaluationNotice('Cloud evaluation was not approved. No practice estimate was saved. The attempt is saved locally; resume it from the catalog to continue with the timer running.')
+    } catch (error) {
+      if (dataLoadGeneration.current === submissionGeneration) {
+        const reason = error instanceof Error ? ` (${error.message})` : ''
+        setPendingExamConsent(undefined)
+        setExamEvaluationNotice(`Cloud evaluation was not approved. No practice estimate was saved, and the attempt remains paused because its resume state could not be saved${reason}; use Save and Exit to retry the local save.`)
+      }
+    } finally {
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setIsEvaluatingExam(false)
       }
     }
   }
@@ -915,7 +969,7 @@ export default function App() {
         return
       }
       if (!isInterpretingFeedback(nextFeedback)) {
-        setPracticeNotice('The cloud provider returned written feedback for an interpreting task. No practice estimate was saved.')
+        setPracticeNotice('The cloud provider returned written feedback for an interpreting task. No practice estimate was saved; the submitted payload may have reached the configured endpoint.')
         return
       }
       setPendingInterpretingConsent(undefined)
@@ -923,7 +977,8 @@ export default function App() {
     } catch (error) {
       pending.request.revokePreview?.()
       if (dataLoadGeneration.current === submissionGeneration) {
-        setPracticeNotice(error instanceof Error ? error.message : 'Cloud interpreting evaluation could not be completed. The audio and transcript remain local.')
+        const reason = error instanceof Error ? error.message : 'The provider returned an unexpected error.'
+        setPracticeNotice(`Cloud interpreting evaluation could not be completed: ${reason} No feedback was saved; the attempted payload may have reached the configured endpoint.`)
       }
     } finally {
       if (dataLoadGeneration.current === submissionGeneration) {
@@ -1048,9 +1103,7 @@ export default function App() {
           request={pendingExamConsent.request}
           isSubmitting={isEvaluatingExam}
           onCancel={() => {
-            pendingExamConsent.request.revokePreview?.()
-            setPendingExamConsent(undefined)
-            setExamEvaluationNotice('Cloud evaluation was not approved. No practice estimate was saved; the exam remains available for retry.')
+            void cancelExamCloudEvaluation()
           }}
           onConfirm={() => void confirmExamCloudEvaluation()}
         />

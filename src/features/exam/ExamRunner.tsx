@@ -256,7 +256,7 @@ export function ExamRunner({
   const currentSection = profile.sections[run.currentSectionIndex] ?? profile.sections[0]
   const currentSectionAnswers = run.answers[currentSection.id] ?? {}
   const currentSectionSeconds = run.sectionRemainingSeconds[currentSection.id] ?? 0
-  const isCurrentSectionLocked = submissionStartedRef.current || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
+  const isCurrentSectionLocked = submissionStartedRef.current || Boolean(run.evaluationPausedAt) || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
 
   const handleAnswerChange = (passageId: string, text: string) => {
     if (submissionStartedRef.current) {

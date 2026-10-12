@@ -62,6 +62,7 @@ export function ExamRunner({
 
   const isDirtyRef = useRef(false)
   const lastTickTime = useRef(Date.now())
+  const autoSubmitTriggeredRef = useRef(false)
   const onSubmitRunRef = useRef(onSubmitRun)
   const onPersistenceErrorRef = useRef(onPersistenceError)
   onSubmitRunRef.current = onSubmitRun
@@ -95,30 +96,41 @@ export function ExamRunner({
       if (elapsedSeconds >= 1) {
         lastTickTime.current = now
 
-        setRun((prevRun) => {
-          const { run: updatedRun, sectionExpired, overallExpired } = decrementTimers(
-            prevRun,
-            profile,
-            elapsedSeconds,
+        const { run: updatedRun, sectionExpired, overallExpired } = decrementTimers(
+          runRef.current,
+          profile,
+          elapsedSeconds,
+        )
+        let nextRun = updatedRun
+        let advancedSection = false
+
+        if (sectionExpired && !overallExpired) {
+          while (!isLastSection(nextRun, profile)) {
+            const sectionId = profile.sections[nextRun.currentSectionIndex]?.id
+            if (!sectionId || (nextRun.sectionRemainingSeconds[sectionId] ?? 0) > 0) {
+              break
+            }
+            nextRun = advanceSection(nextRun, profile)
+            advancedSection = true
+          }
+        }
+
+        runRef.current = nextRun
+        setRun(nextRun)
+        isDirtyRef.current = true
+
+        if (advancedSection) {
+          setSectionExpiredAlert(
+            `Time for Section ${updatedRun.currentSectionIndex + 1} has expired. The exam advanced to the next section.`,
           )
-          isDirtyRef.current = true
+        }
 
-          if (overallExpired) {
-            clearInterval(intervalId)
-            void saveAndSubmitRun(updatedRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
-            return updatedRun
-          }
-
-          if (sectionExpired && !isLastSection(updatedRun, profile)) {
-            const nextRun = advanceSection(updatedRun, profile)
-            setSectionExpiredAlert(
-              `Time for Section ${updatedRun.currentSectionIndex + 1} has expired. The exam advanced to the next section.`,
-            )
-            return nextRun
-          }
-
-          return updatedRun
-        })
+        if (overallExpired && !autoSubmitTriggeredRef.current) {
+          autoSubmitTriggeredRef.current = true
+          isDirtyRef.current = false
+          clearInterval(intervalId)
+          void saveAndSubmitRun(nextRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
+        }
       }
     }, 1000)
 
@@ -148,29 +160,32 @@ export function ExamRunner({
   const isCurrentSectionLocked = currentSectionSeconds <= 0 && run.overallRemainingSeconds > 0
 
   const handleAnswerChange = (passageId: string, text: string) => {
-    setRun((prevRun) => {
-      const updatedAnswers = {
-        ...prevRun.answers,
-        [currentSection.id]: {
-          ...(prevRun.answers[currentSection.id] ?? {}),
+    const currentRun = runRef.current
+    const section = profile.sections[currentRun.currentSectionIndex] ?? currentSection
+    const updatedRun: ActiveExamRun = {
+      ...currentRun,
+      answers: {
+        ...currentRun.answers,
+        [section.id]: {
+          ...(currentRun.answers[section.id] ?? {}),
           [passageId]: text,
         },
-      }
-      const updatedRun: ActiveExamRun = {
-        ...prevRun,
-        answers: updatedAnswers,
-        lastSavedAt: new Date().toISOString(),
-      }
-      isDirtyRef.current = true
-      return updatedRun
-    })
+      },
+      lastSavedAt: new Date().toISOString(),
+    }
+    runRef.current = updatedRun
+    isDirtyRef.current = true
+    setRun(updatedRun)
   }
 
   const handleNextSection = () => {
-    if (isLastSection(run, profile)) {
+    const currentRun = runRef.current
+    if (isLastSection(currentRun, profile)) {
       setShowSubmitModal(true)
     } else {
-      const nextRun = advanceSection(run, profile)
+      const nextRun = advanceSection(currentRun, profile)
+      runRef.current = nextRun
+      isDirtyRef.current = true
       setRun(nextRun)
       void database.saveExamRun(nextRun)
     }
@@ -178,11 +193,13 @@ export function ExamRunner({
 
   const handleConfirmSubmit = () => {
     setShowSubmitModal(false)
-    void saveAndSubmitRun(run, onSubmitRun, onPersistenceError)
+    isDirtyRef.current = false
+    void saveAndSubmitRun(runRef.current, onSubmitRun, onPersistenceError)
   }
 
   const handleSaveAndExit = async () => {
-    await database.saveExamRun(run)
+    isDirtyRef.current = false
+    await database.saveExamRun(runRef.current)
     onCancel()
   }
 

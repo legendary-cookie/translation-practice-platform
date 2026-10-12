@@ -121,7 +121,7 @@ export function ExamCatalog({
 
       {/* Filter Controls */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
           <span className="muted-label">Type:</span>
           <button
             className={`button ${selectedType === 'all' ? 'button--primary' : 'button--quiet'}`}
@@ -146,7 +146,7 @@ export function ExamCatalog({
           </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
           <span className="muted-label">Language:</span>
           <button
             className={`button ${selectedLanguage === 'all' ? 'button--primary' : 'button--quiet'}`}
@@ -186,7 +186,7 @@ export function ExamCatalog({
           <p>MTI 357 practice requires a named university and admission year. A generic national task-count or benchmark profile is intentionally not offered.</p>
         </section>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '1.5rem' }}>
         {filteredProfiles.map((profile) => {
           const isProvisional = profile.status === 'provisional_draft'
           const totalPassages = profile.sections.reduce((sum, sec) => sum + sec.passages.length, 0)

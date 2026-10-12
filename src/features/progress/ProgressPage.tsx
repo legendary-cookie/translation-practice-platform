@@ -24,11 +24,13 @@ export function ProgressPage({
   sessions,
   examResults = [],
   onStartPractice,
+  onOpenExamResult,
   onStartExam,
 }: {
   sessions: SessionRecord[]
   examResults?: ConsolidatedExamResult[]
   onStartPractice: () => void
+  onOpenExamResult?: (result: ConsolidatedExamResult) => void
   onStartExam?: () => void
 }) {
   const [activeTab, setActiveTab] = useState<'sessions' | 'exams'>('sessions')
@@ -286,7 +288,14 @@ export function ProgressPage({
                           ? 'pill--warning'
                           : 'pill--muted'
                       return (
-                        <div className="trend-row" key={result.id}>
+                        <button
+                          className="trend-row trend-row--button"
+                          key={result.id}
+                          type="button"
+                          onClick={() => onOpenExamResult?.(result)}
+                          disabled={!onOpenExamResult}
+                          aria-label={`Open report for ${result.examTitle}`}
+                        >
                           <div className="trend-row__label">
                             <span>{result.examTitle}</span>
                             <small>
@@ -296,7 +305,7 @@ export function ProgressPage({
                           <strong>
                             {result.totalScore} / {result.maxScore} pts ({result.percentage}%) · Practice estimate
                           </strong>
-                        </div>
+                        </button>
                       )
                     })}
                   </div>

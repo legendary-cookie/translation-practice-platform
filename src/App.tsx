@@ -268,6 +268,9 @@ export default function App() {
 
   async function clearLocalData() {
     dataLoadGeneration.current += 1
+    setIsEvaluating(false)
+    setIsEvaluatingExam(false)
+    setExamEvaluationProgress(undefined)
     await database.clearData()
     localProvider.dispose()
     forgetLocalModelReady()
@@ -338,6 +341,8 @@ export default function App() {
     if (!selectedExamProfile) {
       return
     }
+    const submissionGeneration = dataLoadGeneration.current
+    setActiveExamRun(completedRun)
     setExamEvaluationNotice(undefined)
     setIsEvaluatingExam(true)
     setExamEvaluationProgress({ completed: 0, total: 1 })
@@ -349,13 +354,22 @@ export default function App() {
         (completed, total) => setExamEvaluationProgress({ completed, total }),
         approvedFeedback,
       )
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       const storedResult = await database.completeExamRun(completedRun.id, result)
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       setActiveExamRun(undefined)
       setActiveExamResult(storedResult)
       setRecentExamResults((prev) => [storedResult, ...prev.filter((r) => r.id !== storedResult.id && r.runId !== storedResult.runId)])
       setPendingExamConsent(undefined)
       setExamView('results')
     } catch (error) {
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       if (error instanceof ExamEvaluationBlockedError && error.status === 'needs-consent' && error.request) {
         setPendingExamConsent({
           run: completedRun,
@@ -369,8 +383,10 @@ export default function App() {
         setExamEvaluationNotice(`Exam evaluation unavailable: ${reason} No practice estimate was saved; the exam remains available for retry.`)
       }
     } finally {
-      setIsEvaluatingExam(false)
-      setExamEvaluationProgress(undefined)
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setIsEvaluatingExam(false)
+        setExamEvaluationProgress(undefined)
+      }
     }
   }
 
@@ -379,22 +395,31 @@ export default function App() {
     if (!pending) {
       return
     }
+    const submissionGeneration = dataLoadGeneration.current
 
     setExamEvaluationNotice(undefined)
     setIsEvaluatingExam(true)
     try {
       const feedback = await pending.request.confirm()
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       setPendingExamConsent(undefined)
       await handleSubmitExamRun(pending.run, {
         ...pending.approvedFeedback,
         [pending.passageId]: feedback,
       })
     } catch (error) {
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       const reason = error instanceof Error ? error.message : 'Cloud evaluation could not be completed.'
       setExamEvaluationNotice(`Cloud evaluation could not be completed: ${reason} The exam remains unscored; you can retry.`)
     } finally {
-      setIsEvaluatingExam(false)
-      setExamEvaluationProgress(undefined)
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setIsEvaluatingExam(false)
+        setExamEvaluationProgress(undefined)
+      }
     }
   }
 
@@ -417,6 +442,25 @@ export default function App() {
     setSelectedExamProfile(undefined)
     setExamEvaluationNotice(undefined)
     setPendingExamConsent(undefined)
+  }
+
+  async function handleOpenExamResult(result: ConsolidatedExamResult) {
+    try {
+      const storedResult = await database.getExamResult(result.id)
+      if (!storedResult) {
+        setExamEvaluationNotice('This saved exam report is no longer available in local storage.')
+        setCurrentPage('progress')
+        return
+      }
+      setActiveExamResult(storedResult)
+      setSelectedExamProfile(storedResult.profileSnapshot)
+      setExamView('results')
+      setExamEvaluationNotice(undefined)
+      setCurrentPage('exam')
+    } catch {
+      setExamEvaluationNotice('This saved exam report could not be opened from local storage.')
+      setCurrentPage('progress')
+    }
   }
 
 
@@ -450,8 +494,9 @@ export default function App() {
     provider: 'local' | 'cloud',
     answer: string,
     elapsedSeconds: number,
+    generation: number,
   ) {
-    if (!activeExercise) {
+    if (!activeExercise || dataLoadGeneration.current !== generation) {
       return
     }
     const session: SessionRecord = {
@@ -469,9 +514,14 @@ export default function App() {
     setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
     try {
       await database.saveSession(session)
+      if (dataLoadGeneration.current !== generation) {
+        return
+      }
       setRecentSessions((sessions) => [session, ...sessions.filter((item) => item.id !== session.id)])
     } catch {
-      setPracticeNotice('Feedback is ready, but this browser could not save the session locally.')
+      if (dataLoadGeneration.current === generation) {
+        setPracticeNotice('Feedback is ready, but this browser could not save the session locally.')
+      }
     }
   }
 
@@ -479,6 +529,7 @@ export default function App() {
     if (!activeExercise) {
       return
     }
+    const submissionGeneration = dataLoadGeneration.current
     setDraftAnswer(answer)
     setDraftElapsedSeconds(elapsedSeconds)
     setPracticeNotice(undefined)
@@ -486,8 +537,11 @@ export default function App() {
     setIsEvaluating(true)
     try {
       const result = await evaluationRouter.evaluate({ exercise: activeExercise, learnerAnswer: answer, mode: activeExercise.mode })
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       if (result.status === 'evaluated') {
-        await saveCompletedSession(result.feedback, result.provider, answer, elapsedSeconds)
+        await saveCompletedSession(result.feedback, result.provider, answer, elapsedSeconds, submissionGeneration)
       } else if (result.status === 'needs-consent') {
         setPendingConsent({ request: result.request, answer, elapsedSeconds })
         setPracticeNotice(`${result.reason} Review the exact task before deciding whether to use cloud evaluation.`)
@@ -495,9 +549,13 @@ export default function App() {
         setPracticeNotice(result.reason)
       }
     } catch (error) {
-      setPracticeNotice(error instanceof Error ? error.message : 'Evaluation could not be completed.')
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setPracticeNotice(error instanceof Error ? error.message : 'Evaluation could not be completed.')
+      }
     } finally {
-      setIsEvaluating(false)
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setIsEvaluating(false)
+      }
     }
   }
 
@@ -506,15 +564,23 @@ export default function App() {
     if (!pending) {
       return
     }
+    const submissionGeneration = dataLoadGeneration.current
     setIsEvaluating(true)
     try {
       const nextFeedback = await pending.request.confirm()
+      if (dataLoadGeneration.current !== submissionGeneration) {
+        return
+      }
       setPendingConsent(undefined)
-      await saveCompletedSession(nextFeedback, 'cloud', pending.answer, pending.elapsedSeconds)
+      await saveCompletedSession(nextFeedback, 'cloud', pending.answer, pending.elapsedSeconds, submissionGeneration)
     } catch (error) {
-      setPracticeNotice(error instanceof Error ? error.message : 'Cloud evaluation could not be completed. You can review the consent and try again.')
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setPracticeNotice(error instanceof Error ? error.message : 'Cloud evaluation could not be completed. You can review the consent and try again.')
+      }
     } finally {
-      setIsEvaluating(false)
+      if (dataLoadGeneration.current === submissionGeneration) {
+        setIsEvaluating(false)
+      }
     }
   }
 
@@ -614,6 +680,7 @@ export default function App() {
             sessions={recentSessions}
             examResults={recentExamResults}
             onStartPractice={() => setCurrentPage('practice')}
+            onOpenExamResult={(result) => void handleOpenExamResult(result)}
             onStartExam={() => {
               setExamView('catalog')
               setSelectedExamProfile(undefined)

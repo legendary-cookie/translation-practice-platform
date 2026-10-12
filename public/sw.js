@@ -1,5 +1,6 @@
 // Vite replaces the release marker with a content hash in production builds.
 const CACHE_NAME = 'lingo-practice-shell-__RELEASE_ID__'
+const CACHE_PREFIX = 'lingo-practice-shell-'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg']
 const PRECACHE_MANIFEST = '/precache-manifest.json'
 
@@ -28,7 +29,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map((key) => caches.delete(key)))),
   )
 })
 

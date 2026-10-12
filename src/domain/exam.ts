@@ -69,15 +69,22 @@ export function decrementTimers(
   const safeElapsed = Math.max(0, Math.round(elapsedSeconds))
   const overallRemainingSeconds = Math.max(0, run.overallRemainingSeconds - safeElapsed)
 
+  // A suspended/backgrounded tab can wake after more than one section has
+  // expired. Consume the wall-clock delta through the current and subsequent
+  // section clocks so the section timer cannot grant elapsed time back.
+  let remainingToConsume = safeElapsed
+  const nextSectionRemainingSeconds = { ...run.sectionRemainingSeconds }
+  for (let sectionIndex = run.currentSectionIndex; sectionIndex < profile.sections.length && remainingToConsume > 0; sectionIndex += 1) {
+    const section = profile.sections[sectionIndex]
+    const previousRemaining = nextSectionRemainingSeconds[section.id] ?? Math.max(0, Math.round(section.timeLimitMinutes * 60))
+    const consumed = Math.min(previousRemaining, remainingToConsume)
+    nextSectionRemainingSeconds[section.id] = Math.max(0, previousRemaining - consumed)
+    remainingToConsume -= consumed
+  }
+
   const currentSection = profile.sections[run.currentSectionIndex]
   const currentSectionId = currentSection?.id ?? ''
-  const prevSectionRemaining = run.sectionRemainingSeconds[currentSectionId] ?? 0
-  const updatedSectionRemaining = Math.max(0, prevSectionRemaining - safeElapsed)
-
-  const nextSectionRemainingSeconds = {
-    ...run.sectionRemainingSeconds,
-    [currentSectionId]: updatedSectionRemaining,
-  }
+  const updatedSectionRemaining = nextSectionRemainingSeconds[currentSectionId] ?? 0
 
   const updatedRun: ActiveExamRun = {
     ...run,

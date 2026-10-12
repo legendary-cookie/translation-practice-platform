@@ -23,6 +23,8 @@
 .progress-card h3 { color: var(--accent-deep); font-size: 18px; letter-spacing: -0.035em; margin: 0; }
 .trend-list, .skill-list, .direction-list { display: grid; gap: 15px; }
 .trend-row { align-items: center; display: grid; gap: 10px; grid-template-columns: minmax(125px, 0.85fr) minmax(80px, 1fr) 25px; }
+.trend-row--button { appearance: none; background: transparent; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: left; width: 100%; }
+.trend-row--button:disabled { cursor: default; }
 .trend-row__label { display: grid; gap: 3px; min-width: 0; }
 .trend-row__label span, .direction-row span:first-child { color: var(--ink); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trend-row__label small { color: var(--muted); font-size: 10px; }

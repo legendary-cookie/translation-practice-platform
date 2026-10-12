@@ -17,6 +17,7 @@ export type TranscriptCaptureState = {
 
 export type TranscriptCaptureEvent =
   | { type: 'take-started'; segmentIds: string[] }
+  | { type: 'take-start-failed'; takeGeneration: number; previousState: TranscriptCaptureState }
   | { type: 'take-discarded'; segmentIds: string[] }
   | { type: 'recognition-started'; attempt: RecognitionAttempt }
   | { type: 'recognition-succeeded'; attempt: RecognitionAttempt; result: { transcript: string; confidence?: number } }
@@ -50,6 +51,15 @@ export function reduceTranscriptCapture(
   state: TranscriptCaptureState,
   event: TranscriptCaptureEvent,
 ): TranscriptCaptureState {
+  if (event.type === 'take-start-failed') {
+    if (event.takeGeneration !== state.takeGeneration) return state
+    return {
+      ...event.previousState,
+      takeGeneration: state.takeGeneration,
+      pending: undefined,
+    }
+  }
+
   if (event.type === 'take-started' || event.type === 'take-discarded') {
     const segmentIds = new Set(event.segmentIds)
     const transcripts = { ...state.transcripts }

@@ -6,6 +6,7 @@ import { getLocalRecognitionCapabilityWithTimeout, recognizeLocal, type LocalRec
 import { getLanguage } from '../../domain/languages'
 import { createTranscriptCaptureState, isCurrentRecognitionAttempt, reduceTranscriptCapture, type TranscriptCaptureEvent } from './transcript-capture-state'
 import { resolveSimultaneousResponseRange } from './response-range'
+import { startSimultaneousTake } from './simultaneous-take-start'
 import type {
   AudioRecordingRecord,
   DeliveryAnalysis,
@@ -233,38 +234,55 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     try {
       player?.pause()
       replayAudioRef.current?.pause()
-      recordingTakeKeyRef.current = interpretingMode === 'simultaneous' ? 'continuous' : currentSegment.id
       simultaneousPlaybackOffsetMsRef.current = 0
       if (interpretingMode === 'consecutive') {
+        recordingTakeKeyRef.current = currentSegment.id
         setSkippedSegments((current) => {
           const next = new Set(current)
           next.delete(currentSegment.id)
           return next
         })
-      }
-      await recorder.start(interpretingMode === 'consecutive' ? currentSegment.id : undefined, interpretingMode)
-      const startedSegments = interpretingMode === 'simultaneous'
-        ? exercise.segments.map((segment) => segment.id)
-        : [currentSegment.id]
-      const startedState = dispatchTranscriptCapture({ type: 'take-started', segmentIds: startedSegments })
-      recordingTakeGenerationRef.current = startedState.takeGeneration
-      if (interpretingMode === 'simultaneous') {
+        await recorder.start(currentSegment.id, interpretingMode)
+        const startedState = dispatchTranscriptCapture({ type: 'take-started', segmentIds: [currentSegment.id] })
+        recordingTakeGenerationRef.current = startedState.takeGeneration
+      } else {
         if (!player) {
           throw new Error('The source audio player is still preparing. Try again in a moment.')
         }
-        try {
-          await player.playAllSegments()
-          simultaneousPlaybackOffsetMsRef.current = Math.max(0, recorder.getElapsedMs() - player.getCurrentTime() * 1000)
-        } catch (caught) {
-          recordingTakeKeyRef.current = undefined
-          await recorder.stop().catch(() => undefined)
-          throw caught
-        }
+        await startSimultaneousTake({
+          startRecorder: () => recorder.start(undefined, 'simultaneous'),
+          beginTake: () => {
+            const previousState = transcriptCaptureRef.current
+            const startedState = dispatchTranscriptCapture({
+              type: 'take-started',
+              segmentIds: exercise.segments.map((segment) => segment.id),
+            })
+            recordingTakeKeyRef.current = 'continuous'
+            recordingTakeGenerationRef.current = startedState.takeGeneration
+            return { previousState, takeGeneration: startedState.takeGeneration }
+          },
+          playSource: () => player.playAllSegments(),
+          stopRecorder: () => recorder.stop(),
+          discardTake: () => {
+            player.pause()
+            recordingTakeKeyRef.current = undefined
+            recordingTakeGenerationRef.current = undefined
+            simultaneousPlaybackOffsetMsRef.current = 0
+          },
+          rollbackTake: (snapshot) => {
+            dispatchTranscriptCapture({
+              type: 'take-start-failed',
+              takeGeneration: snapshot.takeGeneration,
+              previousState: snapshot.previousState,
+            })
+          },
+        })
+        simultaneousPlaybackOffsetMsRef.current = Math.max(0, recorder.getElapsedMs() - player.getCurrentTime() * 1000)
       }
     } catch (caught) {
       if (interpretingMode === 'simultaneous') {
         recordingTakeKeyRef.current = undefined
-        await recorder.stop().catch(() => undefined)
+        recordingTakeGenerationRef.current = undefined
       }
       recordingTakeKeyRef.current = undefined
       recordingTakeGenerationRef.current = undefined

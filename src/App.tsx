@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { AccessibleModal } from './components/AccessibleModal'
 import { createCloudProvider, validateCloudProviderPreferences } from './ai/cloud-provider'
 import { forgetLocalModelReady, hadLocalModelReady, type LocalModelProgress } from './ai/local-provider'
 import { createLocalProvider } from './ai/local-provider'
@@ -9,6 +10,7 @@ import { Dashboard } from './features/dashboard/Dashboard'
 import { FeedbackPanel } from './features/practice/FeedbackPanel'
 import { PracticeSetup, type PracticeStart } from './features/practice/PracticeSetup'
 import { TranslationWorkspace } from './features/practice/TranslationWorkspace'
+import { isWrittenConsentBoundToSubmission } from './features/practice/written-consent-binding'
 import { createWrittenEvaluationGuard, runWrittenEvaluationAttempt, type WrittenEvaluationAttempt } from './features/practice/written-evaluation-guard'
 import { InterpretingSetup, type InterpretingStart } from './features/interpreting/InterpretingSetup'
 import { InterpretingWorkspace } from './features/interpreting/InterpretingWorkspace'
@@ -21,7 +23,9 @@ import { createLocalModelStatusSettingsUpdate, isLocalProgressGenerationCurrent 
 import { mergeRecentSessions, persistWrittenPracticeSession, readHistoryRecords, type SessionHistoryStatus } from './features/practice/session-history'
 import { createSettingsHydrationAttempt, failInvalidatedSettingsHydration, runAfterSettingsHydrated, type SettingsHydrationAttempt } from './features/settings/settings-hydration'
 import { getSavedExamRunAfterExit } from './features/exam/exam-exit'
-import { isInterpretingOpenCurrent } from './features/interpreting/session-open-guard'
+import { createInterpretingSessionOpenGuard, isInterpretingOpenCurrent } from './features/interpreting/session-open-guard'
+import { createExamResumeRequestGuard, claimExamRunForResumeIfCurrent } from './features/exam/exam-resume-race'
+import { startSimultaneousTake } from './features/interpreting/simultaneous-take-start'
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
@@ -168,15 +172,18 @@ function ConsentDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const id = useId().replace(/:/g, '')
+  const headingId = `consent-heading-${id}`
+  const descriptionId = `consent-description-${id}`
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
   const isWritten = 'sourceText' in exercise
   return (
-    <div className="consent-backdrop" role="presentation">
-      <div className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-heading">
+    <AccessibleModal open labelledBy={headingId} describedBy={descriptionId} onCancel={onCancel}>
+      <div className="consent-dialog">
         <p className="eyebrow">One task · explicit consent</p>
-        <h2 id="consent-heading">Send this task to the cloud?</h2>
-        <p>The local evaluator is not available for this task. Review the exact provider, model, text, audio metadata, and derived metrics below before making a one-time decision.</p>
+        <h2 id={headingId}>Send this task to the cloud?</h2>
+        <p id={descriptionId}>The local evaluator is not available for this task. Review the exact provider, model, text, audio metadata, and derived metrics below before making a one-time decision.</p>
         {!isWritten && <p className="consent-warning">Source clip audio stays on this device. Only the text and learner-audio parts listed below are sent after you confirm.</p>}
         <p className="consent-warning">Provider: {request.payloadPreview.providerUrl} · Model: {request.payloadPreview.model}</p>
         <div className="consent-evidence">
@@ -204,9 +211,9 @@ function ConsentDialog({
           })}
         </div>
         <p className="consent-warning">This is a one-time decision for this task. The API key remains session-only, and the service worker does not cache this request or response.</p>
-        <div className="consent-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>Keep local-only</button><button className="button button--primary" type="button" onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? 'Sending…' : 'Consent and evaluate'} <span aria-hidden="true">→</span></button></div>
+        <div className="consent-actions"><button className="button button--quiet" type="button" data-modal-cancel onClick={onCancel} disabled={isSubmitting}>Keep local-only</button><button className="button button--primary" type="button" onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? 'Sending…' : 'Consent and evaluate'} <span aria-hidden="true">→</span></button></div>
       </div>
-    </div>
+    </AccessibleModal>
   )
 }
 
@@ -276,7 +283,9 @@ export default function App() {
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
+  const interpretingSessionOpenGuardRef = useRef(createInterpretingSessionOpenGuard())
   const examStartRequestRef = useRef(false)
+  const examResumeRequestGuardRef = useRef(createExamResumeRequestGuard())
   const examEditorTokenRef = useRef<string | undefined>(undefined)
   const examEditorTabLockRef = useRef<ExamRunEditorTabLock | undefined>(undefined)
   const examResultOpenGenerationRef = useRef(0)
@@ -797,15 +806,20 @@ export default function App() {
     if (examStartRequestRef.current) return
     examStartRequestRef.current = true
     const generation = dataLoadGeneration.current
+    const resumeAttempt = examResumeRequestGuardRef.current.begin(run.id)
     let acquiredEditorLock: ExamRunEditorTabLock | undefined
     try {
       const editorToken = getExamEditorToken()
-      acquiredEditorLock = await acquireExamEditorTabLock(run.id)
-      const claimedRun = await database.claimExamRunEditor(run.id, editorToken)
-      if (dataLoadGeneration.current !== generation) {
-        releaseExamEditorTabLock(acquiredEditorLock)
-        return
-      }
+      const resumeClaim = await claimExamRunForResumeIfCurrent({
+        acquireLock: () => acquireExamEditorTabLock(run.id),
+        claimRun: () => database.claimExamRunEditor(run.id, editorToken),
+        isCurrent: () => dataLoadGeneration.current === generation
+          && examResumeRequestGuardRef.current.isCurrent(resumeAttempt),
+        releaseLock: (lock) => releaseExamEditorTabLock(lock),
+      })
+      if (resumeClaim.status === 'stale') return
+      acquiredEditorLock = resumeClaim.lock
+      const claimedRun = resumeClaim.run
       setSelectedExamProfile(profile)
       setActiveExamRun(claimedRun)
       setExamEditorLeaseLost(false)
@@ -871,9 +885,12 @@ export default function App() {
   }
 
   async function handleDiscardExamRun(runId: string) {
+    examResumeRequestGuardRef.current.invalidateForDiscard(runId)
     try {
       await database.deleteExamRun(runId)
       setActiveExamRun(undefined)
+      setSelectedExamProfile(undefined)
+      setExamView('catalog')
       setExamEvaluationNotice(undefined)
       setPendingExamConsent(undefined)
     } catch (error) {
@@ -1357,9 +1374,12 @@ export default function App() {
   }
 
   async function handleOpenInterpretingSession(session: InterpretingSessionRecord) {
+    const sessionOpenRequest = interpretingSessionOpenGuardRef.current.beginOpen(session.id)
+    if (!sessionOpenRequest) return
     const requestGeneration = ++interpretingSessionOpenGenerationRef.current
     const dataGeneration = dataLoadGeneration.current
-    const requestIsCurrent = () => isInterpretingOpenCurrent(
+    const requestIsCurrent = () => interpretingSessionOpenGuardRef.current.isCurrent(sessionOpenRequest)
+      && isInterpretingOpenCurrent(
       { openGeneration: requestGeneration, dataGeneration },
       {
         openGeneration: interpretingSessionOpenGenerationRef.current,
@@ -1447,16 +1467,21 @@ export default function App() {
   }
 
   async function handleDeleteInterpretingSession(id: string) {
-    await trackPersistence(database.deleteInterpretingSession(id))
-    setRecentInterpretingSessions((sessions) => sessions.filter((session) => session.id !== id))
-    if (activeInterpretingSessionId === id) {
-      setActiveInterpretingSessionId(undefined)
-      setActiveInterpretingExercise(undefined)
-      setActiveInterpretingInput(undefined)
-      setActiveInterpretingSourceRecording(undefined)
-      setActiveInterpretingSourceUrl(undefined)
-      setInterpretingFeedback(undefined)
-      setPracticeNotice('The saved interpreting session and its local audio were deleted from this device.')
+    interpretingSessionOpenGuardRef.current.beginDelete(id)
+    try {
+      await trackPersistence(database.deleteInterpretingSession(id))
+      setRecentInterpretingSessions((sessions) => sessions.filter((session) => session.id !== id))
+      if (activeInterpretingSessionId === id) {
+        setActiveInterpretingSessionId(undefined)
+        setActiveInterpretingExercise(undefined)
+        setActiveInterpretingInput(undefined)
+        setActiveInterpretingSourceRecording(undefined)
+        setActiveInterpretingSourceUrl(undefined)
+        setInterpretingFeedback(undefined)
+        setPracticeNotice('The saved interpreting session and its local audio were deleted from this device.')
+      }
+    } finally {
+      interpretingSessionOpenGuardRef.current.finishDelete(id)
     }
   }
 
@@ -1552,9 +1577,14 @@ export default function App() {
     }
     const submissionGeneration = dataLoadGeneration.current
     const attemptIsCurrent = () => writtenEvaluationGuardRef.current.isCurrent(pending.attempt)
-    if (!attemptIsCurrent()) {
+    const requestMatchesSubmission = isWrittenConsentBoundToSubmission(pending, activeExercise?.id)
+    if (!attemptIsCurrent() || !requestMatchesSubmission) {
       pending.request.revokePreview?.()
       setPendingConsent(undefined)
+      setWrittenClockPaused(false)
+      if (attemptIsCurrent() && !requestMatchesSubmission) {
+        setPracticeNotice('The consent preview no longer matches the submitted answer. No cloud request was sent; submit the current answer again to review it.')
+      }
       return
     }
     setIsEvaluating(true)
@@ -1661,7 +1691,7 @@ export default function App() {
         )}
         {currentPage === 'practice' && !activeExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'interpreting' && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
-        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={(answer) => { setDraftAnswer(answer); setWrittenClockPaused(false) }} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
+        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating || pendingConsent !== undefined} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={(answer) => { setDraftAnswer(answer); setWrittenClockPaused(false) }} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} onSaveSelfReview={saveScorelessInterpretingSelfReview} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} pendingSave={currentPendingInterpretingSave !== undefined} isSaving={currentPendingInterpretingSave ? savingInterpretingSaveIds.has(currentPendingInterpretingSave.id) : false} onRetrySave={() => currentPendingInterpretingSave && void retryPendingInterpretingSave(currentPendingInterpretingSave.id)} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
@@ -1745,14 +1775,15 @@ export default function App() {
         {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} isCheckingCapability={isCheckingCapability} onRecheckCapability={() => void recheckDeviceCapability()} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
-      {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined); setWrittenClockPaused(false) }} onConfirm={() => void confirmCloudEvaluation()} />}
-      {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
+      {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { if (isEvaluating) return; pendingConsent.request.revokePreview?.(); setPendingConsent(undefined); setWrittenClockPaused(false); window.setTimeout(() => document.getElementById('translation-answer')?.focus(), 0) }} onConfirm={() => void confirmCloudEvaluation()} />}
+      {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { if (isEvaluating) return; pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
       {pendingExamConsent && (
         <ConsentDialog
           exercise={pendingExamConsent.request.exercise}
           request={pendingExamConsent.request}
           isSubmitting={isEvaluatingExam}
           onCancel={() => {
+            if (isEvaluatingExam) return
             void cancelExamCloudEvaluation()
           }}
           onConfirm={() => void confirmExamCloudEvaluation()}

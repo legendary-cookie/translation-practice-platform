@@ -151,8 +151,7 @@
 .answer-review { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 20px; }
 .answer-review p { color: var(--muted); font-size: 12px; line-height: 1.65; margin: 8px 0 0; white-space: pre-wrap; }
 
-.consent-backdrop { align-items: center; background: rgba(25, 44, 34, 0.48); display: flex; inset: 0; justify-content: center; padding: 20px; position: fixed; z-index: 20; }
-.consent-dialog { background: var(--surface); border-radius: 17px; box-shadow: 0 18px 60px rgba(21, 40, 28, 0.24); max-height: min(760px, calc(100vh - 40px)); max-width: 690px; overflow: auto; padding: clamp(22px, 4vw, 34px); width: 100%; }
+.consent-dialog { width: 100%; }
 .consent-dialog h2 { color: var(--accent-deep); font-size: 28px; letter-spacing: -0.05em; margin: 0 0 10px; }
 .consent-dialog > p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 20px; }
 .consent-evidence { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }

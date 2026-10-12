@@ -71,6 +71,7 @@ export function ExamRunner({
   const isDirtyRef = useRef(false)
   const lastTickTime = useRef(Date.now())
   const timerIntervalRef = useRef<number | undefined>(undefined)
+  const startTimerRef = useRef<(() => void) | undefined>(undefined)
   const submissionStartedRef = useRef(false)
   const exitInProgressRef = useRef(false)
   const reportedPersistenceFailuresRef = useRef(new Set<string>())
@@ -150,9 +151,7 @@ export function ExamRunner({
 
   // Timer loop with wall-clock diffing
   useEffect(() => {
-    lastTickTime.current = Date.now()
-
-    const intervalId = window.setInterval(() => {
+    const tick = () => {
       if (isEvaluationPausedRef.current || runRef.current.evaluationPausedAt) {
         lastTickTime.current = Date.now()
         return
@@ -214,14 +213,22 @@ export function ExamRunner({
           void saveAndSubmitRun(submissionRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
         }
       }
-    }, 1000)
-    timerIntervalRef.current = intervalId
+    }
+
+    const startTimer = () => {
+      if (timerIntervalRef.current !== undefined) return
+      lastTickTime.current = Date.now()
+      timerIntervalRef.current = window.setInterval(tick, 1000)
+    }
+    startTimerRef.current = startTimer
+    startTimer()
 
     return () => {
-      if (timerIntervalRef.current === intervalId) {
+      if (timerIntervalRef.current !== undefined) {
+        window.clearInterval(timerIntervalRef.current)
         timerIntervalRef.current = undefined
       }
-      window.clearInterval(intervalId)
+      if (startTimerRef.current === startTimer) startTimerRef.current = undefined
     }
   }, [profile])
 
@@ -380,6 +387,7 @@ export function ExamRunner({
       exitInProgressRef.current = false
       lastTickTime.current = Date.now()
       isDirtyRef.current = true
+      startTimerRef.current?.()
       reportPersistenceError('The save-and-exit exam state', error)
     }
   }

@@ -144,7 +144,7 @@ export async function claimExamRunEditor(
   editorToken: string,
   transaction: EditorRunTransaction,
   nowMs = Date.now(),
-  recoverySnapshot?: ActiveExamRun,
+  recoverySnapshots: ActiveExamRun[] = [],
   leaseMs = EXAM_RUN_EDITOR_LEASE_MS,
   onClaim?: (run: ActiveExamRun) => void,
 ): Promise<ActiveExamRun> {
@@ -152,7 +152,7 @@ export async function claimExamRunEditor(
     if (await store.getCompletedResult(runId)) throw new ExamRunEditorLeaseLostError(runId)
     const persisted = await store.getRun(runId)
     if (!persisted || persisted.status !== 'in-progress') throw new ExamRunEditorLeaseLostError(runId)
-    const current = reconcileExamRunRecoverySnapshot(persisted, recoverySnapshot ? [recoverySnapshot] : [])
+    const current = reconcileExamRunRecoverySnapshot(persisted, recoverySnapshots)
     if (!current) throw new ExamRunEditorLeaseLostError(runId)
     if (current.editorToken && current.editorToken !== editorToken && leaseExpiry(current) > nowMs) {
       throw new ExamRunEditorOwnedError(runId)

@@ -380,6 +380,31 @@ test('a hung optional local-recognition probe falls back to manual entry within 
   }
 })
 
+test('a hanging capability recheck during transcript capture returns control to the manual path', async () => {
+  const originalWindow = global.window
+  class HangingRecognition {
+    static available() { return new Promise(() => {}) }
+  }
+  global.window = { SpeechRecognition: HangingRecognition }
+  const track = {
+    readyState: 'live',
+    addEventListener() {},
+    removeEventListener() {},
+  }
+  try {
+    const outcome = await Promise.race([
+      recognitionModule.recognizeLocal(track, 'en-US', 'segment-a', 5)
+        .then(() => ({ status: 'resolved' }), (error) => ({ status: 'rejected', error })),
+      new Promise((resolve) => setTimeout(() => resolve({ status: 'hung' }), 50)),
+    ])
+    assert.equal(outcome.status, 'rejected', 'recognition must not remain pending after its capability recheck stalls')
+    assert.match(outcome.error.message, /timed out/i)
+    assert.match(outcome.error.message, /manual/i)
+  } finally {
+    global.window = originalWindow
+  }
+})
+
 test('a failed written-history read is rendered as unavailable with an explicit retry', () => {
   const markup = renderToStaticMarkup(React.createElement(SessionHistoryNotice, {
     onRetry() {},

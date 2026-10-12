@@ -19,7 +19,7 @@ import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { createLocalModelStatusSettingsUpdate, isLocalProgressGenerationCurrent } from './features/settings/local-model-progress-guard'
 import { mergeRecentSessions, persistWrittenPracticeSession, readHistoryRecords, type SessionHistoryStatus } from './features/practice/session-history'
-import { createSettingsHydrationAttempt, runAfterSettingsHydrated, type SettingsHydrationAttempt } from './features/settings/settings-hydration'
+import { createSettingsHydrationAttempt, failInvalidatedSettingsHydration, runAfterSettingsHydrated, type SettingsHydrationAttempt } from './features/settings/settings-hydration'
 import { getSavedExamRunAfterExit } from './features/exam/exam-exit'
 import { isInterpretingOpenCurrent } from './features/interpreting/session-open-guard'
 import { ExamCatalog } from './features/exam/ExamCatalog'
@@ -658,6 +658,8 @@ export default function App() {
   async function clearLocalData() {
     // Refuse unsupported browsers before stopping providers or discarding live UI state.
     database.assertCanClearData()
+    const settingsHydrationAttemptAtClear = settingsHydrationRef.current
+    const settingsWereHydratingAtClear = settingsHydrationStatus === 'loading'
     dataLoadGeneration.current += 1
     examResultOpenGenerationRef.current += 1
     writtenEvaluationGuardRef.current.activate(undefined)
@@ -673,6 +675,13 @@ export default function App() {
     try {
       await database.clearData()
     } catch (error) {
+      if (failInvalidatedSettingsHydration(
+        settingsHydrationAttemptAtClear,
+        settingsHydrationRef.current,
+        settingsWereHydratingAtClear,
+      )) {
+        setSettingsHydrationStatus('failed')
+      }
       setPendingInterpretingSaves((saves) => rebasePendingInterpretingSaves(saves, dataLoadGeneration.current))
       const restartNotice = 'Data deletion failed after the local evaluator was stopped. Prepare the model again before using local evaluation.'
       settingsRef.current = { ...settingsRef.current, localModelStatus: 'not-prepared' }
@@ -1432,17 +1441,20 @@ export default function App() {
           if (isTranslationFeedback(result.feedback)) {
             await saveCompletedSession(exercise, result.feedback, result.provider, answer, elapsedSeconds, submissionGeneration, attempt)
           } else {
+            setWrittenClockPaused(false)
             setPracticeNotice('The evaluator returned interpreting feedback for a written task. No practice estimate was saved.')
           }
         } else if (result.status === 'needs-consent') {
           setPendingConsent({ exercise, attempt, request: result.request, answer, elapsedSeconds })
           setPracticeNotice(`${result.reason} Review the exact task before deciding whether to use cloud evaluation.`)
         } else {
+          setWrittenClockPaused(false)
           setPracticeNotice(result.reason)
         }
       },
       onError: (error) => {
         if (dataLoadGeneration.current === submissionGeneration) {
+          setWrittenClockPaused(false)
           setPracticeNotice(error instanceof Error ? error.message : 'Evaluation could not be completed.')
         }
       },
@@ -1691,7 +1703,7 @@ export default function App() {
         {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
-      {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}
+      {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined); setWrittenClockPaused(false) }} onConfirm={() => void confirmCloudEvaluation()} />}
       {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
       {pendingExamConsent && (
         <ConsentDialog

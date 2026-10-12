@@ -580,7 +580,7 @@ export const database = {
     return withDataWrite(async () => {
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable; this exam attempt cannot be resumed safely.')
-      const recoverySnapshot = readExamRunRecoverySnapshots().find((run) => run.id === runId)
+      const recoverySnapshots = readExamRunRecoverySnapshots().filter((run) => run.id === runId)
       const mirror = createExamRunLeaseMirrorMutation(storage, runId)
       try {
         return await claimExamRunEditor(
@@ -591,7 +591,7 @@ export const database = {
             return operation(store)
           }),
           Date.now(),
-          recoverySnapshot,
+          recoverySnapshots,
           EXAM_RUN_EDITOR_LEASE_MS,
           (run) => mirror.publish(run),
         )

@@ -137,7 +137,7 @@ test('expired editor takeover fences stale save and staged recovery while preser
   }
   const now = Date.parse('2026-10-13T00:00:10.000Z')
   const store = createRunStore([old])
-  const adopted = await editor.claimExamRunEditor('run-takeover', 'new-tab', store.transaction, now, old)
+  const adopted = await editor.claimExamRunEditor('run-takeover', 'new-tab', store.transaction, now, [old])
   assert.equal(adopted.answers.section.passage, 'accepted old answer')
   assert.equal(adopted.editorToken, 'new-tab')
   assert.ok(adopted.revision > old.revision)
@@ -160,6 +160,37 @@ test('expired leases reject a stale editor save even before a different tab clai
     ...store.runs[0], revision: 4, answers: { section: { passage: 'late edit' } },
   }, store.transaction, Date.parse('2026-10-13T00:00:02.000Z')), /lease|owner/i)
   assert.equal(store.runs[0].answers.section, undefined)
+})
+
+test('editor takeover reconciles the newest recovery snapshot for the persisted owner, not an older token', async () => {
+  const editor = require('../src/storage/exam-run-editor.ts')
+  const now = Date.parse('2026-10-13T00:00:10.000Z')
+  const persisted = {
+    id: 'run-multiple-journals', status: 'in-progress', revision: 4, editorToken: 'current-owner',
+    editorLeaseExpiresAt: '2026-10-13T00:00:01.000Z', lastSavedAt: '2026-10-13T00:00:00.000Z',
+    overallRemainingSeconds: 100, answers: { section: { passage: 'older IndexedDB answer' } },
+  }
+  const olderOwnerJournal = {
+    ...persisted, editorToken: 'previous-owner', revision: 20, overallRemainingSeconds: 80,
+    answers: { section: { passage: 'stale prior owner answer' } },
+  }
+  const currentOwnerJournal = {
+    ...persisted, revision: 7, overallRemainingSeconds: 95,
+    answers: { section: { passage: 'latest accepted answer' } },
+  }
+  const store = createRunStore([persisted])
+
+  const claimed = await editor.claimExamRunEditor(
+    persisted.id,
+    'replacement-owner',
+    store.transaction,
+    now,
+    [olderOwnerJournal, currentOwnerJournal],
+  )
+
+  assert.equal(claimed.answers.section.passage, 'latest accepted answer')
+  assert.equal(claimed.overallRemainingSeconds, 95)
+  assert.equal(claimed.editorToken, 'replacement-owner')
 })
 
 test('recovery staging requires the exact current editor token and revision inside the IDB transaction', async () => {

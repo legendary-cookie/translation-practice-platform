@@ -166,6 +166,26 @@ test('failed settings hydration rejects full-record writes until a successful re
   assert.equal(current.cloudSupportsAudio, true)
 })
 
+test('failed deletion makes an invalidated pending settings read retryable without failing a newer retry', async () => {
+  const { createSettingsHydrationAttempt, failInvalidatedSettingsHydration, runAfterSettingsHydrated } = require('../src/features/settings/settings-hydration.ts')
+  const initial = createSettingsHydrationAttempt()
+  let currentAttempt = initial
+  let status = 'loading'
+  let writes = 0
+  const pendingWrite = runAfterSettingsHydrated(initial, async () => { writes += 1 })
+
+  assert.equal(failInvalidatedSettingsHydration(initial, currentAttempt, true), true)
+  status = 'failed'
+  await assert.rejects(pendingWrite, /settings could not be loaded/i)
+  assert.equal(status, 'failed', 'Settings should expose its retry state after the clear failure')
+  assert.equal(writes, 0, 'the stale hydration must not permit default settings to overwrite saved preferences')
+
+  const retry = createSettingsHydrationAttempt()
+  currentAttempt = retry
+  assert.equal(failInvalidatedSettingsHydration(initial, currentAttempt, true), false)
+  assert.equal(status, 'failed', 'a later clear failure must not invalidate a newer settings retry')
+})
+
 test('an exam saved before exit remains the fallback when the follow-up recovery read rejects', async () => {
   const { getSavedExamRunAfterExit } = require('../src/features/exam/exam-exit.ts')
   const savedRun = { id: 'qa-run', status: 'in-progress', lastSavedAt: '2026-10-13T00:00:00.000Z' }

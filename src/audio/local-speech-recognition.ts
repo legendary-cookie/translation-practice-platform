@@ -125,12 +125,17 @@ export async function installLocalRecognitionLanguage(languageTag: string): Prom
   }
 }
 
-export async function recognizeLocal(track: MediaStreamTrack, languageTag: string, segmentId: string): Promise<LocalRecognitionResult> {
+export async function recognizeLocal(
+  track: MediaStreamTrack,
+  languageTag: string,
+  segmentId: string,
+  capabilityTimeoutMs = LOCAL_RECOGNITION_CAPABILITY_TIMEOUT_MS,
+): Promise<LocalRecognitionResult> {
   const constructor = getConstructor()
   if (!constructor) {
     throw new Error('On-device speech recognition is unavailable; enter a transcript manually.')
   }
-  const capability = await getLocalRecognitionCapability(languageTag)
+  const capability = await getLocalRecognitionCapabilityWithTimeout(languageTag, capabilityTimeoutMs)
   if (capability.status !== 'available') {
     throw new Error(capability.reason)
   }

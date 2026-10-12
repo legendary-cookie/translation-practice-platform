@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { analyzeRecording } from '../../audio/audio-analysis'
 import { createAudioPlayer, type AudioPlayer } from '../../audio/audio-player'
 import { createResponseRecorder, type RecorderState, type ResponseRecorder } from '../../audio/audio-recorder'
-import { getLocalRecognitionCapability, recognizeLocal, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
+import { getLocalRecognitionCapabilityWithTimeout, recognizeLocal, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 import { getLanguage } from '../../domain/languages'
 import { resolveSimultaneousResponseRange } from './response-range'
 import type {
@@ -178,7 +178,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
 
   useEffect(() => {
     let cancelled = false
-    void getLocalRecognitionCapability(targetLanguage.speechTag).then((capability) => {
+    void getLocalRecognitionCapabilityWithTimeout(targetLanguage.speechTag).then((capability) => {
       if (!cancelled) {
         setRecognition(capability)
       }

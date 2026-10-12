@@ -146,9 +146,10 @@ export function countTextUnits(text: string, language: LanguageCode): number {
     return 0
   }
   if (language === 'zh') {
-    // Count Chinese characters plus whitespace-separated latin/other words
+    // Count Han characters plus letter/number runs; punctuation and symbols
+    // are separators, not learner-entered words.
     const cjkMatches = trimmed.match(/[\u4e00-\u9fa5]/g) ?? []
-    const nonCjk = trimmed.replace(/[\u4e00-\u9fa5]/g, ' ').trim()
+    const nonCjk = trimmed.replace(/[\u4e00-\u9fa5]/g, ' ').replace(/[\p{P}\p{S}]/gu, ' ').trim()
     const nonCjkWords = nonCjk.length > 0 ? nonCjk.split(/\s+/).filter(Boolean).length : 0
     return cjkMatches.length + nonCjkWords
   }

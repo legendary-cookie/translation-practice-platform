@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createCloudProvider } from './ai/cloud-provider'
+import { createCloudProvider, validateCloudProviderPreferences } from './ai/cloud-provider'
 import { forgetLocalModelReady, hadLocalModelReady, type LocalModelProgress } from './ai/local-provider'
 import { createLocalProvider } from './ai/local-provider'
 import { createInitialCapability, detectDeviceCapability, type CapabilityAssessment } from './ai/capability'
@@ -217,6 +217,7 @@ export default function App() {
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
+  const examResultOpenGenerationRef = useRef(0)
 
   const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number) => {
     if (localProviderEpochRef.current !== providerEpoch) {
@@ -442,6 +443,7 @@ export default function App() {
   }
 
   function navigateToPage(page: Page) {
+    examResultOpenGenerationRef.current += 1
     if (page !== 'progress') {
       interpretingSessionOpenGenerationRef.current += 1
     }
@@ -643,8 +645,11 @@ export default function App() {
 
   async function handleOpenExamResult(result: ConsolidatedExamResult) {
     interpretingSessionOpenGenerationRef.current += 1
+    const requestGeneration = ++examResultOpenGenerationRef.current
+    const requestIsCurrent = () => requestGeneration === examResultOpenGenerationRef.current && currentPage === 'progress'
     try {
       const storedResult = await database.getExamResult(result.id)
+      if (!requestIsCurrent()) return
       if (!storedResult) {
         setExamEvaluationNotice('This saved exam report is no longer available in local storage.')
         setCurrentPage('progress')
@@ -656,6 +661,7 @@ export default function App() {
       setExamEvaluationNotice(undefined)
       setCurrentPage('exam')
     } catch {
+      if (!requestIsCurrent()) return
       setExamEvaluationNotice('This saved exam report could not be opened from local storage.')
       setCurrentPage('progress')
     }
@@ -663,6 +669,7 @@ export default function App() {
 
 
   async function saveCloudPreferences(baseUrl: string, model: string, supportsAudio: boolean) {
+    validateCloudProviderPreferences(baseUrl, model)
     await updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
   }
 

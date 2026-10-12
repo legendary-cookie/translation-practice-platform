@@ -39,6 +39,13 @@ function getCompletionEndpoint(baseUrl: string): string {
   return `${normalized}/chat/completions`
 }
 
+export function validateCloudProviderPreferences(baseUrl: string, model: string): void {
+  getCompletionEndpoint(baseUrl)
+  if (!model.trim()) {
+    throw new Error('A cloud model name is required.')
+  }
+}
+
 function getContent(payload: unknown): string {
   const response = payload as CloudResponse
   const content = response.choices?.[0]?.message?.content
@@ -225,9 +232,7 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
   const apiKey = config.apiKey
   const supportsAudio = config.supportsAudio === true
 
-  if (!model) {
-    throw new Error('A cloud model name is required.')
-  }
+  validateCloudProviderPreferences(config.baseUrl, model)
   if (!apiKey.trim()) {
     throw new Error('A cloud API key is required for this session.')
   }

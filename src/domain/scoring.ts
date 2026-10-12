@@ -206,7 +206,7 @@ function normalizeInterpretingCategory(value: unknown): InterpretingAnnotationCa
 function normalizeInterpretingAnnotation(
   value: unknown,
   context: InterpretingFeedbackValidationContext,
-  expectedStatus?: 'uncertain' | 'insufficient',
+  expectedStatuses?: readonly ('uncertain' | 'insufficient')[],
 ): InterpretingAnnotation {
   if (!isRecord(value)) {
     throw new FeedbackValidationError('Interpreting annotation must be an object.')
@@ -233,9 +233,6 @@ function normalizeInterpretingAnnotation(
 
   const sourceQuote = value.sourceQuote === undefined ? undefined : requiredText(value.sourceQuote, 'sourceQuote')
   const learnerQuote = value.learnerQuote === undefined ? undefined : requiredText(value.learnerQuote, 'learnerQuote')
-  if (!sourceQuote && !learnerQuote) {
-    throw new FeedbackValidationError('Interpreting annotation must include source or learner evidence.')
-  }
   if (sourceQuote && !sourceSegment.transcript.includes(sourceQuote)) {
     throw new FeedbackValidationError('Interpreting source evidence must be copied literally from the referenced segment.')
   }
@@ -247,7 +244,7 @@ function normalizeInterpretingAnnotation(
   if (rawStatus !== 'verified' && rawStatus !== 'uncertain' && rawStatus !== 'insufficient') {
     throw new FeedbackValidationError('Interpreting annotation has an invalid evidence status.')
   }
-  if (expectedStatus && rawStatus !== expectedStatus) {
+  if (expectedStatuses && (rawStatus === 'verified' || !expectedStatuses.includes(rawStatus as 'uncertain' | 'insufficient'))) {
     throw new FeedbackValidationError('Interpreting uncertain evidence has an inconsistent evidence status.')
   }
 
@@ -266,6 +263,12 @@ function normalizeInterpretingAnnotation(
   const hasTranscriptEvidence = Boolean(responseSegment?.transcript.trim())
   const hasRecordingEvidence = Boolean(responseSegment?.recordingId && context.recordings.some((recording) => recording.id === responseSegment.recordingId))
   const hasRecordedDeliveryEvidence = Boolean(hasRecordingEvidence && matchingAnalysis)
+  if (contentCategory && !sourceQuote && !learnerQuote) {
+    throw new FeedbackValidationError('Content annotations must include literal source or learner text evidence.')
+  }
+  if (!contentCategory && (!responseSegment || !hasRecordedDeliveryEvidence)) {
+    throw new FeedbackValidationError('Delivery annotations must reference a learner recording with local delivery analysis.')
+  }
   let evidenceStatus: InterpretingAnnotation['evidenceStatus'] = rawStatus
   if (rawStatus === 'verified' && contentCategory) {
     if (!responseSegment || !hasTranscriptEvidence) {
@@ -341,7 +344,7 @@ export function validateInterpretingFeedback(
 
   const normalizedAnnotations = raw.issues.map((issue) => normalizeInterpretingAnnotation(issue, context))
   const uncertainEvidence = Array.isArray(raw.uncertainEvidence)
-    ? raw.uncertainEvidence.map((issue) => normalizeInterpretingAnnotation(issue, context, 'uncertain'))
+    ? raw.uncertainEvidence.map((issue) => normalizeInterpretingAnnotation(issue, context, ['uncertain', 'insufficient']))
     : []
   const issues = normalizedAnnotations.filter((issue) => issue.evidenceStatus === 'verified')
   const movedUncertain = normalizedAnnotations.filter((issue) => issue.evidenceStatus !== 'verified')

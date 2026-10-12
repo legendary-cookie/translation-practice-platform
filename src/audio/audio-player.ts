@@ -83,8 +83,8 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
     playedRanges.set(segment.id, merged)
   }
 
-  function recordPlaybackProgress() {
-    if (isSeeking || audio.paused || !currentSegment) {
+  function recordPlaybackProgress(includePausedPosition = false) {
+    if (isSeeking || (audio.paused && !includePausedPosition) || !currentSegment) {
       playbackBaselineSeconds = undefined
       return
     }
@@ -158,6 +158,7 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
     notify()
   }
   const handlePause = () => {
+    recordPlaybackProgress(true)
     playbackBaselineSeconds = undefined
     notify()
   }

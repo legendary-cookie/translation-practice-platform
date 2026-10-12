@@ -777,19 +777,20 @@ export const database = {
       this.listExamResults(),
       this.listExamProfiles(),
     ])
-    const exportedRecordings = await Promise.all(recordings.map(async (recording) => {
+    const exportedRecordings = []
+    for (const recording of recordings) {
       const bytes = new Uint8Array(await recording.blob.arrayBuffer())
       let binary = ''
       const chunkSize = 0x8000
       for (let index = 0; index < bytes.length; index += chunkSize) {
         binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
       }
-      return {
+      exportedRecordings.push({
         ...recording,
         dataUrl: `data:${recording.mimeType || 'application/octet-stream'};base64,${btoa(binary)}`,
         blob: undefined,
-      }
-    }))
+      })
+    }
     return {
       version: 3,
       exportedAt: new Date().toISOString(),

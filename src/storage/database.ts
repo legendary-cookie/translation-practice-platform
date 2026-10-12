@@ -501,8 +501,10 @@ export const database = {
       'interpretingSessions',
     ]
     const transaction = db.transaction(storeNames, 'readwrite')
-    await Promise.all(storeNames.map((name) => transaction.objectStore(name).clear()))
-    await transaction.done
+    await Promise.all([
+      Promise.all(storeNames.map((name) => transaction.objectStore(name).clear())),
+      transaction.done,
+    ])
     clearAllExamRunRecoverySnapshots()
   },
 }

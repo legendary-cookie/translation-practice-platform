@@ -184,6 +184,21 @@ export const database = {
     await db.put('examResults', result)
   },
 
+  async completeExamRun(runId: string, result: ConsolidatedExamResult): Promise<ConsolidatedExamResult> {
+    const db = await getDatabase()
+    const transaction = db.transaction(['examResults', 'examRuns'], 'readwrite')
+    const existingResults = await transaction.objectStore('examResults').getAll()
+    const existingResult = existingResults.find((storedResult) => storedResult.runId === runId)
+    const completedResult = existingResult ?? result
+
+    if (!existingResult) {
+      await transaction.objectStore('examResults').put(result)
+    }
+    await transaction.objectStore('examRuns').delete(runId)
+    await transaction.done
+    return completedResult
+  },
+
   async getExamResult(id: string): Promise<ConsolidatedExamResult | undefined> {
     const db = await getDatabase()
     return db.get('examResults', id)

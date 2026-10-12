@@ -349,11 +349,10 @@ export default function App() {
         (completed, total) => setExamEvaluationProgress({ completed, total }),
         approvedFeedback,
       )
-      await database.saveExamResult(result)
-      await database.deleteExamRun(completedRun.id)
+      const storedResult = await database.completeExamRun(completedRun.id, result)
       setActiveExamRun(undefined)
-      setActiveExamResult(result)
-      setRecentExamResults((prev) => [result, ...prev.filter((r) => r.id !== result.id)])
+      setActiveExamResult(storedResult)
+      setRecentExamResults((prev) => [storedResult, ...prev.filter((r) => r.id !== storedResult.id && r.runId !== storedResult.runId)])
       setPendingExamConsent(undefined)
       setExamView('results')
     } catch (error) {

@@ -163,6 +163,8 @@ export type ActiveExamRun = {
   overallRemainingSeconds: number
   sectionRemainingSeconds: Record<string, number>
   answers: Record<string, Record<string, string>>
+  /** Set when an automatic expiry submission has been attempted, so a blocked evaluation can be retried explicitly. */
+  submissionAttemptedAt?: string
 }
 
 export type PassageFeedbackItem = {

@@ -63,14 +63,27 @@ export function ExamRunner({
   const isDirtyRef = useRef(false)
   const lastTickTime = useRef(Date.now())
   const autoSubmitTriggeredRef = useRef(false)
+  const reportedPersistenceFailuresRef = useRef(new Set<string>())
   const onSubmitRunRef = useRef(onSubmitRun)
   const onPersistenceErrorRef = useRef(onPersistenceError)
   onSubmitRunRef.current = onSubmitRun
   onPersistenceErrorRef.current = onPersistenceError
 
+  const reportPersistenceError = (operation: string, error: unknown) => {
+    const reason = error instanceof Error && error.message ? ` (${error.message})` : ''
+    const message = `${operation} could not be saved locally${reason} Your current in-memory exam remains open, but it may not be recoverable if this page closes.`
+    console.error(`${operation} persistence failed.`, error)
+    if (!reportedPersistenceFailuresRef.current.has(operation)) {
+      reportedPersistenceFailuresRef.current.add(operation)
+      onPersistenceErrorRef.current?.(message)
+    }
+  }
+
   // Initial persist if brand new run
   useEffect(() => {
-    void database.saveExamRun(runRef.current)
+    void database.saveExamRun(runRef.current).catch((error) => {
+      reportPersistenceError('The initial exam state', error)
+    })
   }, [])
 
   // Window beforeunload warning
@@ -90,6 +103,11 @@ export function ExamRunner({
     lastTickTime.current = Date.now()
 
     const intervalId = setInterval(() => {
+      if (runRef.current.overallRemainingSeconds <= 0 && runRef.current.submissionAttemptedAt) {
+        clearInterval(intervalId)
+        return
+      }
+
       const now = Date.now()
       const elapsedSeconds = Math.floor((now - lastTickTime.current) / 1000)
 
@@ -115,9 +133,14 @@ export function ExamRunner({
           }
         }
 
-        runRef.current = nextRun
-        setRun(nextRun)
-        isDirtyRef.current = true
+        const shouldAutoSubmit = overallExpired && !autoSubmitTriggeredRef.current && !nextRun.submissionAttemptedAt
+        const submissionRun = shouldAutoSubmit
+          ? { ...nextRun, submissionAttemptedAt: new Date().toISOString() }
+          : nextRun
+
+        runRef.current = submissionRun
+        setRun(submissionRun)
+        isDirtyRef.current = !shouldAutoSubmit
 
         if (advancedSection) {
           setSectionExpiredAlert(
@@ -125,11 +148,11 @@ export function ExamRunner({
           )
         }
 
-        if (overallExpired && !autoSubmitTriggeredRef.current) {
+        if (shouldAutoSubmit) {
           autoSubmitTriggeredRef.current = true
           isDirtyRef.current = false
           clearInterval(intervalId)
-          void saveAndSubmitRun(nextRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
+          void saveAndSubmitRun(submissionRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
         }
       }
     }, 1000)
@@ -142,14 +165,20 @@ export function ExamRunner({
     const autoSaveInterval = setInterval(() => {
       if (isDirtyRef.current) {
         isDirtyRef.current = false
-        void database.saveExamRun(runRef.current)
+        const runToSave = runRef.current
+        void database.saveExamRun(runToSave).catch((error) => {
+          isDirtyRef.current = true
+          reportPersistenceError('The periodic exam autosave', error)
+        })
       }
     }, 3000)
 
     return () => {
       clearInterval(autoSaveInterval)
       if (isDirtyRef.current) {
-        void database.saveExamRun(runRef.current)
+        const runToSave = runRef.current
+        void database.saveExamRun(runToSave)
+          .catch((error) => reportPersistenceError('The final exam autosave', error))
       }
     }
   }, [])
@@ -187,20 +216,27 @@ export function ExamRunner({
       runRef.current = nextRun
       isDirtyRef.current = true
       setRun(nextRun)
-      void database.saveExamRun(nextRun)
+      void database.saveExamRun(nextRun).catch((error) => {
+        reportPersistenceError('The section-change exam save', error)
+      })
     }
   }
 
   const handleConfirmSubmit = () => {
     setShowSubmitModal(false)
     isDirtyRef.current = false
-    void saveAndSubmitRun(runRef.current, onSubmitRun, onPersistenceError)
+    void saveAndSubmitRun(runRef.current, onSubmitRunRef.current, onPersistenceErrorRef.current)
   }
 
   const handleSaveAndExit = async () => {
     isDirtyRef.current = false
-    await database.saveExamRun(runRef.current)
-    onCancel()
+    try {
+      await database.saveExamRun(runRef.current)
+      onCancel()
+    } catch (error) {
+      isDirtyRef.current = true
+      reportPersistenceError('The save-and-exit exam state', error)
+    }
   }
 
   // Count answered passages

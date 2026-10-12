@@ -91,9 +91,10 @@ export async function analyzeRecording(blob: Blob): Promise<DeliveryAnalysis> {
       activeSpeechRatio: energies.length > 0 ? Math.round((activeWindows / energies.length) * 100) / 100 : 0,
       pauseCount,
       longestPauseMs: longestPauseWindows * 20,
-      signalQuality: Math.round(Math.min(1, peak) * 100) / 100,
-      analysisConfidence: channel.length > 0 && peak > 0.02 ? 0.75 : 0.35,
-      method: 'local-web-audio-energy-v1',
+      // Amplitude and envelope timing cannot distinguish speech from noise, clicks, or clipping.
+      // Keep these metrics explicitly below the scoring threshold until speech evidence is qualified.
+      analysisConfidence: 0.35,
+      method: 'local-web-audio-energy-v2',
     }
   } finally {
     await context.close()

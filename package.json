@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --require ./tests/register-typescript.cjs --test tests"
   },
   "dependencies": {
     "@mlc-ai/web-llm": "0.2.82",

@@ -108,7 +108,7 @@ export type DeliveryAnalysis = {
   pauseCount: number
   longestPauseMs: number
   wordsPerMinute?: number
-  signalQuality: number
+  signalQuality?: number
   analysisConfidence: number
   method: string
 }

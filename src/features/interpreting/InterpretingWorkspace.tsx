@@ -4,6 +4,7 @@ import { createAudioPlayer, type AudioPlayer } from '../../audio/audio-player'
 import { createResponseRecorder, type RecorderState, type ResponseRecorder } from '../../audio/audio-recorder'
 import { getLocalRecognitionCapability, recognizeLocal, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 import { getLanguage } from '../../domain/languages'
+import { resolveSimultaneousResponseRange } from './response-range'
 import type {
   AudioRecordingRecord,
   DeliveryAnalysis,
@@ -43,7 +44,6 @@ function fallbackAnalysis(durationMs: number): DeliveryAnalysis {
     activeSpeechRatio: 0,
     pauseCount: 0,
     longestPauseMs: 0,
-    signalQuality: 0,
     analysisConfidence: 0.2,
     method: 'local-analysis-unavailable-v1',
   }
@@ -66,7 +66,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   const [replayUrls, setReplayUrls] = useState<Record<string, string>>({})
   const [transcripts, setTranscripts] = useState<Record<string, string>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).map((segment) => [segment.sourceSegmentId, segment.transcript])))
   const [transcriptSources, setTranscriptSources] = useState<Record<string, TranscriptSource>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).map((segment) => [segment.sourceSegmentId, segment.transcriptSource])))
-  const [recognitionStatuses, setRecognitionStatuses] = useState<Record<string, RecognitionStatus>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).map((segment) => [segment.sourceSegmentId, segment.transcriptSource === 'on-device' ? 'uncertain' : segment.recognitionStatus])))
+  const [recognitionStatuses, setRecognitionStatuses] = useState<Record<string, RecognitionStatus>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).map((segment) => [segment.sourceSegmentId, segment.recognitionStatus])))
   const [recognitionConfidences, setRecognitionConfidences] = useState<Record<string, number>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).flatMap((segment) => segment.recognitionConfidence === undefined ? [] : [[segment.sourceSegmentId, segment.recognitionConfidence]])))
   const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(() => new Set())
   const [pendingRecognitionSegmentId, setPendingRecognitionSegmentId] = useState<string>()
@@ -138,7 +138,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
       setPlayerState(state)
       const listeningFor = listenTargetSegmentRef.current ?? state.segmentId
       const listened = listeningFor ? exercise.segments.find((segment) => segment.id === listeningFor) : undefined
-      if (listened && state.segmentId === listened.id && !state.isPlaying && state.currentTimeSeconds * 1000 >= listened.endMs - 50) {
+      if (listened && state.segmentId === listened.id && !state.isPlaying && player.hasPlayedSegmentToEnd(listened.id)) {
         setListenedSegments((segments) => new Set(segments).add(listened.id))
         listenTargetSegmentRef.current = undefined
       }
@@ -408,18 +408,21 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     const responseSegments: InterpretingResponseSegment[] = exercise.segments.map((segment) => {
       const recording = interpretingMode === 'simultaneous' ? continuousRecording : takes[segment.id]
       const skipped = skippedSegments.has(segment.id)
-      const responseStartMs = interpretingMode === 'simultaneous'
-        ? Math.max(0, Math.min(segment.startMs + simultaneousPlaybackOffsetMsRef.current, recording?.durationMs ?? 0))
-        : 0
-      const responseEndMs = interpretingMode === 'simultaneous'
-        ? Math.max(responseStartMs, Math.min(segment.endMs + simultaneousPlaybackOffsetMsRef.current, recording?.durationMs ?? responseStartMs))
-        : recording?.durationMs ?? 0
+      const restoredResponse = initialInput?.responseSegments.find((response) => response.sourceSegmentId === segment.id)
+      const responseRange = interpretingMode === 'simultaneous'
+        ? resolveSimultaneousResponseRange({
+            segment,
+            recordingId: recording?.id,
+            recordingDurationMs: recording?.durationMs ?? 0,
+            playbackOffsetMs: simultaneousPlaybackOffsetMsRef.current,
+            restoredResponse,
+          })
+        : { responseStartMs: 0, responseEndMs: recording?.durationMs ?? 0 }
       return {
         id: `${exercise.id}-response-${segment.id}`,
         sourceSegmentId: segment.id,
         recordingId: skipped ? undefined : recording?.id,
-        responseStartMs,
-        responseEndMs,
+        ...responseRange,
         transcript: transcripts[segment.id] ?? '',
         transcriptSource: transcriptSources[segment.id] ?? 'manual',
         recognitionStatus: skipped ? 'unavailable' : recognitionStatuses[segment.id] ?? (transcripts[segment.id]?.trim() ? 'verified' : 'uncertain'),

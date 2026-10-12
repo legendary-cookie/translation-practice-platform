@@ -24,7 +24,7 @@ Return this JSON shape:
   "uncertainty": "what the evaluator cannot confidently determine"
 }
 
-Use exactly these five dimension keys: ${dimensionList}. Keep all scores between 0 and 100. This is practice feedback only; do not call it a CATTI or MTI result.
+Use exactly these five dimension keys: ${dimensionList}. Use a higher-is-better scale for every dimension: 100 means fully successful performance with no consequential errors for that dimension; lower scores mean more frequent or severe shortcomings. Keep all scores between 0 and 100. This is practice feedback only; do not call it a CATTI or MTI result.
 
 SOURCE TEXT (${sourceLanguage.label}):
 <<<SOURCE>>>
@@ -43,7 +43,18 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, a
   const targetLanguage = getLanguage(input.exercise.targetLanguage)
   const sourceSegments = input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n')
   const responses = input.responseSegments.map((segment) => `${segment.id} (source ${segment.sourceSegmentId}, ${segment.transcriptSource}, ${segment.recognitionStatus}): ${segment.transcript}`).join('\n')
-  const delivery = input.deliveryAnalysis.map((analysis) => JSON.stringify(analysis)).join('\n')
+  const delivery = input.deliveryAnalysis.map((analysis) => {
+    if (analysis.method.startsWith('local-web-audio-energy-') || analysis.method === 'local-analysis-unavailable-v1') {
+      return JSON.stringify({
+        recordingId: analysis.recordingId,
+        durationMs: analysis.durationMs,
+        analysisConfidence: analysis.analysisConfidence,
+        method: analysis.method,
+        qualification: 'unqualified amplitude/envelope data only; not evidence of speech presence, signal quality, or delivery quality',
+      })
+    }
+    return JSON.stringify(analysis)
+  }).join('\n')
   const deliveryCanBeScored = hasCompleteInterpretingDeliveryEvidence(input)
   const deliveryScoreField = deliveryCanBeScored
     ? '  "deliveryScores": {"fluency": 0, "pacing": 0, "hesitation": 0},\n'
@@ -59,7 +70,7 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, a
     : 'Use only the transcripts and derived delivery metrics below; response audio stays on the learner\'s device and is not attached to this evaluation.'
   const deliveryInstruction = deliveryCanBeScored
     ? 'Sufficiently confident local delivery analysis is available for the saved response recordings.'
-    : 'No sufficiently confident analysis covers every response recording. Omit deliveryScores and do not invent a delivery estimate.'
+    : 'No sufficiently confident analysis covers every response recording. Omit deliveryScores and do not invent a delivery estimate. Amplitude/envelope-only metrics do not establish speech presence, signal quality, or delivery quality; do not infer these from loudness, peaks, or pauses.'
 
   return `Evaluate this ${input.interpretingMode} interpreting practice from ${sourceLanguage.label} to ${targetLanguage.label}. ${audioInstruction} ${deliveryInstruction}
 
@@ -77,7 +88,7 @@ ${deliveryScoreField}  "overallScore": 0,
   "uncertainty": "what the evaluator cannot confidently determine"
 }
 
-Keep content and delivery scores separate. Do not infer meaning errors from a recognition-uncertain response; put that evidence in uncertainEvidence instead. All scores must be between 0 and 100. This is practice feedback only, never an official exam result.
+Keep content and delivery scores separate. Every dimension uses a higher-is-better scale: 100 means excellent performance with no consequential error or shortcoming for that dimension; lower scores indicate more frequent or severe problems. In particular, omissions=100 means no consequential omissions and complete content transfer; additionsMistranslations=100 means no consequential unsupported additions or mistranslations; hesitation=100 means no consequential delivery disruption from hesitation. Meaning transfer, terminology, fluency, and pacing are also strongest at 100. Do not infer meaning errors from a recognition-uncertain response; put that evidence in uncertainEvidence instead. All scores must be between 0 and 100. This is practice feedback only, never an official exam result.
 
 SOURCE SEGMENTS (${sourceLanguage.label}):
 <<<SOURCE>>>

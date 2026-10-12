@@ -9,6 +9,7 @@ import { Dashboard } from './features/dashboard/Dashboard'
 import { FeedbackPanel } from './features/practice/FeedbackPanel'
 import { PracticeSetup, type PracticeStart } from './features/practice/PracticeSetup'
 import { TranslationWorkspace } from './features/practice/TranslationWorkspace'
+import { createWrittenEvaluationGuard, runWrittenEvaluationAttempt, type WrittenEvaluationAttempt } from './features/practice/written-evaluation-guard'
 import { InterpretingSetup, type InterpretingStart } from './features/interpreting/InterpretingSetup'
 import { InterpretingWorkspace } from './features/interpreting/InterpretingWorkspace'
 import { InterpretingFeedbackPanel } from './features/interpreting/InterpretingFeedbackPanel'
@@ -98,6 +99,8 @@ type PendingExamConsent = {
 }
 
 type PendingPracticeConsent = {
+  exercise: Exercise
+  attempt: WrittenEvaluationAttempt
   request: CloudConsentRequest
   answer: string
   elapsedSeconds: number
@@ -240,6 +243,7 @@ export default function App() {
   const interpretingSessionOpenGenerationRef = useRef(0)
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
+  const writtenEvaluationGuardRef = useRef(createWrittenEvaluationGuard())
 
   if (!settingsHydrationRef.current) {
     let resolveHydration: () => void = () => undefined
@@ -426,6 +430,9 @@ export default function App() {
 
   async function clearLocalData() {
     dataLoadGeneration.current += 1
+    writtenEvaluationGuardRef.current.activate(undefined)
+    pendingConsent?.request.revokePreview?.()
+    setPendingConsent(undefined)
     const nextProviderEpoch = localProviderEpochRef.current + 1
     localProviderEpochRef.current = nextProviderEpoch
     localProvider.dispose()
@@ -525,6 +532,12 @@ export default function App() {
 
   function navigateToPage(page: Page) {
     examResultOpenGenerationRef.current += 1
+    if (currentPage === 'practice' && page !== 'practice') {
+      writtenEvaluationGuardRef.current.invalidate()
+      pendingConsent?.request.revokePreview?.()
+      setPendingConsent(undefined)
+      setIsEvaluating(false)
+    }
     if (page === 'interpreting') {
       openInterpretingSetup()
       return
@@ -771,6 +784,9 @@ export default function App() {
   }
 
   function beginPractice(selection: PracticeStart) {
+    writtenEvaluationGuardRef.current.activate(selection.exercise.id)
+    pendingConsent?.request.revokePreview?.()
+    setIsEvaluating(false)
     setPracticeSetupMode('written')
     setActiveExercise(selection.exercise)
     setActiveInterpretingExercise(undefined)
@@ -787,6 +803,7 @@ export default function App() {
   }
 
   function beginInterpreting(selection: InterpretingStart) {
+    writtenEvaluationGuardRef.current.activate(undefined)
     setPracticeSetupMode('interpreting')
     setActiveInterpretingExercise(selection.exercise)
     setActiveInterpretingMode(selection.interpretingMode)
@@ -802,6 +819,9 @@ export default function App() {
   }
 
   function resetPractice() {
+    writtenEvaluationGuardRef.current.activate(undefined)
+    pendingConsent?.request.revokePreview?.()
+    setIsEvaluating(false)
     if (currentPage === 'interpreting') {
       setPracticeSetupMode('interpreting')
       setActiveInterpretingExercise(undefined)
@@ -828,6 +848,9 @@ export default function App() {
     if (hasMeaningfulDraft && !window.confirm('Starting news practice will discard your current written draft. Continue?')) {
       return
     }
+    writtenEvaluationGuardRef.current.activate(undefined)
+    pendingConsent?.request.revokePreview?.()
+    setIsEvaluating(false)
     setPracticeSetupMode('written')
     setActiveExercise(undefined)
     setTimeLimitSeconds(undefined)
@@ -840,22 +863,25 @@ export default function App() {
   }
 
   async function saveCompletedSession(
+    exercise: Exercise,
     nextFeedback: TranslationFeedback,
     provider: 'local' | 'cloud',
     answer: string,
     elapsedSeconds: number,
     generation: number,
+    attempt: WrittenEvaluationAttempt,
   ) {
-    if (!activeExercise || dataLoadGeneration.current !== generation) {
+    const attemptIsCurrent = () => writtenEvaluationGuardRef.current.isCurrent(attempt)
+    if (!attemptIsCurrent() || dataLoadGeneration.current !== generation) {
       return
     }
     const session: SessionRecord = {
       id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `session-${Date.now()}`,
       createdAt: new Date().toISOString(),
-      exerciseId: activeExercise.id,
-      mode: activeExercise.mode,
-      sourceLanguage: activeExercise.sourceLanguage,
-      targetLanguage: activeExercise.targetLanguage,
+      exerciseId: exercise.id,
+      mode: exercise.mode,
+      sourceLanguage: exercise.sourceLanguage,
+      targetLanguage: exercise.targetLanguage,
       answer,
       feedback: nextFeedback,
       elapsedSeconds,
@@ -864,12 +890,12 @@ export default function App() {
     setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
     try {
       await trackPersistence(database.saveSession(session))
-      if (dataLoadGeneration.current !== generation) {
+      if (!attemptIsCurrent() || dataLoadGeneration.current !== generation) {
         return
       }
       setRecentSessions((sessions) => [session, ...sessions.filter((item) => item.id !== session.id)])
     } catch {
-      if (dataLoadGeneration.current === generation) {
+      if (attemptIsCurrent() && dataLoadGeneration.current === generation) {
         setPracticeNotice('Feedback is ready, but this browser could not save the session locally.')
       }
     }
@@ -1038,6 +1064,7 @@ export default function App() {
         if (sourceUrl) URL.revokeObjectURL(sourceUrl)
         return
       }
+      writtenEvaluationGuardRef.current.activate(undefined)
       setActiveExercise(undefined)
       setPracticeSetupMode('interpreting')
       setActiveInterpretingExercise(exercise)
@@ -1083,41 +1110,47 @@ export default function App() {
   }
 
   async function submitAnswer(answer: string, elapsedSeconds: number) {
-    if (!activeExercise) {
+    const exercise = activeExercise
+    if (!exercise) {
       return
     }
     const submissionGeneration = dataLoadGeneration.current
+    const attempt = writtenEvaluationGuardRef.current.begin(exercise.id)
     setDraftAnswer(answer)
     setDraftElapsedSeconds(elapsedSeconds)
     setPracticeNotice(undefined)
     setPendingConsent(undefined)
     setIsEvaluating(true)
-    try {
-      const result = await evaluationRouter.evaluate({ exercise: activeExercise, learnerAnswer: answer, mode: activeExercise.mode })
-      if (dataLoadGeneration.current !== submissionGeneration) {
-        return
-      }
-      if (result.status === 'evaluated') {
-        if (isTranslationFeedback(result.feedback)) {
-          await saveCompletedSession(result.feedback, result.provider, answer, elapsedSeconds, submissionGeneration)
+    await runWrittenEvaluationAttempt({
+      guard: writtenEvaluationGuardRef.current,
+      attempt,
+      evaluate: () => evaluationRouter.evaluate({ exercise, learnerAnswer: answer, mode: exercise.mode }),
+      onResult: async (result) => {
+        if (dataLoadGeneration.current !== submissionGeneration) return
+        if (result.status === 'evaluated') {
+          if (isTranslationFeedback(result.feedback)) {
+            await saveCompletedSession(exercise, result.feedback, result.provider, answer, elapsedSeconds, submissionGeneration, attempt)
+          } else {
+            setPracticeNotice('The evaluator returned interpreting feedback for a written task. No practice estimate was saved.')
+          }
+        } else if (result.status === 'needs-consent') {
+          setPendingConsent({ exercise, attempt, request: result.request, answer, elapsedSeconds })
+          setPracticeNotice(`${result.reason} Review the exact task before deciding whether to use cloud evaluation.`)
         } else {
-          setPracticeNotice('The evaluator returned interpreting feedback for a written task. No practice estimate was saved.')
+          setPracticeNotice(result.reason)
         }
-      } else if (result.status === 'needs-consent') {
-        setPendingConsent({ request: result.request, answer, elapsedSeconds })
-        setPracticeNotice(`${result.reason} Review the exact task before deciding whether to use cloud evaluation.`)
-      } else {
-        setPracticeNotice(result.reason)
-      }
-    } catch (error) {
-      if (dataLoadGeneration.current === submissionGeneration) {
-        setPracticeNotice(error instanceof Error ? error.message : 'Evaluation could not be completed.')
-      }
-    } finally {
-      if (dataLoadGeneration.current === submissionGeneration) {
-        setIsEvaluating(false)
-      }
-    }
+      },
+      onError: (error) => {
+        if (dataLoadGeneration.current === submissionGeneration) {
+          setPracticeNotice(error instanceof Error ? error.message : 'Evaluation could not be completed.')
+        }
+      },
+      onFinally: () => {
+        if (dataLoadGeneration.current === submissionGeneration) {
+          setIsEvaluating(false)
+        }
+      },
+    })
   }
 
   async function submitInterpreting(input: InterpretingEvaluationInput) {
@@ -1163,11 +1196,17 @@ export default function App() {
       return
     }
     const submissionGeneration = dataLoadGeneration.current
+    const attemptIsCurrent = () => writtenEvaluationGuardRef.current.isCurrent(pending.attempt)
+    if (!attemptIsCurrent()) {
+      pending.request.revokePreview?.()
+      setPendingConsent(undefined)
+      return
+    }
     setIsEvaluating(true)
     try {
       const nextFeedback = await pending.request.confirm()
       pending.request.revokePreview?.()
-      if (dataLoadGeneration.current !== submissionGeneration) {
+      if (!attemptIsCurrent() || dataLoadGeneration.current !== submissionGeneration) {
         return
       }
       if (!isTranslationFeedback(nextFeedback)) {
@@ -1175,14 +1214,14 @@ export default function App() {
         return
       }
       setPendingConsent(undefined)
-      await saveCompletedSession(nextFeedback, 'cloud', pending.answer, pending.elapsedSeconds, submissionGeneration)
+      await saveCompletedSession(pending.exercise, nextFeedback, 'cloud', pending.answer, pending.elapsedSeconds, submissionGeneration, pending.attempt)
     } catch (error) {
       pending.request.revokePreview?.()
-      if (dataLoadGeneration.current === submissionGeneration) {
+      if (attemptIsCurrent() && dataLoadGeneration.current === submissionGeneration) {
         setPracticeNotice(error instanceof Error ? error.message : 'Cloud evaluation could not be completed. You can review the consent and try again.')
       }
     } finally {
-      if (dataLoadGeneration.current === submissionGeneration) {
+      if (attemptIsCurrent() && dataLoadGeneration.current === submissionGeneration) {
         setIsEvaluating(false)
       }
     }
@@ -1340,7 +1379,7 @@ export default function App() {
         {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
-      {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}
+      {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}
       {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
       {pendingExamConsent && (
         <ConsentDialog

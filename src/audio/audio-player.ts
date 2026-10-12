@@ -15,6 +15,7 @@ export type AudioPlayer = {
   setRepeat(enabled: boolean): void
   getCurrentTime(): number
   getCurrentSegmentId(): string | undefined
+  hasPlayedSegmentToEnd(segmentId: string): boolean
   subscribe(listener: AudioPlayerListener): () => void
   getElement(): HTMLAudioElement
   dispose(): void
@@ -45,7 +46,10 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
   let currentSegment: AudioSegment | undefined
   let repeat = false
   let playbackAttempt = 0
+  let playbackBaselineSeconds: number | undefined
+  let isSeeking = false
   const listeners = new Set<AudioPlayerListener>()
+  const playedRanges = new Map<string, Array<{ startSeconds: number; endSeconds: number }>>()
 
   const notify = () => {
     const state = {
@@ -54,6 +58,41 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
       isPlaying: !audio.paused,
     }
     listeners.forEach((listener) => listener(state))
+  }
+
+  function recordPlayedRange(segment: AudioSegment, startSeconds: number, endSeconds: number) {
+    const segmentStart = segment.startMs / 1000
+    const segmentEnd = segment.endMs / 1000
+    const nextRange = {
+      startSeconds: Math.max(segmentStart, startSeconds),
+      endSeconds: Math.min(segmentEnd, endSeconds),
+    }
+    if (nextRange.endSeconds <= nextRange.startSeconds) return
+
+    const ranges = [...(playedRanges.get(segment.id) ?? []), nextRange]
+      .sort((left, right) => left.startSeconds - right.startSeconds)
+    const merged: Array<{ startSeconds: number; endSeconds: number }> = []
+    for (const range of ranges) {
+      const previous = merged.at(-1)
+      if (!previous || range.startSeconds > previous.endSeconds + 0.025) {
+        merged.push({ ...range })
+      } else {
+        previous.endSeconds = Math.max(previous.endSeconds, range.endSeconds)
+      }
+    }
+    playedRanges.set(segment.id, merged)
+  }
+
+  function recordPlaybackProgress() {
+    if (isSeeking || audio.paused || !currentSegment) {
+      playbackBaselineSeconds = undefined
+      return
+    }
+    const currentSeconds = Math.min(audio.currentTime, currentSegment.endMs / 1000)
+    if (playbackBaselineSeconds !== undefined && currentSeconds > playbackBaselineSeconds) {
+      recordPlayedRange(currentSegment, playbackBaselineSeconds, currentSeconds)
+    }
+    playbackBaselineSeconds = audio.currentTime
   }
 
   function playWithTimeout(): Promise<void> {
@@ -101,6 +140,7 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
   }
 
   const handleTimeUpdate = () => {
+    recordPlaybackProgress()
     if (currentSegment && audio.currentTime * 1000 >= currentSegment.endMs) {
       if (repeat) {
         audio.currentTime = currentSegment.startMs / 1000
@@ -113,9 +153,28 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
     notify()
   }
 
+  const handlePlay = () => {
+    playbackBaselineSeconds = currentSegment ? audio.currentTime : undefined
+    notify()
+  }
+  const handlePause = () => {
+    playbackBaselineSeconds = undefined
+    notify()
+  }
+  const handleSeeking = () => {
+    isSeeking = true
+    playbackBaselineSeconds = undefined
+  }
+  const handleSeeked = () => {
+    isSeeking = false
+    playbackBaselineSeconds = currentSegment && !audio.paused ? audio.currentTime : undefined
+  }
+
   audio.addEventListener('timeupdate', handleTimeUpdate)
-  audio.addEventListener('play', notify)
-  audio.addEventListener('pause', notify)
+  audio.addEventListener('play', handlePlay)
+  audio.addEventListener('pause', handlePause)
+  audio.addEventListener('seeking', handleSeeking)
+  audio.addEventListener('seeked', handleSeeked)
   audio.addEventListener('ended', notify)
 
   return {
@@ -164,6 +223,18 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
       return currentSegment?.id
     },
 
+    hasPlayedSegmentToEnd(segmentId) {
+      const segment = exercise.segments.find((candidate) => candidate.id === segmentId)
+      if (!segment) return false
+      const startSeconds = segment.startMs / 1000
+      const endSeconds = segment.endMs / 1000
+      const toleranceSeconds = 0.05
+      return (playedRanges.get(segmentId) ?? []).some((range) =>
+        range.startSeconds <= startSeconds + toleranceSeconds
+        && range.endSeconds >= endSeconds - toleranceSeconds
+        && range.endSeconds - range.startSeconds >= endSeconds - startSeconds - toleranceSeconds * 2)
+    },
+
     subscribe(listener) {
       listeners.add(listener)
       listener({ segmentId: currentSegment?.id, currentTimeSeconds: audio.currentTime, isPlaying: !audio.paused })
@@ -177,8 +248,10 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
     dispose() {
       audio.pause()
       audio.removeEventListener('timeupdate', handleTimeUpdate)
-      audio.removeEventListener('play', notify)
-      audio.removeEventListener('pause', notify)
+      audio.removeEventListener('play', handlePlay)
+      audio.removeEventListener('pause', handlePause)
+      audio.removeEventListener('seeking', handleSeeking)
+      audio.removeEventListener('seeked', handleSeeked)
       audio.removeEventListener('ended', notify)
       listeners.clear()
       audio.removeAttribute('src')

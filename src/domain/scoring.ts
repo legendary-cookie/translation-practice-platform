@@ -33,7 +33,9 @@ export function hasCompleteInterpretingDeliveryEvidence(
       && segment.responseEndMs > segment.responseStartMs
       && segment.responseEndMs <= recording.durationMs
       && analysis
-      && analysis.analysisConfidence >= 0.5)
+      && analysis.analysisConfidence >= 0.5
+      && !analysis.method.startsWith('local-web-audio-energy-')
+      && analysis.method !== 'local-analysis-unavailable-v1')
   })
 }
 import { getEstimatedStatus } from './exam'

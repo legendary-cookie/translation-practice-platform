@@ -31,9 +31,11 @@ export type ResponseRecorder = {
 
 const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4']
 const MICROPHONE_PERMISSION_TIMEOUT_MS = 15_000
+const FINALIZATION_TIMEOUT_MS = 5_000
 
 export type ResponseRecorderOptions = {
   permissionTimeoutMs?: number
+  finalizationTimeoutMs?: number
 }
 
 function chooseMimeType(): string | undefined {
@@ -66,6 +68,7 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
     reject: (error: Error) => void
     finalized: boolean
     suppressCompletion: boolean
+    finalizationTimer?: ReturnType<typeof setTimeout>
   }
 
   let stream: MediaStream | undefined
@@ -114,6 +117,41 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
       clearInterval(levelTimer)
       levelTimer = undefined
     }
+  }
+
+  const clearFinalizationTimer = (operation: ActiveRecording) => {
+    if (operation.finalizationTimer !== undefined) {
+      clearTimeout(operation.finalizationTimer)
+      operation.finalizationTimer = undefined
+    }
+  }
+
+  const failFinalization = (operation: ActiveRecording, message: string) => {
+    if (operation.finalized) return
+    operation.finalized = true
+    clearFinalizationTimer(operation)
+    activeStartedAt = 0
+    accumulatedDurationMs = 0
+    chunks = []
+    if (recorder === operation.activeRecorder) recorder = undefined
+    if (activeRecording === operation) activeRecording = undefined
+    clearLevelTimer()
+    releaseStream()
+    state = 'error'
+    error = message
+    notify()
+    operation.reject(new Error(message))
+  }
+
+  const armFinalizationDeadline = (operation: ActiveRecording) => {
+    if (operation.finalized || operation.finalizationTimer !== undefined) return
+    const timeoutMs = Math.max(0, options.finalizationTimeoutMs ?? FINALIZATION_TIMEOUT_MS)
+    operation.finalizationTimer = setTimeout(() => {
+      failFinalization(
+        operation,
+        `Recording stop did not finish within ${Math.ceil(timeoutMs / 1000)} seconds. The microphone was released; try recording again.`,
+      )
+    }, timeoutMs)
   }
 
   const openStream = async (generation: number): Promise<MediaStream> => {
@@ -239,14 +277,18 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
             suppressCompletion: false,
           }
           activeRecording = operation
+          stream?.getAudioTracks().forEach((track) => {
+            track.addEventListener?.('ended', () => armFinalizationDeadline(operation), { once: true })
+          })
           activeRecorder.addEventListener('dataavailable', (event) => {
-            if (event.data.size > 0) {
+            if (!operation.finalized && event.data.size > 0) {
               chunks.push(event.data)
             }
           })
           activeRecorder.addEventListener('stop', () => {
             if (operation.finalized) return
             operation.finalized = true
+            clearFinalizationTimer(operation)
             if (activeStartedAt > 0) {
               accumulatedDurationMs += Math.max(0, Date.now() - activeStartedAt)
             }
@@ -284,6 +326,7 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
           activeRecorder.addEventListener('error', (event) => {
             if (operation.finalized) return
             operation.finalized = true
+            clearFinalizationTimer(operation)
             activeStartedAt = 0
             accumulatedDurationMs = 0
             clearLevelTimer()
@@ -308,6 +351,7 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
           }
         } catch (caught) {
           if (activeRecording) {
+            clearFinalizationTimer(activeRecording)
             activeRecording.finalized = true
             activeRecording.resolve(undefined)
             activeRecording = undefined
@@ -374,19 +418,11 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
       }
       state = 'stopping'
       notify()
+      armFinalizationDeadline(operation)
       try {
         operation.activeRecorder.stop()
       } catch (caught) {
-        operation.finalized = true
-        activeRecording = undefined
-        activeStartedAt = 0
-        accumulatedDurationMs = 0
-        clearLevelTimer()
-        releaseStream()
-        state = 'error'
-        error = readableMicrophoneError(caught)
-        notify()
-        operation.reject(new Error(error))
+        failFinalization(operation, readableMicrophoneError(caught))
       }
       return operation.promise
     },
@@ -424,6 +460,7 @@ export function createResponseRecorder(exerciseId: string, options: ResponseReco
       rejectPendingPermission = undefined
       if (activeRecording) activeRecording.suppressCompletion = true
       if (recorder && recorder.state !== 'inactive') {
+        if (activeRecording) armFinalizationDeadline(activeRecording)
         try {
           recorder.stop()
         } catch {

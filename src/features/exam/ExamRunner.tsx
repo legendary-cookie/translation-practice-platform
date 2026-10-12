@@ -62,6 +62,10 @@ export function ExamRunner({
 
   const isDirtyRef = useRef(false)
   const lastTickTime = useRef(Date.now())
+  const onSubmitRunRef = useRef(onSubmitRun)
+  const onPersistenceErrorRef = useRef(onPersistenceError)
+  onSubmitRunRef.current = onSubmitRun
+  onPersistenceErrorRef.current = onPersistenceError
 
   // Initial persist if brand new run
   useEffect(() => {
@@ -101,7 +105,7 @@ export function ExamRunner({
 
           if (overallExpired) {
             clearInterval(intervalId)
-            void saveAndSubmitRun(updatedRun, onSubmitRun, onPersistenceError)
+            void saveAndSubmitRun(updatedRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
             return updatedRun
           }
 
@@ -119,7 +123,7 @@ export function ExamRunner({
     }, 1000)
 
     return () => clearInterval(intervalId)
-  }, [onSubmitRun, profile])
+  }, [profile])
 
   // Periodic auto-save every 3 seconds if dirty
   useEffect(() => {

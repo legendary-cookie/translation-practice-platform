@@ -192,7 +192,6 @@ export async function discardExamRunWithTombstone(
   try {
     for (const [key] of recoverySnapshots) storage.removeItem(key)
     await deleteRun()
-    clearExamRunEditorLease(storage, runId)
   } catch (error) {
     try {
       if (previousTombstone === null) storage.removeItem(tombstoneKey)
@@ -203,5 +202,11 @@ export async function discardExamRunWithTombstone(
       // allowing an old tab to resurrect the attempt from its recovery journal.
     }
     throw error
+  }
+  try {
+    clearExamRunEditorLease(storage, runId)
+  } catch {
+    // The IDB deletion committed. Keep the tombstone and retired journals even
+    // when this redundant mirror cannot be removed; the run is not recoverable.
   }
 }

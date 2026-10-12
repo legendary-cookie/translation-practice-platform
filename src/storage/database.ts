@@ -587,7 +587,19 @@ export const database = {
           runId,
           editorToken,
           (operation) => withExamRunLifecycleTransaction(async (store) => {
+            dataWriteCoordinator.assertCurrentEpoch()
             await assertExamRunNotDiscarded(storage, runId)
+            await assertExamRunNotCompletedInTransaction(store, runId)
+            if (storage.getItem(examRunCompletionKey(runId)) !== null) {
+              throw new Error('This exam attempt is completed and cannot be resumed.')
+            }
+            if (!(await store.getRun(runId))) {
+              const legacy = recoverySnapshots.find((run) => run.editorToken === undefined)
+              if (legacy) {
+                await assertExamRunSlotAvailableInTransaction(store, runId)
+                await store.putRun(legacy)
+              }
+            }
             return operation(store)
           }),
           Date.now(),

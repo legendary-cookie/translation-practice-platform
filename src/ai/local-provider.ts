@@ -389,19 +389,35 @@ export function createLocalProvider(
         throw new ProviderUnavailableError('A local evaluation is already in progress. Wait for it to finish before retrying.')
       }
 
+      const evaluationStartedAt = performance.now()
+      const remainingEvaluationMs = () => Math.max(0, LOCAL_EVALUATION_TIMEOUT_MS - (performance.now() - evaluationStartedAt))
       try {
-        if (!(await raceWithAbort(provider.isCached(), evaluationAttempt.signal))) {
-          if (isAttemptEngineCurrent()) {
-            report({ status: 'unavailable', error: LOCAL_MODEL_CACHE_EVICTED_MESSAGE, text: 'The local model cache is missing.' })
-          }
-          throw new ProviderUnavailableError(LOCAL_MODEL_CACHE_EVICTED_MESSAGE)
-        }
-        engine = await raceWithAbort(attemptEnginePromise, evaluationAttempt.signal)
+        engine = await withTimeout(
+          (async () => {
+            const cached = await raceWithAbort(provider.isCached(), evaluationAttempt.signal)
+            evaluationAttempt.throwIfCancelled()
+            if (!isAttemptEngineCurrent()) {
+              throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
+            }
+            if (!cached) {
+              report({ status: 'unavailable', error: LOCAL_MODEL_CACHE_EVICTED_MESSAGE, text: 'The local model cache is missing.' })
+              throw new ProviderUnavailableError(LOCAL_MODEL_CACHE_EVICTED_MESSAGE)
+            }
+            return raceWithAbort(attemptEnginePromise, evaluationAttempt.signal)
+          })(),
+          LOCAL_EVALUATION_TIMEOUT_MS,
+          () => {
+            if (evaluationAttempt.isCurrent()) {
+              releaseAttemptEngine(LOCAL_EVALUATION_TIMEOUT_MESSAGE, 'Local evaluation timed out; prepare the model again before retrying.')
+            }
+          },
+          LOCAL_EVALUATION_TIMEOUT_MESSAGE,
+          evaluationAttempt.signal,
+        )
         evaluationAttempt.throwIfCancelled()
         if (!isAttemptEngineCurrent()) {
           throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
         }
-      const evaluationStartedAt = performance.now()
       let lastError: unknown
       for (let attempt = 1; attempt <= LOCAL_EVALUATION_MAX_ATTEMPTS; attempt += 1) {
         evaluationAttempt.throwIfCancelled()
@@ -448,7 +464,7 @@ export function createLocalProvider(
               logLocalEvent('evaluation.stream-opened', { attempt, elapsedMs: Math.round(performance.now() - attemptStartedAt) })
               return collectStream(response as AsyncIterable<StreamChunk>, 'evaluation.' + attempt)
             })(),
-            LOCAL_EVALUATION_TIMEOUT_MS,
+            remainingEvaluationMs(),
             resetTimedOutEngine,
             LOCAL_EVALUATION_TIMEOUT_MESSAGE,
             evaluationAttempt.signal,

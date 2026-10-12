@@ -349,9 +349,9 @@ export default function App() {
     getCapability: () => capability,
   }), [capability, cloudProvider, localProvider, settings.evaluationMode])
 
-  function updateSettings(nextSettings: StoredSettings) {
+  async function updateSettings(nextSettings: StoredSettings) {
+    await trackPersistence(database.saveSettings(nextSettings))
     setSettings(nextSettings)
-    void trackPersistence(database.saveSettings(nextSettings)).catch(() => undefined)
   }
 
   async function prepareLocalModel() {
@@ -651,8 +651,8 @@ export default function App() {
   }
 
 
-  function saveCloudPreferences(baseUrl: string, model: string, supportsAudio: boolean) {
-    updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
+  async function saveCloudPreferences(baseUrl: string, model: string, supportsAudio: boolean) {
+    await updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
   }
 
   function beginPractice(selection: PracticeStart) {

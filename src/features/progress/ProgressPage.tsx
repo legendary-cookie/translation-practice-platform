@@ -26,6 +26,7 @@ export function ProgressPage({
   examResults = [],
   onStartPractice,
   onStartInterpreting,
+  onOpenInterpretingSession,
   onOpenExamResult,
   onStartExam,
 }: {
@@ -34,6 +35,7 @@ export function ProgressPage({
   examResults?: ConsolidatedExamResult[]
   onStartPractice: () => void
   onStartInterpreting?: () => void
+  onOpenInterpretingSession?: (session: InterpretingSessionRecord) => void
   onOpenExamResult?: (result: ConsolidatedExamResult) => void
   onStartExam?: () => void
 }) {
@@ -254,7 +256,7 @@ export function ProgressPage({
                 <article className="progress-stat"><span className="eyebrow">Directions</span><strong>{new Set(interpretingSessions.map((session) => `${session.sourceLanguage}-${session.targetLanguage}`)).size}</strong><span>practised so far</span></article>
               </section>
               <section className="progress-panels">
-                <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Take history</p><h3>Recent interpreting estimates</h3></div><span className="section-heading__note">Newest first</span></div><div className="trend-list">{interpretingSessions.slice(0, 8).map((session) => <div className="trend-row" key={session.id}><div className="trend-row__label"><span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span><small>{formatDate(session.createdAt)} · {session.interpretingMode}</small></div><div className="trend-row__track"><span style={{ width: `${session.feedback.overallScore ?? 0}%` }} /></div><strong>{session.feedback.overallScore === undefined ? 'Incomplete' : `${session.feedback.overallScore}/100`}<small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small></strong></div>)}</div></article>
+                <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Take history</p><h3>Recent interpreting estimates</h3></div><span className="section-heading__note">Newest first</span></div><div className="trend-list">{interpretingSessions.slice(0, 8).map((session) => <div className="interpreting-history-item" key={session.id}><div className="trend-row"><div className="trend-row__label"><span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span><small>{formatDate(session.createdAt)} · {session.interpretingMode}</small></div><div className="trend-row__track"><span style={{ width: `${session.feedback.overallScore ?? 0}%` }} /></div><strong>{session.feedback.overallScore === undefined ? 'Incomplete' : `${session.feedback.overallScore}/100`}<small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small></strong></div>{onOpenInterpretingSession && <button className="button button--quiet interpreting-action" type="button" onClick={() => onOpenInterpretingSession(session)}>Open saved self-review</button>}</div>)}</div></article>
                 <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Delivery trend</p><h3>Heuristic delivery averages</h3></div></div><div className="skill-list">{(['fluency', 'pacing', 'hesitation'] as const).map((dimension) => { const value = average(interpretingSessions.map((session) => session.feedback.deliveryScores[dimension])); return <div className="skill-row" key={dimension}><div><span>{dimension[0].toUpperCase() + dimension.slice(1)}</span><strong>{value}</strong></div><div className="trend-row__track"><span style={{ width: `${value}%` }} /></div></div> })}</div></article>
               </section>
               <section className="progress-panels"><article className="progress-card progress-card--note" style={{ width: '100%' }}><span className="progress-card__mark">✦</span><h3>Interpreting evidence notice</h3><p>Audio-analysis measures are local heuristics. Recognition-uncertain evidence is kept separate for transcript review and does not become a learner-error annotation.</p></article></section>

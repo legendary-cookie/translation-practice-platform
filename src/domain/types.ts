@@ -52,7 +52,10 @@ export type InterpretingExercise = {
   glossary: GlossaryEntry[]
   tags: ExerciseTag[]
   rightsRecordId: string
+  sourceTranscriptStatus?: 'authored' | 'missing'
 }
+
+export type InterpretingExerciseSnapshot = Omit<InterpretingExercise, 'audioUrl'>
 
 export type EvaluationInput = {
   exercise: Exercise
@@ -118,6 +121,8 @@ export type AudioRecordingRecord = {
   durationMs: number
   byteLength: number
   blob: Blob
+  kind?: 'response' | 'source-import'
+  fileName?: string
 }
 
 export type ExportedAudioRecording = Omit<AudioRecordingRecord, 'blob'> & {
@@ -130,6 +135,7 @@ export type InterpretingEvaluationInput = {
   responseSegments: InterpretingResponseSegment[]
   recordings: AudioRecordingRecord[]
   deliveryAnalysis: DeliveryAnalysis[]
+  sourceRecording?: AudioRecordingRecord
 }
 
 export type InterpretingContentScores = {
@@ -209,6 +215,8 @@ export type InterpretingSessionRecord = {
   interpretingMode: InterpretingMode
   responseSegments: InterpretingResponseSegment[]
   recordingIds: string[]
+  sourceRecordingId?: string
+  sourceExercise?: InterpretingExerciseSnapshot
   deliveryAnalysis: DeliveryAnalysis[]
   feedback: InterpretingFeedback
   evaluator: 'local' | 'cloud' | 'manual'

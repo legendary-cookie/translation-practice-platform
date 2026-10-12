@@ -19,6 +19,7 @@ import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
 import { ExamEvaluationBlockedError, evaluateExamRun } from './features/exam/exam-evaluator'
 import { DEFAULT_EXAM_PROFILES } from './data/exam-profiles'
+import { getInterpretingExerciseById } from './data/interpreting-exercises'
 import { DirectionQualityNotice, ModelCapabilityStatus } from './features/settings/ModelCapabilityStatus'
 import type {
   ActiveExamRun,
@@ -27,6 +28,7 @@ import type {
   ExamProfile,
   Exercise,
   InterpretingExercise,
+  InterpretingExerciseSnapshot,
   InterpretingEvaluationInput,
   InterpretingFeedback,
   InterpretingMode,
@@ -155,6 +157,8 @@ export default function App() {
   const [practiceSetupMode, setPracticeSetupMode] = useState<'written' | 'interpreting'>('written')
   const [activeInterpretingExercise, setActiveInterpretingExercise] = useState<InterpretingExercise | undefined>()
   const [activeInterpretingMode, setActiveInterpretingMode] = useState<InterpretingMode>('consecutive')
+  const [activeInterpretingSourceRecording, setActiveInterpretingSourceRecording] = useState<AudioRecordingRecord | undefined>()
+  const [activeInterpretingSourceUrl, setActiveInterpretingSourceUrl] = useState<string | undefined>()
   const [activeInterpretingInput, setActiveInterpretingInput] = useState<InterpretingEvaluationInput | undefined>()
   const [interpretingFeedback, setInterpretingFeedback] = useState<InterpretingFeedback | undefined>()
   const [recentInterpretingSessions, setRecentInterpretingSessions] = useState<InterpretingSessionRecord[]>([])
@@ -527,10 +531,15 @@ export default function App() {
   }
 
   function beginInterpreting(selection: InterpretingStart) {
+    if (activeInterpretingSourceUrl && activeInterpretingSourceUrl !== selection.exercise.audioUrl) {
+      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    }
     setPracticeSetupMode('interpreting')
     setActiveExercise(undefined)
     setActiveInterpretingExercise(selection.exercise)
     setActiveInterpretingMode(selection.interpretingMode)
+    setActiveInterpretingSourceRecording(selection.sourceRecording)
+    setActiveInterpretingSourceUrl(selection.sourceRecording ? selection.exercise.audioUrl : undefined)
     setActiveInterpretingInput(undefined)
     setInterpretingFeedback(undefined)
     setDraftAnswer('')
@@ -543,10 +552,15 @@ export default function App() {
   }
 
   function resetPractice() {
+    if (activeInterpretingSourceUrl) {
+      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    }
     setPracticeSetupMode('written')
     setActiveExercise(undefined)
     setActiveInterpretingExercise(undefined)
     setActiveInterpretingInput(undefined)
+    setActiveInterpretingSourceRecording(undefined)
+    setActiveInterpretingSourceUrl(undefined)
     setInterpretingFeedback(undefined)
     setTimeLimitSeconds(undefined)
     setDraftAnswer('')
@@ -600,6 +614,11 @@ export default function App() {
     generation: number,
   ) {
     const sessionId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `interpreting-session-${Date.now()}`
+    let sourceExercise: InterpretingExerciseSnapshot | undefined
+    if (input.sourceRecording) {
+      const { audioUrl: _audioUrl, ...snapshot } = input.exercise
+      sourceExercise = snapshot
+    }
     const session: InterpretingSessionRecord = {
       id: sessionId,
       createdAt: new Date().toISOString(),
@@ -610,6 +629,8 @@ export default function App() {
       interpretingMode: input.interpretingMode,
       responseSegments: input.responseSegments,
       recordingIds: input.recordings.map((recording) => recording.id),
+      sourceRecordingId: input.sourceRecording?.id,
+      sourceExercise,
       deliveryAnalysis: input.deliveryAnalysis,
       feedback: nextFeedback,
       evaluator: provider,
@@ -621,7 +642,8 @@ export default function App() {
       return
     }
     try {
-      await Promise.all(input.recordings.map((recording: AudioRecordingRecord) => database.saveAudioRecording({ ...recording, sessionId })))
+      const recordings = input.sourceRecording ? [...input.recordings, input.sourceRecording] : input.recordings
+      await Promise.all(recordings.map((recording: AudioRecordingRecord) => database.saveAudioRecording({ ...recording, sessionId })))
       await database.saveInterpretingSession(session)
       if (dataLoadGeneration.current !== generation) {
         return
@@ -632,6 +654,50 @@ export default function App() {
         setPracticeNotice('Interpreting feedback is ready, but this browser could not save the audio-backed session locally.')
       }
     }
+  }
+
+  async function handleOpenInterpretingSession(session: InterpretingSessionRecord) {
+    let exercise = getInterpretingExerciseById(session.exerciseId)
+    let sourceRecording: AudioRecordingRecord | undefined
+    let sourceUrl: string | undefined
+    if (session.sourceRecordingId && session.sourceExercise) {
+      sourceRecording = await database.getAudioRecording(session.sourceRecordingId)
+      if (!sourceRecording) {
+        setPracticeNotice('This saved local source audio is no longer available in this browser.')
+        setCurrentPage('progress')
+        return
+      }
+      sourceUrl = URL.createObjectURL(sourceRecording.blob)
+      exercise = { ...session.sourceExercise, audioUrl: sourceUrl }
+    }
+    if (!exercise) {
+      setPracticeNotice('This saved interpreting exercise is no longer available in the installed catalog.')
+      setCurrentPage('progress')
+      return
+    }
+    const recordings = (await Promise.all(session.recordingIds.map((recordingId) => database.getAudioRecording(recordingId)))).filter((recording): recording is AudioRecordingRecord => recording !== undefined)
+    if (activeInterpretingSourceUrl) {
+      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    }
+    setActiveExercise(undefined)
+    setPracticeSetupMode('interpreting')
+    setActiveInterpretingExercise(exercise)
+    setActiveInterpretingMode(session.interpretingMode)
+    setActiveInterpretingSourceRecording(sourceRecording)
+    setActiveInterpretingSourceUrl(sourceUrl)
+    setActiveInterpretingInput({
+      exercise,
+      interpretingMode: session.interpretingMode,
+      responseSegments: session.responseSegments,
+      recordings,
+      deliveryAnalysis: session.deliveryAnalysis,
+      sourceRecording,
+    })
+    setInterpretingFeedback(session.feedback)
+    setPracticeNotice(recordings.length === session.recordingIds.length && (!session.sourceRecordingId || sourceRecording !== undefined)
+      ? 'Reopened from this device. Audio replay remains local.'
+      : 'Reopened from this device, but one or more local replay files are missing.')
+    setCurrentPage('practice')
   }
 
   async function submitAnswer(answer: string, elapsedSeconds: number) {
@@ -673,24 +739,27 @@ export default function App() {
   }
 
   async function submitInterpreting(input: InterpretingEvaluationInput) {
+    const enrichedInput = activeInterpretingSourceRecording
+      ? { ...input, sourceRecording: activeInterpretingSourceRecording }
+      : input
     const submissionGeneration = dataLoadGeneration.current
-    setActiveInterpretingInput(input)
+    setActiveInterpretingInput(enrichedInput)
     setPracticeNotice(undefined)
     setPendingInterpretingConsent(undefined)
     setIsEvaluating(true)
     try {
-      const result = await evaluationRouter.evaluate(input)
+      const result = await evaluationRouter.evaluate(enrichedInput)
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
       if (result.status === 'evaluated') {
         if (isInterpretingFeedback(result.feedback)) {
-          await saveCompletedInterpretingSession(input, result.feedback, result.provider, submissionGeneration)
+          await saveCompletedInterpretingSession(enrichedInput, result.feedback, result.provider, submissionGeneration)
         } else {
           setPracticeNotice('The evaluator returned written feedback for an interpreting task. No practice estimate was saved.')
         }
       } else if (result.status === 'needs-consent') {
-        setPendingInterpretingConsent({ request: result.request, input })
+        setPendingInterpretingConsent({ request: result.request, input: enrichedInput })
         setPracticeNotice(`${result.reason} Review the exact audio and transcript payload before deciding whether to use cloud evaluation.`)
       } else {
         setPracticeNotice(result.reason)
@@ -871,6 +940,7 @@ export default function App() {
             examResults={recentExamResults}
             onStartPractice={() => setCurrentPage('practice')}
             onStartInterpreting={() => { setPracticeSetupMode('interpreting'); setCurrentPage('practice') }}
+            onOpenInterpretingSession={(session) => void handleOpenInterpretingSession(session).catch(() => { setPracticeNotice('This saved interpreting session could not be opened from local storage.'); setCurrentPage('progress') })}
             onOpenExamResult={(result) => void handleOpenExamResult(result)}
             onStartExam={() => {
               setExamView('catalog')

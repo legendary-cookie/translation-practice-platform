@@ -28,8 +28,19 @@ function findSegment(exercise: InterpretingExercise, segmentId: string): AudioSe
 }
 
 export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
-  const audio = new Audio(exercise.audioUrl)
-  audio.preload = 'metadata'
+  const audio = new Audio()
+  audio.preload = 'auto'
+  audio.setAttribute('aria-hidden', 'true')
+  audio.tabIndex = -1
+  audio.style.position = 'fixed'
+  audio.style.width = '1px'
+  audio.style.height = '1px'
+  audio.style.opacity = '0'
+  audio.style.pointerEvents = 'none'
+  audio.style.overflow = 'hidden'
+  document.body.appendChild(audio)
+  audio.src = exercise.audioUrl
+  audio.load()
   let currentSegment: AudioSegment | undefined
   let repeat = false
   const listeners = new Set<AudioPlayerListener>()
@@ -41,6 +52,22 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
       isPlaying: !audio.paused,
     }
     listeners.forEach((listener) => listener(state))
+  }
+
+  function playWithTimeout(): Promise<void> {
+    const playback = audio.play()
+    return new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error('The source clip did not start playing.'))
+      }, 8000)
+      playback.then(() => {
+        clearTimeout(timeoutId)
+        resolve()
+      }).catch((error: unknown) => {
+        clearTimeout(timeoutId)
+        reject(error instanceof Error ? error : new Error('The source clip could not be played.'))
+      })
+    })
   }
 
   const handleTimeUpdate = () => {
@@ -66,14 +93,14 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
       const segment = findSegment(exercise, segmentId)
       currentSegment = segment
       audio.currentTime = segment.startMs / 1000
-      await audio.play()
+      await playWithTimeout()
       notify()
     },
 
     async playAllSegments() {
       currentSegment = undefined
       audio.currentTime = 0
-      await audio.play()
+      await playWithTimeout()
       notify()
     },
 
@@ -121,6 +148,7 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
       listeners.clear()
       audio.removeAttribute('src')
       audio.load()
+      audio.remove()
     },
   }
 }

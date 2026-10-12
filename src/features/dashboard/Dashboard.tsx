@@ -80,7 +80,7 @@ export function Dashboard({
             <p className="eyebrow">Choose your mode</p>
             <h2 id="modes-heading">Practice that fits today.</h2>
           </div>
-          <span className="section-heading__note">3 available now</span>
+          <span className="section-heading__note">4 available now</span>
         </div>
         <div className="mode-grid">
           <button className="mode-card mode-card--active" type="button" onClick={() => onNavigate('practice')}>

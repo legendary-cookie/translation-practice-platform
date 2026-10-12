@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeRecording } from '../../audio/audio-analysis'
-import { createAudioPlayer } from '../../audio/audio-player'
+import { createAudioPlayer, type AudioPlayer } from '../../audio/audio-player'
 import { createResponseRecorder, type RecorderState } from '../../audio/audio-recorder'
 import { getLocalRecognitionCapability, recognizeLocal, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 import { getLanguage } from '../../domain/languages'
@@ -62,20 +62,57 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
   const [recognition, setRecognition] = useState<LocalRecognitionCapability>()
   const [repeatSegment, setRepeatSegment] = useState(false)
   const [error, setError] = useState<string>()
-  const player = useMemo(() => createAudioPlayer(exercise), [exercise])
+  const [player, setPlayer] = useState<AudioPlayer>()
   const recorder = useMemo(() => createResponseRecorder(exercise.id), [exercise.id])
+  const sourceAudioHost = useRef<HTMLDivElement>(null)
   const currentSegment = exercise.segments[segmentIndex]
   const currentTakeKey = interpretingMode === 'simultaneous' ? 'continuous' : currentSegment.id
   const currentTake = takes[currentTakeKey]
   const currentReplayUrl = replayUrls[currentTakeKey]
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
+  const isImportedSource = exercise.rightsRecordId.startsWith('local-import:')
 
   useEffect(() => {
+    const nextPlayer = createAudioPlayer(exercise)
+    setPlayer(nextPlayer)
+    return () => {
+      setPlayer((current) => current === nextPlayer ? undefined : current)
+      nextPlayer.dispose()
+    }
+  }, [exercise])
+
+  useEffect(() => {
+    if (!player) {
+      return
+    }
+    const audio = player.getElement()
+    const host = sourceAudioHost.current
+    if (!host) {
+      return
+    }
+    host.appendChild(audio)
+    audio.controls = true
+    audio.removeAttribute('aria-hidden')
+    audio.tabIndex = 0
+    audio.style.position = 'static'
+    audio.style.width = '100%'
+    audio.style.height = 'auto'
+    audio.style.opacity = '1'
+    audio.style.pointerEvents = 'auto'
+    audio.style.overflow = 'visible'
+    return () => {
+      audio.controls = false
+    }
+  }, [player])
+
+  useEffect(() => {
+    if (!player) {
+      return
+    }
     const unsubscribe = player.subscribe(setPlayerState)
     return () => {
       unsubscribe()
-      player.dispose()
     }
   }, [player])
 
@@ -101,6 +138,10 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
 
   async function playCurrentSegment() {
     setError(undefined)
+    if (!player) {
+      setError('The source audio player is still preparing. Try again in a moment.')
+      return
+    }
     try {
       await player.playSegment(currentSegment.id)
       setListenedSegments((segments) => new Set(segments).add(currentSegment.id))
@@ -118,6 +159,9 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
     try {
       await recorder.start(interpretingMode === 'consecutive' ? currentSegment.id : undefined, interpretingMode)
       if (interpretingMode === 'simultaneous') {
+        if (!player) {
+          throw new Error('The source audio player is still preparing. Try again in a moment.')
+        }
         await player.playAllSegments()
       }
     } catch (caught) {
@@ -127,7 +171,7 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
 
   async function stopRecording() {
     setError(undefined)
-    player.pause()
+    player?.pause()
     try {
       const recording = await recorder.stop()
       if (!recording) {
@@ -252,17 +296,18 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
 
   return (
     <div className="interpreting-workspace" aria-label="Interpreting practice workspace">
-      <header className="interpreting-workspace__header"><div><p className="eyebrow">{interpretingMode === 'consecutive' ? 'Consecutive interpreting' : 'Simultaneous interpreting'}</p><h2>{exercise.title}</h2><p>{sourceLanguage.nativeLabel} → {targetLanguage.nativeLabel} · {exercise.segments.length} authored segments · source audio stays same-origin</p></div><button className="text-button interpreting-text-action" type="button" onClick={onCancel}>Leave desk</button></header>
+      <header className="interpreting-workspace__header"><div><p className="eyebrow">{interpretingMode === 'consecutive' ? 'Consecutive interpreting' : 'Simultaneous interpreting'}</p><h2>{exercise.title}</h2><p>{sourceLanguage.nativeLabel} → {targetLanguage.nativeLabel} · {exercise.segments.length} authored segments · {isImportedSource ? 'source audio stays local to this browser' : 'source audio stays same-origin'}</p></div><button className="text-button interpreting-text-action" type="button" onClick={onCancel}>Leave desk</button></header>
       {(notice || error || recorderState.error) && <p className="interpreting-notice" role="alert">{notice ?? error ?? recorderState.error}</p>}
       <div className="interpreting-columns">
-        <aside className="interpreting-segment-rail" aria-label="Source segments"><p className="eyebrow">Segments</p>{exercise.segments.map((segment, index) => <button className={`interpreting-segment-button ${index === segmentIndex ? 'interpreting-segment-button--active' : ''}`} type="button" key={segment.id} onClick={() => { setSegmentIndex(index); player.pause() }}><span>{index + 1}</span><span>{formatSeconds((segment.endMs - segment.startMs) / 1000)}</span><small>{takes[segment.id] || takes.continuous ? 'Take saved' : skippedSegments.has(segment.id) ? 'Skipped' : 'Not recorded'}</small></button>)}</aside>
+        <aside className="interpreting-segment-rail" aria-label="Source segments"><p className="eyebrow">Segments</p>{exercise.segments.map((segment, index) => <button className={`interpreting-segment-button ${index === segmentIndex ? 'interpreting-segment-button--active' : ''}`} type="button" key={segment.id} onClick={() => { setSegmentIndex(index); player?.pause() }}><span>{index + 1}</span><span>{formatSeconds((segment.endMs - segment.startMs) / 1000)}</span><small>{takes[segment.id] || takes.continuous ? 'Take saved' : skippedSegments.has(segment.id) ? 'Skipped' : 'Not recorded'}</small></button>)}</aside>
         <section className="interpreting-source-card" aria-labelledby="source-heading">
           <div className="interpreting-card-heading"><div><p className="eyebrow">Source audio</p><h3 id="source-heading">{currentSegment.id}</h3></div><span className="pill">{formatSeconds(currentSegment.startMs / 1000)}–{formatSeconds(currentSegment.endMs / 1000)}</span></div>
-          <p className="interpreting-source-transcript" dir={sourceLanguage.direction} lang={sourceLanguage.code}>{currentSegment.transcript}</p>
+          <p className="interpreting-source-transcript" dir={sourceLanguage.direction} lang={sourceLanguage.code}>{currentSegment.transcript || 'No source transcript supplied; delivery-only feedback remains available.'}</p>
           <div className="interpreting-progress" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} /></div>
           <p className="interpreting-time" aria-live="polite">{formatSeconds(playerState.currentTimeSeconds)} / {formatSeconds(currentSegment.endMs / 1000)}</p>
-          <div className="interpreting-control-row"><button className="button button--primary interpreting-action" type="button" onClick={() => void playCurrentSegment()}>{playerState.isPlaying ? 'Playing…' : 'Play segment'} <span aria-hidden="true">▶</span></button><button className="button button--quiet interpreting-action" type="button" onClick={() => player.pause()}>Pause</button><button className="button button--quiet interpreting-action" type="button" onClick={() => player.seek(Math.max(currentSegment.startMs / 1000, playerState.currentTimeSeconds - 2))}>−2s</button><button className="button button--quiet interpreting-action" type="button" onClick={() => player.seek(Math.min(currentSegment.endMs / 1000, playerState.currentTimeSeconds + 2))}>+2s</button></div>
-          <label className="interpreting-toggle"><input type="checkbox" checked={repeatSegment} onChange={(event) => { setRepeatSegment(event.target.checked); player.setRepeat(event.target.checked) }} /> Repeat this segment</label>
+          <div className="interpreting-native-source-player" ref={sourceAudioHost} aria-label="Native source audio controls" />
+          <div className="interpreting-control-row"><button className="button button--primary interpreting-action" type="button" onClick={() => void playCurrentSegment()} disabled={!player}>{playerState.isPlaying ? 'Playing…' : 'Play segment'} <span aria-hidden="true">▶</span></button><button className="button button--quiet interpreting-action" type="button" onClick={() => player?.pause()}>Pause</button><button className="button button--quiet interpreting-action" type="button" onClick={() => player?.seek(Math.max(currentSegment.startMs / 1000, playerState.currentTimeSeconds - 2))}>−2s</button><button className="button button--quiet interpreting-action" type="button" onClick={() => player?.seek(Math.min(currentSegment.endMs / 1000, playerState.currentTimeSeconds + 2))}>+2s</button></div>
+          <label className="interpreting-toggle"><input type="checkbox" checked={repeatSegment} onChange={(event) => { setRepeatSegment(event.target.checked); player?.setRepeat(event.target.checked) }} /> Repeat this segment</label>
           <p className="interpreting-helper">Listen before recording in consecutive mode. The source audio is not uploaded by this workspace.</p>
         </section>
         <section className="interpreting-response-card" aria-labelledby="response-heading">

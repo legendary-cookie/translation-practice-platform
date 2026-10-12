@@ -43,8 +43,13 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput): 
   const sourceSegments = input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n')
   const responses = input.responseSegments.map((segment) => `${segment.id} (source ${segment.sourceSegmentId}, ${segment.transcriptSource}, ${segment.recognitionStatus}): ${segment.transcript}`).join('\n')
   const delivery = input.deliveryAnalysis.map((analysis) => JSON.stringify(analysis)).join('\n')
+  const sourceTranscriptNote = input.exercise.sourceTranscriptStatus === 'missing'
+    ? 'The imported source has no supplied transcript. Do not fabricate content scores or source evidence; return delivery scores only and explain the limitation.'
+    : 'Source transcript evidence is available for literal evidence checks.'
 
   return `Evaluate this ${input.interpretingMode} interpreting practice from ${sourceLanguage.label} to ${targetLanguage.label}. Use only the transcripts and derived delivery metrics below; audio stays on the learner's device for local evaluation.
+
+${sourceTranscriptNote}
 
 Return this JSON shape:
 {

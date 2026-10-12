@@ -1,6 +1,6 @@
 # Lingo Practice
 
-Lingo Practice is a local-first PWA for written and news translation practice across seven languages: Chinese, English, Russian, French, Hindi, Spanish, and Arabic. The first release includes the twelve Chinese-centered directions and works without an account.
+Lingo Practice is a local-first PWA for written, news, and audio interpreting practice across seven languages: Chinese, English, Russian, French, Hindi, Spanish, and Arabic. The first release includes the twelve Chinese-centered directions and works without an account.
 
 ## Run locally
 
@@ -52,8 +52,18 @@ If local-first with cloud fallback is selected and local evaluation cannot run, 
 - Exercises, settings, completed sessions, progress, and exports are local to the current browser/device.
 - The service worker caches the same-origin app shell and falls back to the cached entry point for navigation. It does not cache `fetch` requests, evaluation requests, API responses, or cross-origin content.
 - Previously cached app content remains available offline. AI feedback is offline only after the local model has been prepared and the device supports it.
-- Export creates a versioned JSON file from local records. Deletion requires explicit confirmation and clears local settings and sessions.
+- Export creates a versioned JSON file from local records. Deletion requires explicit confirmation and clears local settings, sessions, interpreting history, and recordings.
 - Scores are practice estimates. They are not official CATTI or MTI results.
+
+## Audio interpreting mode
+
+- **Source playback**: The interpreting catalog contains short, platform-authored scripts rendered into same-origin WAV assets. Rights metadata records the exact hash, duration, MIME type, provenance, and permitted use for every clip. The service worker precaches these assets; it never proxies remote audio.
+- **Local source import**: Setup can import a browser-readable `audio/*` file into a device-local object URL, read its duration and MIME type, and accept an optional source transcript. The imported bytes are kept local until a completed session is saved; a saved session keeps the source snapshot and IndexedDB reference so self-review can reopen it.
+- **Listen, prepare, deliver**: Consecutive mode requires listening to each authored segment before recording. Simultaneous mode records one continuous local take with approximate segment boundaries. Source transport, native fallback controls, seek, repeat, microphone state, input level, pause/stop, local replay, and discard are touch- and keyboard-accessible.
+- **Microphone boundary**: Recording is requested only from the explicit record action and requires localhost or HTTPS plus browser permission. `MediaRecorder` chooses a runtime-supported MIME type. Permission, device, secure-context, and codec errors remain visible; every microphone track and replay object URL is released on stop, discard, navigation, and unmount.
+- **Local evidence**: Takes remain in memory until submission, then are saved in IndexedDB with their recording metadata and referenced by the saved interpreting session. Progress can reopen a saved self-review with local replay evidence. Export includes short audio as browser-safe data URLs; deleting local data clears recordings, sessions, settings, and interpreting history together.
+- **Recognition and feedback**: On-device Web Speech is an optional capability check that requires `processLocally: true`; it never falls back to default remote recognition. Unsupported or low-confidence languages use manual transcript confirmation and explicitly labeled incomplete content feedback. Delivery metrics are local heuristics, separate from content scores, and every result is a practice estimate rather than an official CATTI/MTI result.
+- **Cloud boundary**: Local-only mode sends no source transcript, learner transcript, learner audio, or derived metrics remotely. A configured cloud provider is offered only after a task-specific consent view names the endpoint/model and exact text, audio MIME/duration/bytes, and delivery-metric payload. Cancelling or failing that request leaves the audio and transcript on this device; there is no automatic remote speech processing.
 
 ## Included practice modes
 

@@ -299,7 +299,8 @@ export function validateInterpretingFeedback(
   }
 
   const responseSegmentsById = new Map(context.responseSegments.map((segment) => [segment.id, segment]))
-  const allResponsesVerified = context.responseSegments.length > 0
+  const hasSourceTranscript = context.exercise.sourceTranscriptStatus !== 'missing'
+  const allResponsesVerified = hasSourceTranscript && context.responseSegments.length > 0
     && context.responseSegments.every((segment) => segment.transcript.trim().length > 0 && segment.recognitionStatus === 'verified')
   const rawContentScores = raw.contentScores ?? raw.content
   const contentScoreValues = allResponsesVerified && rawContentScores !== undefined

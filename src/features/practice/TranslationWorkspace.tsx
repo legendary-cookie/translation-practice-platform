@@ -15,6 +15,7 @@ export function TranslationWorkspace({
   notice,
   timeLimitSeconds,
   onCancel,
+  onDraftChange,
   onSubmit,
 }: {
   exercise: Exercise
@@ -23,6 +24,7 @@ export function TranslationWorkspace({
   notice?: string
   timeLimitSeconds?: number
   onCancel: () => void
+  onDraftChange: (answer: string) => void
   onSubmit: (answer: string, elapsedSeconds: number) => void
 }) {
   const [answer, setAnswer] = useState(initialAnswer)
@@ -38,7 +40,7 @@ export function TranslationWorkspace({
     startedAt.current = Date.now()
     setElapsedSeconds(0)
     setAnswer(initialAnswer)
-  }, [exercise.id, initialAnswer])
+  }, [exercise.id])
 
   useEffect(() => {
     const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt.current) / 1000)), 1000)
@@ -62,7 +64,7 @@ export function TranslationWorkspace({
       <section className="workspace-main">
         <div className="workspace-heading"><div><button className="back-button" type="button" onClick={onCancel}>← Change setup</button><p className="eyebrow">{exercise.mode === 'news' ? 'News translation' : 'Written translation'}</p><h2>{exercise.title}</h2></div><div className={`timer ${isOvertime ? 'timer--overtime' : ''}`}><span className="timer__label">{timeLimitSeconds === undefined ? 'Elapsed' : 'Remaining'}</span><strong>{formatTime(timeLimitSeconds === undefined ? elapsedSeconds : remainingSeconds ?? elapsedSeconds)}</strong></div></div>
         <div className="source-card"><div className="source-card__topline"><span className="eyebrow">Source · {sourceLanguage.nativeLabel}</span><span className="source-card__meta">{exercise.difficulty} · {exercise.topic}</span></div><p className="source-text" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{exercise.sourceText}</p></div>
-        <label className="answer-panel" htmlFor="translation-answer"><span className="answer-panel__topline"><span><span className="eyebrow">Your translation · {targetLanguage.nativeLabel}</span></span><span className="answer-panel__count">{wordCount} words · {characterCount} characters</span></span><textarea id="translation-answer" dir={targetLanguage.direction} lang={exercise.targetLanguage} value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder={`Write your ${targetLanguage.label} translation here…`} disabled={isSubmitting} /></label>
+        <label className="answer-panel" htmlFor="translation-answer"><span className="answer-panel__topline"><span><span className="eyebrow">Your translation · {targetLanguage.nativeLabel}</span></span><span className="answer-panel__count">{wordCount} words · {characterCount} characters</span></span><textarea id="translation-answer" dir={targetLanguage.direction} lang={exercise.targetLanguage} value={answer} onChange={(event) => { const nextAnswer = event.target.value; setAnswer(nextAnswer); onDraftChange(nextAnswer) }} placeholder={`Write your ${targetLanguage.label} translation here…`} disabled={isSubmitting} /></label>
         {validationMessage && <p className="form-message form-message--error" role="alert">{validationMessage}</p>}
         {notice && <p className="form-message" role="status">{notice}</p>}
         <div className="workspace-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>Discard draft</button><button className="button button--primary" type="button" onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting ? 'Evaluating…' : 'Submit for feedback'} <span aria-hidden="true">→</span></button></div>

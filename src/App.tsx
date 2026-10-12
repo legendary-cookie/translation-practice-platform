@@ -4,7 +4,7 @@ import { forgetLocalModelReady, hadLocalModelReady, type LocalModelProgress } fr
 import { createLocalProvider } from './ai/local-provider'
 import { createInitialCapability, detectDeviceCapability, type CapabilityAssessment } from './ai/capability'
 import { createEvaluationRouter, isInterpretingFeedback, isTranslationFeedback, type CloudConsentRequest } from './ai/provider'
-import { database, DEFAULT_SETTINGS, subscribeToDatabaseNotice } from './storage/database'
+import { database, DEFAULT_SETTINGS, subscribeToDataCleared, subscribeToDatabaseNotice } from './storage/database'
 import { Dashboard } from './features/dashboard/Dashboard'
 import { FeedbackPanel } from './features/practice/FeedbackPanel'
 import { PracticeSetup, type PracticeStart } from './features/practice/PracticeSetup'
@@ -17,7 +17,9 @@ import { SessionHistoryNotice } from './features/progress/SessionHistoryNotice'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { createLocalModelStatusSettingsUpdate, isLocalProgressGenerationCurrent } from './features/settings/local-model-progress-guard'
-import { mergeRecentSessions, persistWrittenPracticeSession, type SessionHistoryStatus } from './features/practice/session-history'
+import { mergeRecentSessions, persistWrittenPracticeSession, readHistoryRecords, type SessionHistoryStatus } from './features/practice/session-history'
+import { createSettingsHydrationAttempt, runAfterSettingsHydrated, type SettingsHydrationAttempt } from './features/settings/settings-hydration'
+import { getSavedExamRunAfterExit } from './features/exam/exam-exit'
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
@@ -198,6 +200,8 @@ export default function App() {
   const [settings, setSettings] = useState<StoredSettings>(DEFAULT_SETTINGS)
   const [cloudDraft, setCloudDraft] = useState({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
   const [databaseNotice, setDatabaseNotice] = useState<string | undefined>()
+  const [remoteDataNotice, setRemoteDataNotice] = useState<string | undefined>()
+  const [settingsHydrationStatus, setSettingsHydrationStatus] = useState<SessionHistoryStatus>('loading')
   const [localProgress, setLocalProgress] = useState<LocalModelProgress>({ status: 'not-prepared', text: 'Local model has not been prepared.' })
   const [capability, setCapability] = useState<CapabilityAssessment>(createInitialCapability)
   const [recentSessions, setRecentSessions] = useState<SessionRecord[]>([])
@@ -212,6 +216,7 @@ export default function App() {
   const [activeInterpretingInput, setActiveInterpretingInput] = useState<InterpretingEvaluationInput | undefined>()
   const [interpretingFeedback, setInterpretingFeedback] = useState<InterpretingFeedback | undefined>()
   const [recentInterpretingSessions, setRecentInterpretingSessions] = useState<InterpretingSessionRecord[]>([])
+  const [interpretingHistoryStatus, setInterpretingHistoryStatus] = useState<SessionHistoryStatus>('loading')
   const [pendingInterpretingSaves, setPendingInterpretingSaves] = useState<PendingInterpretingPersistence[]>([])
   const [savingInterpretingSaveIds, setSavingInterpretingSaveIds] = useState<Set<string>>(new Set())
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | undefined>()
@@ -225,6 +230,7 @@ export default function App() {
   const [examProfiles, setExamProfiles] = useState<ExamProfile[]>(DEFAULT_EXAM_PROFILES)
   const [activeExamRun, setActiveExamRun] = useState<ActiveExamRun | undefined>()
   const [recentExamResults, setRecentExamResults] = useState<ConsolidatedExamResult[]>([])
+  const [examHistoryStatus, setExamHistoryStatus] = useState<SessionHistoryStatus>('loading')
   const [examView, setExamView] = useState<'catalog' | 'runner' | 'results'>('catalog')
   const [selectedExamProfile, setSelectedExamProfile] = useState<ExamProfile | undefined>()
   const [activeExamResult, setActiveExamResult] = useState<ConsolidatedExamResult | undefined>()
@@ -237,12 +243,16 @@ export default function App() {
   const [initialPracticeMode, setInitialPracticeMode] = useState<'written' | 'news'>('written')
   const settingsRef = useRef<StoredSettings>(DEFAULT_SETTINGS)
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const settingsHydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | undefined>(undefined)
+  const settingsHydrationRef = useRef<SettingsHydrationAttempt | undefined>(undefined)
   const cloudDraftRevisionRef = useRef(0)
   const dataLoadGeneration = useRef(0)
   const sessionHistoryLoadRequestRef = useRef(0)
+  const interpretingHistoryLoadRequestRef = useRef(0)
+  const examHistoryLoadRequestRef = useRef(0)
+  const lastRemoteClearEpochRef = useRef<string | undefined>(undefined)
   const localProviderEpochRef = useRef(0)
   const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number, dataGeneration: number) => void>(() => undefined)
+  const remoteDataClearHandlerRef = useRef<(epoch: string) => void>(() => undefined)
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
@@ -250,11 +260,7 @@ export default function App() {
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
   const writtenEvaluationGuardRef = useRef(createWrittenEvaluationGuard())
 
-  if (!settingsHydrationRef.current) {
-    let resolveHydration: () => void = () => undefined
-    const promise = new Promise<void>((resolve) => { resolveHydration = resolve })
-    settingsHydrationRef.current = { promise, resolve: resolveHydration }
-  }
+  if (!settingsHydrationRef.current) settingsHydrationRef.current = createSettingsHydrationAttempt()
 
   useEffect(() => {
     const sourceUrl = activeInterpretingSourceUrl
@@ -308,14 +314,64 @@ export default function App() {
     const dataGeneration = dataLoadGeneration.current
     const request = ++sessionHistoryLoadRequestRef.current
     setSessionHistoryStatus('loading')
-    try {
-      const sessions = await database.listSessions()
-      if (dataLoadGeneration.current !== dataGeneration || sessionHistoryLoadRequestRef.current !== request) return
-      setRecentSessions((current) => mergeRecentSessions(sessions, current))
+    const result = await readHistoryRecords(() => database.listSessions())
+    if (dataLoadGeneration.current !== dataGeneration || sessionHistoryLoadRequestRef.current !== request) return
+    if (result.status === 'failed') setSessionHistoryStatus('failed')
+    else {
+      setRecentSessions((current) => mergeRecentSessions(result.records, current))
       setSessionHistoryStatus('ready')
+    }
+  }
+
+  async function loadInterpretingHistory() {
+    const dataGeneration = dataLoadGeneration.current
+    const request = ++interpretingHistoryLoadRequestRef.current
+    setInterpretingHistoryStatus('loading')
+    const result = await readHistoryRecords(() => database.listInterpretingSessions())
+    if (dataLoadGeneration.current !== dataGeneration || interpretingHistoryLoadRequestRef.current !== request) return
+    if (result.status === 'failed') setInterpretingHistoryStatus('failed')
+    else {
+      setRecentInterpretingSessions(result.records)
+      setInterpretingHistoryStatus('ready')
+    }
+  }
+
+  async function loadExamHistory() {
+    const dataGeneration = dataLoadGeneration.current
+    const request = ++examHistoryLoadRequestRef.current
+    setExamHistoryStatus('loading')
+    const result = await readHistoryRecords(() => database.listExamResults())
+    if (dataLoadGeneration.current !== dataGeneration || examHistoryLoadRequestRef.current !== request) return
+    if (result.status === 'failed') setExamHistoryStatus('failed')
+    else {
+      setRecentExamResults(result.records)
+      setExamHistoryStatus('ready')
+    }
+  }
+
+  async function loadStoredSettings() {
+    const attempt = createSettingsHydrationAttempt()
+    settingsHydrationRef.current = attempt
+    const loadGeneration = dataLoadGeneration.current
+    const cloudDraftRevisionAtLoad = cloudDraftRevisionRef.current
+    setSettingsHydrationStatus('loading')
+    try {
+      const savedSettings = await database.getSettings()
+      if (dataLoadGeneration.current !== loadGeneration || settingsHydrationRef.current !== attempt) {
+        attempt.complete(false)
+        return
+      }
+      settingsRef.current = savedSettings
+      setSettings(savedSettings)
+      if (cloudDraftRevisionRef.current === cloudDraftRevisionAtLoad) {
+        setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
+      }
+      attempt.complete(true)
+      setSettingsHydrationStatus('ready')
     } catch {
-      if (dataLoadGeneration.current === dataGeneration && sessionHistoryLoadRequestRef.current === request) {
-        setSessionHistoryStatus('failed')
+      attempt.complete(false)
+      if (dataLoadGeneration.current === loadGeneration && settingsHydrationRef.current === attempt) {
+        setSettingsHydrationStatus('failed')
       }
     }
   }
@@ -323,6 +379,8 @@ export default function App() {
   useEffect(() => () => localProvider.dispose(), [localProvider])
 
   useEffect(() => subscribeToDatabaseNotice(setDatabaseNotice), [])
+  remoteDataClearHandlerRef.current = handleRemoteDataCleared
+  useEffect(() => subscribeToDataCleared((epoch) => remoteDataClearHandlerRef.current(epoch)), [])
 
   useEffect(() => {
     let cancelled = false
@@ -362,23 +420,9 @@ export default function App() {
 
   useEffect(() => {
     const loadGeneration = dataLoadGeneration.current
-    const cloudDraftRevisionAtLoad = cloudDraftRevisionRef.current
-    void database.getSettings().then((savedSettings) => {
-      if (dataLoadGeneration.current !== loadGeneration) {
-        return
-      }
-      settingsRef.current = savedSettings
-      setSettings(savedSettings)
-      if (cloudDraftRevisionRef.current === cloudDraftRevisionAtLoad) {
-        setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
-      }
-    }).catch(() => undefined).finally(() => settingsHydrationRef.current?.resolve())
+    void loadStoredSettings()
     void loadWrittenSessionHistory()
-    void database.listInterpretingSessions().then((sessions) => {
-      if (dataLoadGeneration.current === loadGeneration) {
-        setRecentInterpretingSessions(sessions)
-      }
-    }).catch(() => undefined)
+    void loadInterpretingHistory()
     void database.listExamProfiles().then((profiles) => {
       if (dataLoadGeneration.current === loadGeneration && profiles.length > 0) {
         setExamProfiles(profiles)
@@ -395,11 +439,7 @@ export default function App() {
         setExamEvaluationNotice('Saved exam recovery could not be checked. Reload this page before starting another exam.')
       }
     })
-    void database.listExamResults().then((results) => {
-      if (dataLoadGeneration.current === loadGeneration) {
-        setRecentExamResults(results)
-      }
-    }).catch(() => undefined)
+    void loadExamHistory()
   }, [])
 
   const cloudProvider = useMemo(() => {
@@ -422,21 +462,24 @@ export default function App() {
 
   function updateSettings(update: Partial<StoredSettings> | ((current: StoredSettings) => StoredSettings)): Promise<void> {
     const operation = settingsWriteQueueRef.current.then(async () => {
-      await settingsHydrationRef.current?.promise
-      const previous = settingsRef.current
-      const nextSettings = typeof update === 'function' ? update(previous) : { ...previous, ...update }
-      if (nextSettings === previous) return
-      settingsRef.current = nextSettings
-      setSettings(nextSettings)
-      try {
-        await database.saveSettings(nextSettings)
-      } catch (error) {
-        if (settingsRef.current === nextSettings) {
-          settingsRef.current = previous
-          setSettings(previous)
+      const hydration = settingsHydrationRef.current
+      if (!hydration) throw new Error('Saved settings have not been loaded.')
+      await runAfterSettingsHydrated(hydration, async () => {
+        const previous = settingsRef.current
+        const nextSettings = typeof update === 'function' ? update(previous) : { ...previous, ...update }
+        if (nextSettings === previous) return
+        settingsRef.current = nextSettings
+        setSettings(nextSettings)
+        try {
+          await database.saveSettings(nextSettings)
+        } catch (error) {
+          if (settingsRef.current === nextSettings) {
+            settingsRef.current = previous
+            setSettings(previous)
+          }
+          throw error
         }
-        throw error
-      }
+      })
     })
     const trackedOperation = trackPersistence(operation)
     settingsWriteQueueRef.current = trackedOperation.then(() => undefined, () => undefined)
@@ -455,30 +498,13 @@ export default function App() {
     }
   }
 
-  async function clearLocalData() {
-    dataLoadGeneration.current += 1
-    writtenEvaluationGuardRef.current.activate(undefined)
-    pendingConsent?.request.revokePreview?.()
-    setPendingConsent(undefined)
-    const nextProviderEpoch = localProviderEpochRef.current + 1
-    localProviderEpochRef.current = nextProviderEpoch
-    localProvider.dispose()
-    setIsEvaluating(false)
-    setIsEvaluatingExam(false)
-    setExamEvaluationProgress(undefined)
-    await Promise.allSettled([...pendingPersistenceRef.current])
-    try {
-      await database.clearData()
-    } catch (error) {
-      const restartNotice = 'Data deletion failed after the local evaluator was stopped. Prepare the model again before using local evaluation.'
-      settingsRef.current = { ...settingsRef.current, localModelStatus: 'not-prepared' }
-      setSettings(settingsRef.current)
-      setLocalProgress({ status: 'not-prepared', text: 'Local model needs preparation after the failed deletion.', error: restartNotice })
-      setLocalProviderEpoch(nextProviderEpoch)
-      throw error
-    }
+  function resetUiAfterLocalDataClear(nextProviderEpoch: number, notice?: string) {
     setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
+    const readySettingsHydration = createSettingsHydrationAttempt()
+    readySettingsHydration.complete(true)
+    settingsHydrationRef.current = readySettingsHydration
+    setSettingsHydrationStatus('ready')
     settingsRef.current = DEFAULT_SETTINGS
     setSettings(DEFAULT_SETTINGS)
     setCloudDraft({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
@@ -487,9 +513,14 @@ export default function App() {
     sessionHistoryLoadRequestRef.current += 1
     setSessionHistoryStatus('ready')
     setRecentInterpretingSessions([])
+    interpretingHistoryLoadRequestRef.current += 1
+    setInterpretingHistoryStatus('ready')
     setPendingInterpretingSaves([])
     setActiveExamRun(undefined)
     setRecentExamResults([])
+    examHistoryLoadRequestRef.current += 1
+    setExamHistoryStatus('ready')
+    setExamProfiles(DEFAULT_EXAM_PROFILES)
     setActiveExamResult(undefined)
     setSelectedExamProfile(undefined)
     setExamView('catalog')
@@ -511,7 +542,57 @@ export default function App() {
     setFeedback(undefined)
     setPendingConsent(undefined)
     setPracticeNotice(undefined)
+    setRemoteDataNotice(notice)
     setCurrentPage('home')
+  }
+
+  function handleRemoteDataCleared(epoch: string) {
+    if (lastRemoteClearEpochRef.current === epoch) return
+    lastRemoteClearEpochRef.current = epoch
+    dataLoadGeneration.current += 1
+    writtenEvaluationGuardRef.current.activate(undefined)
+    pendingConsent?.request.revokePreview?.()
+    pendingInterpretingConsent?.request.revokePreview?.()
+    setPendingConsent(undefined)
+    setPendingInterpretingConsent(undefined)
+    const nextProviderEpoch = localProviderEpochRef.current + 1
+    localProviderEpochRef.current = nextProviderEpoch
+    localProvider.dispose()
+    setIsEvaluating(false)
+    setIsEvaluatingExam(false)
+    setExamEvaluationProgress(undefined)
+    resetUiAfterLocalDataClear(nextProviderEpoch, 'Local data was cleared in another tab. This tab has discarded its stale view; reload it before saving new work.')
+  }
+
+  async function retryHistoryReads() {
+    await Promise.all([loadWrittenSessionHistory(), loadInterpretingHistory(), loadExamHistory()])
+  }
+
+  async function clearLocalData() {
+    // Refuse unsupported browsers before stopping providers or discarding live UI state.
+    database.assertCanClearData()
+    dataLoadGeneration.current += 1
+    writtenEvaluationGuardRef.current.activate(undefined)
+    pendingConsent?.request.revokePreview?.()
+    setPendingConsent(undefined)
+    const nextProviderEpoch = localProviderEpochRef.current + 1
+    localProviderEpochRef.current = nextProviderEpoch
+    localProvider.dispose()
+    setIsEvaluating(false)
+    setIsEvaluatingExam(false)
+    setExamEvaluationProgress(undefined)
+    await Promise.allSettled([...pendingPersistenceRef.current])
+    try {
+      await database.clearData()
+    } catch (error) {
+      const restartNotice = 'Data deletion failed after the local evaluator was stopped. Prepare the model again before using local evaluation.'
+      settingsRef.current = { ...settingsRef.current, localModelStatus: 'not-prepared' }
+      setSettings(settingsRef.current)
+      setLocalProgress({ status: 'not-prepared', text: 'Local model needs preparation after the failed deletion.', error: restartNotice })
+      setLocalProviderEpoch(nextProviderEpoch)
+      throw error
+    }
+    resetUiAfterLocalDataClear(nextProviderEpoch)
   }
 
   function handleSelectExamProfile(profile: ExamProfile) {
@@ -761,10 +842,12 @@ export default function App() {
     }
   }
 
-  async function handleCancelExamRun() {
-    const run = await database.getActiveExamRun()
-    setActiveExamRun(run)
-    setExamEvaluationNotice(undefined)
+  async function handleCancelExamRun(savedRun: ActiveExamRun) {
+    const recovery = await getSavedExamRunAfterExit(savedRun, () => database.getActiveExamRun())
+    setActiveExamRun(recovery.run)
+    setExamEvaluationNotice(recovery.recoveryReadFailed
+      ? 'The attempt was saved locally, but its follow-up recovery check failed. The saved attempt is retained; retry by reopening the exam catalog.'
+      : undefined)
     setPendingExamConsent(undefined)
     setExamView('catalog')
     setSelectedExamProfile(undefined)
@@ -1311,6 +1394,7 @@ export default function App() {
           </section>
         )}
         {databaseNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{databaseNotice}</section>}
+        {remoteDataNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{remoteDataNotice}</section>}
         {sessionHistoryStatus === 'failed' && <SessionHistoryNotice onRetry={() => void loadWrittenSessionHistory()} />}
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
@@ -1403,16 +1487,21 @@ export default function App() {
             sessions={recentSessions}
             sessionHistoryStatus={sessionHistoryStatus}
             interpretingSessions={recentInterpretingSessions}
+            interpretingHistoryStatus={interpretingHistoryStatus}
             examResults={recentExamResults}
+            examHistoryStatus={examHistoryStatus}
             onStartPractice={() => navigateToPage('practice')}
             onStartInterpreting={openInterpretingSetup}
             onOpenInterpretingSession={(session) => void handleOpenInterpretingSession(session)}
             onDeleteInterpretingSession={handleDeleteInterpretingSession}
             onOpenExamResult={(result) => void handleOpenExamResult(result)}
             onStartExam={() => navigateToPage('exam')}
+            onRetrySessionHistory={() => void loadWrittenSessionHistory()}
+            onRetryInterpretingHistory={() => void loadInterpretingHistory()}
+            onRetryExamHistory={() => void loadExamHistory()}
           />
         )}
-        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}

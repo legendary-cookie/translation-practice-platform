@@ -11,6 +11,7 @@ import type {
 } from '../domain/types'
 import { isValidActiveRun } from '../domain/exam'
 import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
+import { createDataWriteCoordinator, DATA_CLEARED_NOTICE } from './data-write-coordinator'
 
 const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 3
@@ -101,17 +102,71 @@ function clearExamRunRecoverySnapshot(runId: string, persistedRun?: ActiveExamRu
   }
 }
 
-function clearAllExamRunRecoverySnapshots(): void {
-  const storage = getLocalStorage()
-  if (!storage) {
-    return
+function recoverySnapshotEntries(storage: Storage): Array<[string, string]> {
+  const entries: Array<[string, string]> = []
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index)
+    if (key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX)) {
+      const value = storage.getItem(key)
+      if (value !== null) entries.push([key, value])
+    }
   }
+  return entries
+}
+
+function restoreExamRunRecoverySnapshots(storage: Storage, entries: Array<[string, string]>): void {
+  for (const [key, value] of entries) storage.setItem(key, value)
+}
+
+export function clearExamRunRecoverySnapshotsStrict(storage: Storage, entries: Array<[string, string]>): void {
   try {
-    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
-      .filter((key): key is string => Boolean(key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX)))
-    keys.forEach((key) => storage.removeItem(key))
-  } catch {
-    // A blocked localStorage must not prevent the IndexedDB privacy reset.
+    for (const [key] of entries) storage.removeItem(key)
+  } catch (error) {
+    try { restoreExamRunRecoverySnapshots(storage, entries) } catch { /* IndexedDB remains authoritative if restoring a journal is blocked. */ }
+    throw error
+  }
+}
+
+function getRecoveryStorageForClear(): Storage {
+  const storage = getLocalStorage()
+  if (!storage) throw new Error('Local exam recovery storage is unavailable; data was not cleared.')
+  return storage
+}
+
+const dataClearedListeners = new Set<(epoch: string) => void>()
+let dataClearedChannel: BroadcastChannel | undefined
+
+function publishDataCleared(epoch: string): void {
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      dataClearedChannel ??= new BroadcastChannel(DATA_CLEARED_NOTICE)
+      dataClearedChannel.postMessage({ epoch })
+    }
+  } catch { /* The storage event remains the fallback. */ }
+  try { getLocalStorage()?.setItem(DATA_CLEARED_NOTICE, epoch) } catch { /* Epoch checks still reject stale writers. */ }
+}
+
+export function subscribeToDataCleared(listener: (epoch: string) => void): () => void {
+  dataClearedListeners.add(listener)
+  function onMessage(event: MessageEvent<{ epoch?: unknown }>) {
+    if (typeof event.data?.epoch === 'string') listener(event.data.epoch)
+  }
+  function onStorage(event: StorageEvent) {
+    if (event.key === DATA_CLEARED_NOTICE && event.newValue) listener(event.newValue)
+  }
+  let channel: BroadcastChannel | undefined
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      dataClearedChannel ??= new BroadcastChannel(DATA_CLEARED_NOTICE)
+      channel = dataClearedChannel
+      channel.addEventListener('message', onMessage)
+    }
+  } catch { /* Storage-event fallback remains active. */ }
+  try { globalThis.addEventListener?.('storage', onStorage) } catch { /* Non-window runtime. */ }
+  return () => {
+    dataClearedListeners.delete(listener)
+    channel?.removeEventListener('message', onMessage)
+    try { globalThis.removeEventListener?.('storage', onStorage) } catch { /* Non-window runtime. */ }
   }
 }
 
@@ -190,6 +245,11 @@ interface TranslationDatabaseSchema extends DBSchema {
 }
 
 let databasePromise: Promise<IDBPDatabase<TranslationDatabaseSchema>> | undefined
+const dataWriteCoordinator = createDataWriteCoordinator({ onCleared: publishDataCleared })
+
+function withDataWrite<T>(operation: () => Promise<T>): Promise<T> {
+  return dataWriteCoordinator.runWrite(operation)
+}
 
 function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
   if (!databasePromise) {
@@ -255,8 +315,10 @@ export const database = {
   },
 
   async saveSession(session: SessionRecord): Promise<void> {
-    const db = await getDatabase()
-    await db.put('sessions', session)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('sessions', session)
+    })
   },
 
   async listInterpretingSessions(): Promise<InterpretingSessionRecord[]> {
@@ -266,38 +328,44 @@ export const database = {
   },
 
   async saveInterpretingSession(session: InterpretingSessionRecord): Promise<void> {
-    const db = await getDatabase()
-    await db.put('interpretingSessions', session)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('interpretingSessions', session)
+    })
   },
 
   async saveInterpretingSessionWithRecordings(
     session: InterpretingSessionRecord,
     recordings: AudioRecordingRecord[],
   ): Promise<void> {
-    const db = await getDatabase()
-    const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
-    const recordingWrites = recordings.map((recording) => transaction.objectStore('recordings').put(recording))
-    recordingWrites.push(transaction.objectStore('interpretingSessions').put(session))
-    await Promise.all(recordingWrites)
-    await transaction.done
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
+      const recordingWrites = recordings.map((recording) => transaction.objectStore('recordings').put(recording))
+      recordingWrites.push(transaction.objectStore('interpretingSessions').put(session))
+      await Promise.all(recordingWrites)
+      await transaction.done
+    })
   },
 
   async deleteInterpretingSession(id: string): Promise<void> {
-    const db = await getDatabase()
-    const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
-    const sessionStore = transaction.objectStore('interpretingSessions')
-    const [session, sessions] = await Promise.all([sessionStore.get(id), sessionStore.getAll()])
-    if (session) {
-      const stillReferenced = new Set(sessions
-        .filter((candidate) => candidate.id !== id)
-        .flatMap((candidate) => [...candidate.recordingIds, ...(candidate.sourceRecordingId ? [candidate.sourceRecordingId] : [])]))
-      const ownedRecordingIds = new Set([...session.recordingIds, ...(session.sourceRecordingId ? [session.sourceRecordingId] : [])])
-      const deletions = [sessionStore.delete(id), ...Array.from(ownedRecordingIds)
-        .filter((recordingId) => !stillReferenced.has(recordingId))
-        .map((recordingId) => transaction.objectStore('recordings').delete(recordingId))]
-      await Promise.all(deletions)
-    }
-    await transaction.done
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
+      const sessionStore = transaction.objectStore('interpretingSessions')
+      const [session, sessions] = await Promise.all([sessionStore.get(id), sessionStore.getAll()])
+      if (session) {
+        const stillReferenced = new Set(sessions
+          .filter((candidate) => candidate.id !== id)
+          .flatMap((candidate) => [...candidate.recordingIds, ...(candidate.sourceRecordingId ? [candidate.sourceRecordingId] : [])]))
+        const ownedRecordingIds = new Set([...session.recordingIds, ...(session.sourceRecordingId ? [session.sourceRecordingId] : [])])
+        const deletions = [sessionStore.delete(id), ...Array.from(ownedRecordingIds)
+          .filter((recordingId) => !stillReferenced.has(recordingId))
+          .map((recordingId) => transaction.objectStore('recordings').delete(recordingId))]
+        await Promise.all(deletions)
+      }
+      await transaction.done
+    })
   },
 
   async listAudioRecordings(exerciseId?: string): Promise<AudioRecordingRecord[]> {
@@ -314,13 +382,17 @@ export const database = {
   },
 
   async saveAudioRecording(recording: AudioRecordingRecord): Promise<void> {
-    const db = await getDatabase()
-    await db.put('recordings', recording)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('recordings', recording)
+    })
   },
 
   async deleteAudioRecording(id: string): Promise<void> {
-    const db = await getDatabase()
-    await db.delete('recordings', id)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.delete('recordings', id)
+    })
   },
 
   async getSettings(): Promise<StoredSettings> {
@@ -330,31 +402,33 @@ export const database = {
   },
 
   async saveSettings(settings: StoredSettings): Promise<void> {
-    const db = await getDatabase()
-    await db.put('settings', { ...settings, id: SETTINGS_KEY }, SETTINGS_KEY)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('settings', { ...settings, id: SETTINGS_KEY }, SETTINGS_KEY)
+    })
   },
   // Exam profiles
   async listExamProfiles(): Promise<ExamProfile[]> {
-    const db = await getDatabase()
-    const stored = await db.getAll('examProfiles')
-    const deprecatedIds = new Set<string>(DEPRECATED_EXAM_PROFILE_IDS)
-    const retained = stored.filter((profile) => !deprecatedIds.has(profile.id))
+    return withDataWrite(async () => {
+      const db = await getDatabase()
+      const stored = await db.getAll('examProfiles')
+      const deprecatedIds = new Set<string>(DEPRECATED_EXAM_PROFILE_IDS)
+      const retained = stored.filter((profile) => !deprecatedIds.has(profile.id))
 
-    for (const profile of stored) {
-      if (deprecatedIds.has(profile.id)) {
-        await db.delete('examProfiles', profile.id)
+      for (const profile of stored) {
+        if (deprecatedIds.has(profile.id)) await db.delete('examProfiles', profile.id)
       }
-    }
 
-    const profilesById = new Map(retained.map((profile) => [profile.id, profile]))
-    for (const profile of DEFAULT_EXAM_PROFILES) {
-      const storedProfile = profilesById.get(profile.id)
-      if (!storedProfile || storedProfile.version < profile.version || !storedProfile.rubricVersion) {
-        await db.put('examProfiles', profile)
-        profilesById.set(profile.id, profile)
+      const profilesById = new Map(retained.map((profile) => [profile.id, profile]))
+      for (const profile of DEFAULT_EXAM_PROFILES) {
+        const storedProfile = profilesById.get(profile.id)
+        if (!storedProfile || storedProfile.version < profile.version || !storedProfile.rubricVersion) {
+          await db.put('examProfiles', profile)
+          profilesById.set(profile.id, profile)
+        }
       }
-    }
-    return Array.from(profilesById.values())
+      return Array.from(profilesById.values())
+    })
   },
 
   async getExamProfile(id: string): Promise<ExamProfile | undefined> {
@@ -367,8 +441,10 @@ export const database = {
   },
 
   async saveExamProfile(profile: ExamProfile): Promise<void> {
-    const db = await getDatabase()
-    await db.put('examProfiles', profile)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('examProfiles', profile)
+    })
   },
 
   // Active exam runs (crash recovery)
@@ -400,46 +476,52 @@ export const database = {
       .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))
   },
 
-  stageExamRunRecovery(run: ActiveExamRun): void {
-    const storage = getLocalStorage()
-    if (!storage) {
-      throw new Error('Synchronous browser recovery storage is unavailable.')
-    }
-    storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run))
+  async stageExamRunRecovery(run: ActiveExamRun): Promise<void> {
+    await withDataWrite(async () => {
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable.')
+      storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run))
+    })
   },
 
   async saveExamRun(run: ActiveExamRun): Promise<void> {
-    const db = await getDatabase()
-    await db.put('examRuns', run)
-    clearExamRunRecoverySnapshot(run.id, run)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('examRuns', run)
+      clearExamRunRecoverySnapshot(run.id, run)
+    })
   },
 
   async deleteExamRun(id: string): Promise<void> {
-    const db = await getDatabase()
-    await db.delete('examRuns', id)
-    clearExamRunRecoverySnapshot(id)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.delete('examRuns', id)
+      clearExamRunRecoverySnapshot(id)
+    })
   },
 
   // Exam results
   async saveExamResult(result: ConsolidatedExamResult): Promise<void> {
-    const db = await getDatabase()
-    await db.put('examResults', result)
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      await db.put('examResults', result)
+    })
   },
 
   async completeExamRun(runId: string, result: ConsolidatedExamResult): Promise<ConsolidatedExamResult> {
-    const db = await getDatabase()
-    const transaction = db.transaction(['examResults', 'examRuns'], 'readwrite')
-    const existingResults = await transaction.objectStore('examResults').getAll()
-    const existingResult = existingResults.find((storedResult) => storedResult.runId === runId)
-    const completedResult = existingResult ?? result
+    return withDataWrite(async () => {
+      const db = await getDatabase()
+      const transaction = db.transaction(['examResults', 'examRuns'], 'readwrite')
+      const existingResults = await transaction.objectStore('examResults').getAll()
+      const existingResult = existingResults.find((storedResult) => storedResult.runId === runId)
+      const completedResult = existingResult ?? result
 
-    if (!existingResult) {
-      await transaction.objectStore('examResults').put(result)
-    }
-    await transaction.objectStore('examRuns').delete(runId)
-    await transaction.done
-    clearExamRunRecoverySnapshot(runId)
-    return completedResult
+      if (!existingResult) await transaction.objectStore('examResults').put(result)
+      await transaction.objectStore('examRuns').delete(runId)
+      await transaction.done
+      clearExamRunRecoverySnapshot(runId)
+      return completedResult
+    })
   },
 
   async getExamResult(id: string): Promise<ConsolidatedExamResult | undefined> {
@@ -490,21 +572,34 @@ export const database = {
   },
 
   async clearData(): Promise<void> {
-    const db = await getDatabase()
-    const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions'> = [
-      'settings',
-      'sessions',
-      'examProfiles',
-      'examRuns',
-      'examResults',
-      'recordings',
-      'interpretingSessions',
-    ]
-    const transaction = db.transaction(storeNames, 'readwrite')
-    await Promise.all([
-      Promise.all(storeNames.map((name) => transaction.objectStore(name).clear())),
-      transaction.done,
-    ])
-    clearAllExamRunRecoverySnapshots()
+    await dataWriteCoordinator.clearData(async () => {
+      const storage = getRecoveryStorageForClear()
+      const recoveryEntries = recoverySnapshotEntries(storage)
+      try {
+        clearExamRunRecoverySnapshotsStrict(storage, recoveryEntries)
+        const db = await getDatabase()
+        const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions'> = [
+          'settings',
+          'sessions',
+          'examProfiles',
+          'examRuns',
+          'examResults',
+          'recordings',
+          'interpretingSessions',
+        ]
+        const transaction = db.transaction(storeNames, 'readwrite')
+        await Promise.all([
+          Promise.all(storeNames.map((name) => transaction.objectStore(name).clear())),
+          transaction.done,
+        ])
+      } catch (error) {
+        try { restoreExamRunRecoverySnapshots(storage, recoveryEntries) } catch { /* IDB recovery rows remain authoritative if journal restore is blocked. */ }
+        throw error
+      }
+    })
+  },
+
+  assertCanClearData(): void {
+    dataWriteCoordinator.assertCanClearData()
   },
 }

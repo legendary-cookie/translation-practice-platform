@@ -68,44 +68,65 @@ export function ProgressPage({
   sessions,
   sessionHistoryStatus = 'ready',
   interpretingSessions = [],
+  interpretingHistoryStatus = 'ready',
   examResults = [],
+  examHistoryStatus = 'ready',
   onStartPractice,
   onStartInterpreting,
   onOpenInterpretingSession,
   onDeleteInterpretingSession,
   onOpenExamResult,
   onStartExam,
+  onRetrySessionHistory,
+  onRetryInterpretingHistory,
+  onRetryExamHistory,
 }: {
   sessions: SessionRecord[]
   sessionHistoryStatus?: SessionHistoryStatus
   interpretingSessions?: InterpretingSessionRecord[]
+  interpretingHistoryStatus?: SessionHistoryStatus
   examResults?: ConsolidatedExamResult[]
+  examHistoryStatus?: SessionHistoryStatus
   onStartPractice: () => void
   onStartInterpreting?: () => void
   onOpenInterpretingSession?: (session: InterpretingSessionRecord) => void
   onDeleteInterpretingSession?: (id: string) => Promise<void>
   onOpenExamResult?: (result: ConsolidatedExamResult) => void
   onStartExam?: () => void
+  onRetrySessionHistory?: () => void
+  onRetryInterpretingHistory?: () => void
+  onRetryExamHistory?: () => void
 }) {
   const [activeTab, setActiveTab] = useState<'sessions' | 'interpreting' | 'exams'>('sessions')
 
   const hasAnyData = sessions.length > 0 || interpretingSessions.length > 0 || examResults.length > 0
 
   if (!hasAnyData) {
+    const statuses = [sessionHistoryStatus, interpretingHistoryStatus, examHistoryStatus]
+    const failedSources = [
+      sessionHistoryStatus === 'failed' ? 'written practice' : undefined,
+      interpretingHistoryStatus === 'failed' ? 'interpreting' : undefined,
+      examHistoryStatus === 'failed' ? 'exam' : undefined,
+    ].filter((source): source is string => Boolean(source))
+    const isLoading = statuses.some((status) => status === 'loading')
+    const isFailed = failedSources.length > 0
     return (
       <div className="progress-page" role="main">
         <section className="progress-empty">
           <span className="empty-state__icon" aria-hidden="true">↗</span>
           <p className="eyebrow">Local history</p>
-          <h2>{sessionHistoryStatus === 'failed' ? 'Saved written history is unavailable.' : sessionHistoryStatus === 'loading' ? 'Checking local history.' : 'Your progress starts with your first pass.'}</h2>
+          <h2>{isFailed ? 'Saved local history is not fully available.' : isLoading ? 'Checking local history.' : 'Your progress starts with your first pass.'}</h2>
           <p>
-            {sessionHistoryStatus === 'failed'
-              ? 'This browser could not read written practice history. Existing records have not been deleted; retry the history read before assuming there is no saved work.'
-              : sessionHistoryStatus === 'loading'
+            {isFailed
+              ? `This browser could not read ${failedSources.join(', ')} history. Existing records may still be present; retry before assuming there is no saved work.`
+              : isLoading
                 ? 'Checking this device for saved practice sessions. You can continue practicing while the local history check finishes.'
                 : 'There are no saved sessions or mock exams on this browser yet. Complete a written translation, interpreting take, or exam simulation to see practice estimates and dimension trends here.'}
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+            {sessionHistoryStatus === 'failed' && onRetrySessionHistory && <button className="button button--quiet" type="button" onClick={onRetrySessionHistory}>Retry written history</button>}
+            {interpretingHistoryStatus === 'failed' && onRetryInterpretingHistory && <button className="button button--quiet" type="button" onClick={onRetryInterpretingHistory}>Retry interpreting history</button>}
+            {examHistoryStatus === 'failed' && onRetryExamHistory && <button className="button button--quiet" type="button" onClick={onRetryExamHistory}>Retry exam history</button>}
             <button className="button button--primary" type="button" onClick={onStartPractice}>
               Start a practice session <span aria-hidden="true">→</span>
             </button>
@@ -145,6 +166,12 @@ export function ProgressPage({
 
   return (
     <div className="progress-page" role="main">
+      {(sessionHistoryStatus === 'failed' || interpretingHistoryStatus === 'failed' || examHistoryStatus === 'failed') && <section className="notice-banner notice-banner--warning" role="alert">
+        Saved local history is not fully available. Existing records may still be present; retry the failed history reads before treating any count as empty.
+        {sessionHistoryStatus === 'failed' && onRetrySessionHistory && <button className="button button--quiet" type="button" onClick={onRetrySessionHistory}>Retry written history</button>}
+        {interpretingHistoryStatus === 'failed' && onRetryInterpretingHistory && <button className="button button--quiet" type="button" onClick={onRetryInterpretingHistory}>Retry interpreting history</button>}
+        {examHistoryStatus === 'failed' && onRetryExamHistory && <button className="button button--quiet" type="button" onClick={onRetryExamHistory}>Retry exam history</button>}
+      </section>}
       {/* Tab Switcher */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
         <button
@@ -311,7 +338,8 @@ export function ProgressPage({
         <>
           {interpretingSessions.length === 0 ? (
             <section className="progress-empty">
-              <p>No interpreting sessions completed yet.</p>
+              <p>{interpretingHistoryStatus === 'failed' ? 'Interpreting history could not be read; saved audio sessions may still exist on this device.' : interpretingHistoryStatus === 'loading' ? 'Checking this device for saved interpreting sessions…' : 'No interpreting sessions completed yet.'}</p>
+              {interpretingHistoryStatus === 'failed' && onRetryInterpretingHistory && <button className="button button--quiet" type="button" onClick={onRetryInterpretingHistory}>Retry interpreting history</button>}
               {onStartInterpreting && <button className="button button--primary" type="button" onClick={onStartInterpreting}>Start an interpreting take <span aria-hidden="true">→</span></button>}
             </section>
           ) : (
@@ -339,7 +367,8 @@ export function ProgressPage({
         <>
           {examResults.length === 0 ? (
             <section className="progress-empty">
-              <p>No exam simulations completed yet.</p>
+              <p>{examHistoryStatus === 'failed' ? 'Exam history could not be read; saved results may still exist on this device.' : examHistoryStatus === 'loading' ? 'Checking this device for saved exam results…' : 'No exam simulations completed yet.'}</p>
+              {examHistoryStatus === 'failed' && onRetryExamHistory && <button className="button button--quiet" type="button" onClick={onRetryExamHistory}>Retry exam history</button>}
               {onStartExam && (
                 <button className="button button--primary" type="button" onClick={onStartExam}>
                   Choose an exam profile <span aria-hidden="true">→</span>

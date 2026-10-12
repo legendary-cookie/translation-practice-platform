@@ -3,12 +3,17 @@ import { createLiveInputMonitor, type LiveInputMonitor } from './audio-analysis'
 
 export type RecorderState = 'idle' | 'requesting' | 'recording' | 'paused' | 'stopping' | 'error'
 
+export type RecorderCompletion = {
+  recording: AudioRecordingRecord
+  reason: 'explicit' | 'stream-ended'
+}
+
 export type RecorderListener = (state: {
   status: RecorderState
   elapsedMs: number
   inputLevel: number
   error?: string
-}) => void
+}, completion?: RecorderCompletion) => void
 
 export type ResponseRecorder = {
   requestPermission(): Promise<void>
@@ -49,8 +54,18 @@ function readableMicrophoneError(error: unknown): string {
 }
 
 export function createResponseRecorder(exerciseId: string): ResponseRecorder {
+  type ActiveRecording = {
+    activeRecorder: MediaRecorder
+    promise: Promise<AudioRecordingRecord | undefined>
+    resolve: (recording: AudioRecordingRecord | undefined) => void
+    reject: (error: Error) => void
+    finalized: boolean
+    suppressCompletion: boolean
+  }
+
   let stream: MediaStream | undefined
   let recorder: MediaRecorder | undefined
+  let activeRecording: ActiveRecording | undefined
   let chunks: Blob[] = []
   let activeStartedAt = 0
   let accumulatedDurationMs = 0
@@ -65,9 +80,9 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
   let disposed = false
   const replayUrls = new Set<string>()
 
-  const notify = () => {
+  const notify = (completion?: RecorderCompletion) => {
     const elapsedMs = accumulatedDurationMs + (state === 'recording' && activeStartedAt > 0 ? Math.max(0, Date.now() - activeStartedAt) : 0)
-    listeners.forEach((listener) => listener({ status: state, elapsedMs, inputLevel: state === 'recording' ? (liveMonitor?.getLevel() ?? 0) : 0, error }))
+    listeners.forEach((listener) => listener({ status: state, elapsedMs, inputLevel: state === 'recording' ? (liveMonitor?.getLevel() ?? 0) : 0, error }, completion))
   }
 
   const releaseStream = () => {
@@ -162,30 +177,93 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
         if (recorder && recorder.state !== 'inactive') {
           throw new Error('A recording is already in progress.')
         }
+        if (activeRecording && !activeRecording.finalized) {
+          throw new Error('The previous recording is still being finalized.')
+        }
         chunks = []
         segmentIds = segmentId ? [segmentId] : []
         error = undefined
         try {
           const mimeType = chooseMimeType()
           recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
-          recorder.addEventListener('dataavailable', (event) => {
+          const activeRecorder = recorder
+          let resolveFinalization: (recording: AudioRecordingRecord | undefined) => void = () => undefined
+          let rejectFinalization: (error: Error) => void = () => undefined
+          const completionPromise = new Promise<AudioRecordingRecord | undefined>((resolve, reject) => {
+            resolveFinalization = resolve
+            rejectFinalization = reject
+          })
+          void completionPromise.catch(() => undefined)
+          const operation: ActiveRecording = {
+            activeRecorder,
+            promise: completionPromise,
+            resolve: resolveFinalization,
+            reject: rejectFinalization,
+            finalized: false,
+            suppressCompletion: false,
+          }
+          activeRecording = operation
+          activeRecorder.addEventListener('dataavailable', (event) => {
             if (event.data.size > 0) {
               chunks.push(event.data)
             }
           })
-          recorder.addEventListener('error', (event) => {
+          activeRecorder.addEventListener('stop', () => {
+            if (operation.finalized) return
+            operation.finalized = true
+            if (activeStartedAt > 0) {
+              accumulatedDurationMs += Math.max(0, Date.now() - activeStartedAt)
+            }
             activeStartedAt = 0
+            const durationMs = accumulatedDurationMs
+            const mimeType = activeRecorder.mimeType || chunks[0]?.type || 'audio/webm'
+            const blob = new Blob(chunks, { type: mimeType })
+            const recordingResult: AudioRecordingRecord | undefined = disposed || operation.suppressCompletion ? undefined : {
+              id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `recording-${Date.now()}`,
+              exerciseId,
+              segmentIds: [...segmentIds],
+              createdAt: new Date().toISOString(),
+              mimeType,
+              durationMs,
+              byteLength: blob.size,
+              blob,
+            }
+            const reason = state === 'stopping' ? 'explicit' : 'stream-ended'
+            if (recorder === activeRecorder) recorder = undefined
+            if (activeRecording === operation) activeRecording = undefined
+            chunks = []
+            activeStartedAt = 0
+            accumulatedDurationMs = 0
+            releaseStream()
+            clearLevelTimer()
+            state = 'idle'
+            error = undefined
+            if (recordingResult) {
+              notify({ recording: recordingResult, reason })
+            } else {
+              notify()
+            }
+            operation.resolve(recordingResult)
+          }, { once: true })
+          activeRecorder.addEventListener('error', (event) => {
+            if (operation.finalized) return
+            operation.finalized = true
+            activeStartedAt = 0
+            accumulatedDurationMs = 0
             clearLevelTimer()
             releaseStream()
             state = 'error'
             error = event.error?.message ?? 'The recording failed.'
+            if (recorder === activeRecorder) recorder = undefined
+            if (activeRecording === operation) activeRecording = undefined
             notify()
+            operation.reject(new Error(error))
           })
           accumulatedDurationMs = 0
           activeStartedAt = Date.now()
           liveMonitor = createLiveInputMonitor(stream)
           state = 'recording'
-          recorder.start()
+          activeRecorder.start()
           levelTimer = setInterval(notify, 250)
           notify()
           if (mode === 'simultaneous') {
@@ -193,6 +271,11 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
             segmentIds = []
           }
         } catch (caught) {
+          if (activeRecording) {
+            activeRecording.finalized = true
+            activeRecording.resolve(undefined)
+            activeRecording = undefined
+          }
           activeStartedAt = 0
           accumulatedDurationMs = 0
           clearLevelTimer()
@@ -236,11 +319,17 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
     },
 
     stop() {
+      if (state === 'stopping' && activeRecording) return activeRecording.promise
       if (!recorder || recorder.state === 'inactive') {
+        if (activeRecording) return activeRecording.promise
         releaseStream()
         clearLevelTimer()
         state = 'idle'
         notify()
+        return Promise.resolve(undefined)
+      }
+      const operation = activeRecording
+      if (!operation || operation.activeRecorder !== recorder) {
         return Promise.resolve(undefined)
       }
       if (recorder.state === 'recording' && activeStartedAt > 0) {
@@ -249,55 +338,21 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
       }
       state = 'stopping'
       notify()
-      return new Promise((resolve, reject) => {
-        const activeRecorder = recorder as MediaRecorder
-        activeRecorder.addEventListener('stop', () => {
-          const durationMs = accumulatedDurationMs
-          const mimeType = activeRecorder.mimeType || chunks[0]?.type || 'audio/webm'
-          const blob = new Blob(chunks, { type: mimeType })
-          const result: AudioRecordingRecord = {
-            id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `recording-${Date.now()}`,
-            exerciseId,
-            segmentIds: [...segmentIds],
-            createdAt: new Date().toISOString(),
-            mimeType,
-            durationMs,
-            byteLength: blob.size,
-            blob,
-          }
-          recorder = undefined
-          chunks = []
-          activeStartedAt = 0
-          accumulatedDurationMs = 0
-          releaseStream()
-          clearLevelTimer()
-          state = 'idle'
-          notify()
-          resolve(result)
-        }, { once: true })
-        activeRecorder.addEventListener('error', () => {
-          activeStartedAt = 0
-          accumulatedDurationMs = 0
-          clearLevelTimer()
-          releaseStream()
-          state = 'error'
-          error = 'The recording could not be finalized.'
-          notify()
-          reject(new Error(error))
-        }, { once: true })
-        try {
-          activeRecorder.stop()
-        } catch (caught) {
-          activeStartedAt = 0
-          accumulatedDurationMs = 0
-          clearLevelTimer()
-          releaseStream()
-          state = 'error'
-          error = readableMicrophoneError(caught)
-          notify()
-          reject(new Error(error))
-        }
-      })
+      try {
+        operation.activeRecorder.stop()
+      } catch (caught) {
+        operation.finalized = true
+        activeRecording = undefined
+        activeStartedAt = 0
+        accumulatedDurationMs = 0
+        clearLevelTimer()
+        releaseStream()
+        state = 'error'
+        error = readableMicrophoneError(caught)
+        notify()
+        operation.reject(new Error(error))
+      }
+      return operation.promise
     },
 
     getElapsedMs() {
@@ -328,6 +383,7 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
 
     dispose() {
       disposed = true
+      if (activeRecording) activeRecording.suppressCompletion = true
       if (recorder && recorder.state !== 'inactive') {
         try {
           recorder.stop()

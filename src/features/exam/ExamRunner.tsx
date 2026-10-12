@@ -17,7 +17,7 @@ export type ExamRunnerProps = {
   profile: ExamProfile
   initialRun?: ActiveExamRun
   onSubmitRun: (run: ActiveExamRun) => void | Promise<void>
-  onCancel: () => void
+  onCancel: (savedRun: ActiveExamRun) => void
   onPersistenceError?: (message: string) => void
   isEvaluationPaused?: boolean
 }
@@ -139,11 +139,7 @@ export function ExamRunner({
   useEffect(() => {
     const persistLatestRun = (operation: string) => {
       const runToSave = runRef.current
-      try {
-        database.stageExamRunRecovery(runToSave)
-      } catch (error) {
-        reportPersistenceError('The synchronous exam recovery checkpoint', error)
-      }
+      void database.stageExamRunRecovery(runToSave).catch((error) => reportPersistenceError('The exam recovery checkpoint', error))
       void database.saveExamRun(runToSave).then(() => {
         if (runRef.current === runToSave) {
           isDirtyRef.current = false
@@ -278,11 +274,7 @@ export function ExamRunner({
     }
     runRef.current = updatedRun
     isDirtyRef.current = true
-    try {
-      database.stageExamRunRecovery(updatedRun)
-    } catch (error) {
-      reportPersistenceError('The synchronous exam recovery checkpoint', error)
-    }
+    void database.stageExamRunRecovery(updatedRun).catch((error) => reportPersistenceError('The exam recovery checkpoint', error))
     setRun(updatedRun)
   }
 
@@ -292,11 +284,7 @@ export function ExamRunner({
     }
     const runToSave = runRef.current
     isDirtyRef.current = true
-    try {
-      database.stageExamRunRecovery(runToSave)
-    } catch (error) {
-      reportPersistenceError('The synchronous exam recovery checkpoint', error)
-    }
+    void database.stageExamRunRecovery(runToSave).catch((error) => reportPersistenceError('The exam recovery checkpoint', error))
     void database.saveExamRun(runToSave).then(() => {
       if (runRef.current === runToSave) {
         isDirtyRef.current = false
@@ -359,7 +347,7 @@ export function ExamRunner({
     runRef.current = exitingRun
     try {
       await database.saveExamRun(exitingRun)
-      onCancel()
+      onCancel(exitingRun)
     } catch (error) {
       runRef.current = previousRun
       isDirtyRef.current = true

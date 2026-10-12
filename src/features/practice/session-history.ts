@@ -1,4 +1,5 @@
 import type { SessionRecord } from '../../domain/types'
+export { readHistoryRecords } from './history-read'
 
 export type SessionHistoryStatus = 'loading' | 'ready' | 'failed'
 

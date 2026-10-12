@@ -118,10 +118,10 @@ const sourceClips: SourceClip[] = [
   },
 ]
 
-const knownRightsRecords = new Set(sourceClips.map((clip) => clip.rightsRecordId))
-
 function validateSourceClip(clip: SourceClip): void {
-  if (!knownRightsRecords.has(clip.rightsRecordId) || !clip.audioUrl.startsWith('/audio/interpreting/')) {
+  if (!clip.rightsRecordId.trim()
+    || !clip.audioUrl.startsWith('/audio/interpreting/')
+    || clip.audioUrl.includes('..')) {
     throw new Error(`Interpreting clip ${clip.id} is missing a same-origin rights record.`)
   }
   let previousEnd = 0
@@ -181,7 +181,7 @@ export const INTERPRETING_EXERCISES: InterpretingExercise[] = chineseCenteredDir
 export function getInterpretingExercisesForDirection(sourceLanguage: LanguageCode, targetLanguage: LanguageCode): InterpretingExercise[] {
   return INTERPRETING_EXERCISES.filter((exercise) => exercise.sourceLanguage === sourceLanguage
     && exercise.targetLanguage === targetLanguage
-    && knownRightsRecords.has(exercise.rightsRecordId)
+    && Boolean(exercise.rightsRecordId.trim())
     && exercise.audioUrl.startsWith('/audio/interpreting/'))
 }
 

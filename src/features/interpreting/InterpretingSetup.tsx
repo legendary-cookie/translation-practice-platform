@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CHINESE_DIRECTIONS, getLanguage } from '../../domain/languages'
+import { hasUnsupportedDeclaredAudioMime, inferImportedAudioMime } from './audio-import'
 import type { AudioRecordingRecord, Difficulty, EvaluationMode, InterpretingExercise, InterpretingMode, LocalModelStatus } from '../../domain/types'
-import { getInterpretingExercisesForDirection } from '../../data/interpreting-exercises'
+import { getInterpretingExercisesForDirection, INTERPRETING_EXERCISES } from '../../data/interpreting-exercises'
+import { validateInterpretingRightsManifest } from '../../data/interpreting-rights'
 import { getLocalRecognitionCapabilityWithTimeout, installLocalRecognitionLanguage, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 
 export type InterpretingStart = {
@@ -70,6 +72,9 @@ export function InterpretingSetup({
   const [difficulty, setDifficulty] = useState<'all' | Difficulty>('all')
   const [interpretingMode, setInterpretingMode] = useState<InterpretingMode>('consecutive')
   const [assetStatus, setAssetStatus] = useState<'checking' | 'ready' | 'available' | 'unavailable'>('checking')
+  const [rightsStatus, setRightsStatus] = useState<'checking' | 'verified' | 'unavailable'>('checking')
+  const [rightsError, setRightsError] = useState<string>()
+  const [rightsRetry, setRightsRetry] = useState(0)
   const [recognition, setRecognition] = useState<LocalRecognitionCapability>()
   const [isInstallingRecognition, setIsInstallingRecognition] = useState(false)
   const [importedSource, setImportedSource] = useState<ImportedSource>()
@@ -129,11 +134,12 @@ export function InterpretingSetup({
     setRecognition(undefined)
     setAssetStatus('checking')
     setImportError(undefined)
-    if (!file.type.startsWith('audio/')) {
+    if (hasUnsupportedDeclaredAudioMime(file.type)) {
       setImportError('Choose an audio file. The browser will keep the imported source on this device.')
       setAssetStatus('unavailable')
       return
     }
+    const importedMimeType = inferImportedAudioMime(file.type, file.name)
     const objectUrl = URL.createObjectURL(file)
     const metadataAudio = new Audio()
     metadataAudio.preload = 'metadata'
@@ -165,7 +171,7 @@ export function InterpretingSetup({
         topic: 'Imported local audio',
         difficulty: difficulty === 'all' ? 'intermediate' : difficulty,
         audioUrl: objectUrl,
-        audioMimeType: file.type || 'audio/*',
+        audioMimeType: importedMimeType || 'audio/*',
         durationMs,
         segments: [{ id: segmentId, startMs: 0, endMs: durationMs, transcript: importedTranscript.trim() }],
         glossary: [],
@@ -181,7 +187,7 @@ export function InterpretingSetup({
           exerciseId,
           segmentIds: [segmentId],
           createdAt: new Date().toISOString(),
-          mimeType: file.type || 'application/octet-stream',
+          mimeType: importedMimeType || 'application/octet-stream',
           durationMs,
           byteLength: file.size,
           blob: file,
@@ -242,6 +248,30 @@ export function InterpretingSetup({
       cancelled = true
     }
   }, [exerciseAudioUrl, isImportedAudio])
+
+  useEffect(() => {
+    let cancelled = false
+    setRightsStatus('checking')
+    setRightsError(undefined)
+    void fetch('/audio/interpreting/rights.json', { cache: 'no-cache' }).then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`The packaged audio rights manifest returned HTTP ${response.status}.`)
+      }
+      const manifest: unknown = await response.json()
+      const issues = validateInterpretingRightsManifest(INTERPRETING_EXERCISES, manifest)
+      if (issues.length > 0) {
+        throw new Error(issues.slice(0, 3).join(' '))
+      }
+      if (!cancelled) setRightsStatus('verified')
+    }).catch((caught: unknown) => {
+      if (cancelled) return
+      setRightsError(caught instanceof Error ? caught.message : 'The packaged audio rights metadata could not be checked.')
+      setRightsStatus('unavailable')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [rightsRetry])
 
   useEffect(() => {
     let cancelled = false
@@ -318,9 +348,14 @@ export function InterpretingSetup({
             <span className={`interpreting-asset-status interpreting-asset-status--${assetStatus}`} role="status">{assetStatus === 'ready' ? importedSource ? 'Loaded on this device' : 'Offline-ready' : assetStatus === 'available' ? 'Available now · offline copy not confirmed' : assetStatus === 'checking' ? 'Checking asset…' : 'Asset unavailable'}</span>
           </div>
         ) : <p className="form-message" role="status">No audio exercise matches this direction.</p>}
+        {!isImportedAudio && <div className="interpreting-rights-status" role={rightsStatus === 'unavailable' ? 'alert' : 'status'}>
+          {rightsStatus === 'checking' && <span>Verifying the packaged audio rights record…</span>}
+          {rightsStatus === 'verified' && <span>Packaged audio paths, durations, formats, and rights records are verified.</span>}
+          {rightsStatus === 'unavailable' && <><span>Packaged audio rights could not be verified. {rightsError}</span><button className="text-button" type="button" onClick={() => setRightsRetry((attempt) => attempt + 1)}>Retry rights check</button></>}
+        </div>}
         {exercise?.sourceAudioDisclosure && <p className="interpreting-helper" role="note">Source-audio limitation: {exercise.sourceAudioDisclosure}</p>}
         <div className="interpreting-capability" role="status"><strong>Target recognition</strong><span>{recognition?.status === 'available' ? 'On-device option available' : recognition?.status === 'downloadable' ? 'Language pack may be downloadable' : recognition?.status === 'downloading' ? 'Language pack downloading' : 'Manual transcript path'}</span><small>{recognition?.reason ?? 'Checking the browser capability…'}</small>{recognition?.status === 'downloadable' && <button className="button button--quiet interpreting-action" type="button" onClick={() => void installRecognitionPack()} disabled={isInstallingRecognition}>Download on-device language pack</button>}</div>
-        <button className="button button--primary setup-card__start" type="button" disabled={!exercise || !['ready', 'available'].includes(assetStatus)} onClick={() => { if (!exercise) return; if (importedSource) transferredObjectUrl.current = importedSource.objectUrl; onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }) }}>Open interpreting desk <span aria-hidden="true">→</span></button>
+        <button className="button button--primary setup-card__start" type="button" disabled={!exercise || !['ready', 'available'].includes(assetStatus) || (!isImportedAudio && rightsStatus !== 'verified')} onClick={() => { if (!exercise || (!isImportedAudio && rightsStatus !== 'verified')) return; if (importedSource) transferredObjectUrl.current = importedSource.objectUrl; onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }) }}>Open interpreting desk <span aria-hidden="true">→</span></button>
         <p className="setup-card__note">Content and delivery feedback are separate practice estimates. Recognition is never treated as official evidence, and unsupported languages remain usable through manual transcript entry. Imported source audio is never sent automatically.</p>
       </section>
     </div>

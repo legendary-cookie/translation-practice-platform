@@ -269,6 +269,7 @@ function normalizeInterpretingAnnotation(
   value: unknown,
   context: InterpretingFeedbackValidationContext,
   expectedStatuses?: readonly ('uncertain' | 'insufficient')[],
+  cloudAudioEvidence?: ConsentedCloudAudioEvidence,
 ): InterpretingAnnotation {
   if (!isRecord(value)) {
     throw new FeedbackValidationError('Interpreting annotation must be an object.')
@@ -334,7 +335,15 @@ function normalizeInterpretingAnnotation(
     && responseSegment.responseStartMs >= 0
     && responseSegment.responseEndMs > responseSegment.responseStartMs
     && responseSegment.responseEndMs <= responseRecording.durationMs)
-  const hasRecordedDeliveryEvidence = Boolean(hasRecordingEvidence && hasValidResponseRange && matchingAnalysis)
+  const hasTrustedLocalDeliveryAnalysis = Boolean(matchingAnalysis
+    && matchingAnalysis.analysisConfidence >= 0.5
+    && !matchingAnalysis.method.startsWith('local-web-audio-energy-')
+    && matchingAnalysis.method !== 'local-analysis-unavailable-v1')
+  const consentedAudioCoversResponse = Boolean(responseRecording
+    && hasConsentedCloudAudioDeliveryEvidence(context, cloudAudioEvidence)
+    && cloudAudioEvidence?.attachedRecordingIds.includes(responseRecording.id))
+  const hasRecordedDeliveryEvidence = Boolean(hasRecordingEvidence && hasValidResponseRange
+    && (matchingAnalysis || consentedAudioCoversResponse))
   const hasSourceTranscript = context.exercise.sourceTranscriptStatus !== 'missing'
   if (contentCategory && !sourceQuote && !learnerQuote) {
     throw new FeedbackValidationError('Content annotations must include literal source or learner text evidence.')
@@ -352,7 +361,7 @@ function normalizeInterpretingAnnotation(
   } else if (rawStatus === 'verified' && !contentCategory) {
     if (!hasRecordedDeliveryEvidence) {
       evidenceStatus = 'insufficient'
-    } else if (analysisConfidence === undefined || analysisConfidence < 0.5) {
+    } else if (!hasTrustedLocalDeliveryAnalysis && !consentedAudioCoversResponse) {
       evidenceStatus = 'uncertain'
     }
   }
@@ -409,9 +418,9 @@ export function validateInterpretingFeedback(
     : undefined
   const deliveryScoreStatus: InterpretingFeedback['deliveryScoreStatus'] = deliveryScores ? 'complete' : 'incomplete'
 
-  const normalizedAnnotations = raw.issues.map((issue) => normalizeInterpretingAnnotation(issue, context))
+  const normalizedAnnotations = raw.issues.map((issue) => normalizeInterpretingAnnotation(issue, context, undefined, cloudAudioEvidence))
   const uncertainEvidence = Array.isArray(raw.uncertainEvidence)
-    ? raw.uncertainEvidence.map((issue) => normalizeInterpretingAnnotation(issue, context, ['uncertain', 'insufficient']))
+    ? raw.uncertainEvidence.map((issue) => normalizeInterpretingAnnotation(issue, context, ['uncertain', 'insufficient'], cloudAudioEvidence))
     : []
   const issues = normalizedAnnotations.filter((issue) => issue.evidenceStatus === 'verified')
   const movedUncertain = normalizedAnnotations.filter((issue) => issue.evidenceStatus !== 'verified')

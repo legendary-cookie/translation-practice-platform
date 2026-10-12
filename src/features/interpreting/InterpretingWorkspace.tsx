@@ -150,7 +150,15 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
 
   useEffect(() => {
     const currentRecorder = createResponseRecorder(exercise.id)
-    const unsubscribe = currentRecorder.subscribe(setRecorderState)
+    const unsubscribe = currentRecorder.subscribe((state, completion) => {
+      setRecorderState(state)
+      if (completion) {
+        if (completion.reason === 'stream-ended') {
+          setError('The microphone input ended. The completed take is ready for review.')
+        }
+        void handleFinalizedRecording(completion.recording)
+      }
+    })
     setRecorder(currentRecorder)
     return () => {
       unsubscribe()
@@ -241,17 +249,53 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
           await player.playAllSegments()
           simultaneousPlaybackOffsetMsRef.current = Math.max(0, recorder.getElapsedMs() - player.getCurrentTime() * 1000)
         } catch (caught) {
-          await recorder.stop().catch(() => undefined)
           recordingTakeKeyRef.current = undefined
+          await recorder.stop().catch(() => undefined)
           throw caught
         }
       }
     } catch (caught) {
       if (interpretingMode === 'simultaneous') {
+        recordingTakeKeyRef.current = undefined
         await recorder.stop().catch(() => undefined)
       }
       recordingTakeKeyRef.current = undefined
       setError(caught instanceof Error ? caught.message : 'The microphone could not start.')
+    }
+  }
+
+  async function handleFinalizedRecording(recording: AudioRecordingRecord) {
+    const key = recordingTakeKeyRef.current
+    if (!key) {
+      return
+    }
+    recordingTakeKeyRef.current = undefined
+    const replacedSegments = interpretingMode === 'simultaneous' ? exercise.segments.map((segment) => segment.id) : [key]
+    setTranscripts((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
+    setTranscriptSources((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
+    setRecognitionStatuses((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
+    setRecognitionConfidences((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
+    pendingAnalysisRef.current.add(key)
+    setPendingAnalysisKeys(new Set(pendingAnalysisRef.current))
+    setTakes((current) => ({ ...current, [key]: recording }))
+    setSkippedSegments((current) => {
+      const next = new Set(current)
+      if (interpretingMode === 'simultaneous') {
+        exercise.segments.forEach((segment) => next.delete(segment.id))
+      } else {
+        next.delete(currentSegment.id)
+      }
+      return next
+    })
+    try {
+      const analysis = await analyzeRecording(recording.blob)
+      setDeliveryByTake((current) => ({ ...current, [key]: { ...analysis, recordingId: recording.id } }))
+    } catch {
+      setDeliveryByTake((current) => ({ ...current, [key]: { ...fallbackAnalysis(recording.durationMs), recordingId: recording.id } }))
+      setError('The take was saved, but local delivery analysis was unavailable. The feedback will say so.')
+    } finally {
+      pendingAnalysisRef.current.delete(key)
+      setPendingAnalysisKeys(new Set(pendingAnalysisRef.current))
     }
   }
 
@@ -264,38 +308,8 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     }
     try {
       const recording = await recorder.stop()
-      if (!recording) {
+      if (!recording && recorderState.status !== 'recording' && recorderState.status !== 'paused') {
         recordingTakeKeyRef.current = undefined
-        return
-      }
-      const key = recordingTakeKeyRef.current ?? (interpretingMode === 'simultaneous' ? 'continuous' : currentSegment.id)
-      recordingTakeKeyRef.current = undefined
-      const replacedSegments = interpretingMode === 'simultaneous' ? exercise.segments.map((segment) => segment.id) : [key]
-      setTranscripts((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
-      setTranscriptSources((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
-      setRecognitionStatuses((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
-      setRecognitionConfidences((current) => { const next = { ...current }; replacedSegments.forEach((id) => delete next[id]); return next })
-      pendingAnalysisRef.current.add(key)
-      setPendingAnalysisKeys(new Set(pendingAnalysisRef.current))
-      setTakes((current) => ({ ...current, [key]: recording }))
-      setSkippedSegments((current) => {
-        const next = new Set(current)
-        if (interpretingMode === 'simultaneous') {
-          exercise.segments.forEach((segment) => next.delete(segment.id))
-        } else {
-          next.delete(currentSegment.id)
-        }
-        return next
-      })
-      try {
-        const analysis = await analyzeRecording(recording.blob)
-        setDeliveryByTake((current) => ({ ...current, [key]: { ...analysis, recordingId: recording.id } }))
-      } catch {
-        setDeliveryByTake((current) => ({ ...current, [key]: { ...fallbackAnalysis(recording.durationMs), recordingId: recording.id } }))
-        setError('The take was saved, but local delivery analysis was unavailable. The feedback will say so.')
-      } finally {
-        pendingAnalysisRef.current.delete(key)
-        setPendingAnalysisKeys(new Set(pendingAnalysisRef.current))
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The recording could not be saved.')

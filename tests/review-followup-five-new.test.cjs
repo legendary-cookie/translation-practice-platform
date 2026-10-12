@@ -108,6 +108,8 @@ test('atomic completion result fences stale run saves and remains idempotent wit
 test('service worker activation claims the first uncontrolled application page', async () => {
   const handlers = new Map()
   let claimCount = 0
+  let networkCalls = 0
+  const cachedResponses = new Map()
   const workerPath = path.join(__dirname, '..', 'public', 'sw.js')
   const workerSource = fs.readFileSync(workerPath, 'utf8')
   const sandbox = {
@@ -116,8 +118,12 @@ test('service worker activation claims the first uncontrolled application page',
       clients: { claim: async () => { claimCount += 1 } },
       addEventListener(type, handler) { handlers.set(type, handler) },
     },
-    caches: { keys: async () => [], open: async () => ({ addAll: async () => undefined }), match: async () => undefined },
-    fetch: async () => { throw new Error('unexpected network request') },
+    caches: {
+      keys: async () => [],
+      open: async () => ({ addAll: async () => undefined }),
+      match: async (url) => cachedResponses.get(url),
+    },
+    fetch: async () => { networkCalls += 1; throw new Error('unexpected network request') },
     URL,
     Headers,
     Response,
@@ -128,6 +134,22 @@ test('service worker activation claims the first uncontrolled application page',
   await activation
 
   assert.equal(claimCount, 1)
+  cachedResponses.set('https://lingo.example/manifest.webmanifest', new Response('{"name":"cached app"}'))
+  let manifestResponsePromise
+  handlers.get('fetch')({
+    request: {
+      method: 'GET',
+      url: 'https://lingo.example/manifest.webmanifest',
+      mode: 'cors',
+      destination: 'manifest',
+      headers: new Headers(),
+    },
+    respondWith(promise) { manifestResponsePromise = promise },
+  })
+  assert.ok(manifestResponsePromise, 'the worker should intercept a manifest request')
+  assert.equal(await (await manifestResponsePromise).text(), '{"name":"cached app"}')
+  assert.equal(networkCalls, 0, 'an offline manifest request should be served from the precache')
+
   const { isPackagedAudioOfflineReady } = require('../src/features/interpreting/offline-asset-status.ts')
   assert.equal(isPackagedAudioOfflineReady(true, false), false, 'cached audio is not labeled offline-ready until this page is controlled')
   assert.equal(isPackagedAudioOfflineReady(true, true), true)

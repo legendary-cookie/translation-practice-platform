@@ -130,7 +130,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   const isPackagedAudioRequest = requestUrl.pathname.startsWith('/audio/interpreting/')
-  const isAppShellRequest = request.mode === 'navigate' || isPackagedAudioRequest || ['script', 'style', 'image', 'font'].includes(request.destination)
+  const isAppShellRequest = request.mode === 'navigate' || isPackagedAudioRequest || ['script', 'style', 'image', 'font', 'manifest'].includes(request.destination)
 
   if (!isAppShellRequest) {
     return

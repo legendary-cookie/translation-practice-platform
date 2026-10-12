@@ -203,11 +203,11 @@ button.text-button, button.back-button { align-items: center; display: inline-fl
 
 @media (max-width: 820px) {
   .sidebar { display: none; }
-  .main-content { padding: 27px 20px 95px; }
+  .main-content { padding: 27px 20px calc(132px + env(safe-area-inset-bottom)); }
   .topbar { margin-bottom: 28px; }
   .topbar__meta { font-size: 0; padding-top: 8px; }
   .topbar__meta .status-dot { height: 9px; width: 9px; }
-  .mobile-navigation { background: rgba(243, 246, 241, 0.94); bottom: 0; display: block; left: 0; padding: 8px 12px 10px; position: fixed; right: 0; z-index: 10; }
+  .mobile-navigation { background: rgba(243, 246, 241, 0.94); bottom: 0; display: block; left: 0; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); position: fixed; right: 0; z-index: 10; }
   .mobile-navigation .navigation { background: white; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 7px 24px rgba(31, 43, 39, 0.1); flex-direction: row; height: auto; justify-content: space-around; padding: 5px; }
   .mobile-navigation .brand-mark, .mobile-navigation .navigation__footer { display: none; }
   .mobile-navigation .navigation__items { display: flex; flex: 1; justify-content: space-around; }
@@ -220,6 +220,8 @@ button.text-button, button.back-button { align-items: center; display: inline-fl
 
 @media (max-width: 590px) {
   .main-content { padding-left: 15px; padding-right: 15px; }
+  .mobile-navigation .navigation__items { gap: 2px; }
+  .mobile-navigation .navigation__item { flex: 1; min-width: 0; padding-left: 3px; padding-right: 3px; font-size: 9px; line-height: 1.1; }
   .topbar h1 { font-size: 30px; max-width: 290px; }
   .hero-card { align-items: flex-start; min-height: 390px; padding: 29px 24px; }
   .hero-card__shape { bottom: -10px; opacity: 0.65; position: absolute; right: -42px; transform: scale(0.7); }

@@ -556,3 +556,60 @@
     width: 100%;
   }
 }
+
+.pending-interpreting-save,
+.interpreting-save-retry {
+  align-items: center;
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+}
+
+.pending-interpreting-save > span,
+.interpreting-save-retry p {
+  flex: 1;
+  margin: 0;
+}
+
+.interpreting-history-actions {
+  display: grid;
+  gap: .5rem;
+  margin-top: .65rem;
+}
+
+.interpreting-history-actions__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.interpreting-delete-confirmation {
+  background: #fff5f0;
+  border: 1px solid #eed1c7;
+  border-radius: .75rem;
+  display: grid;
+  gap: .75rem;
+  padding: .85rem;
+}
+
+.interpreting-delete-confirmation p {
+  color: #8d6257;
+  font-size: .82rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .pending-interpreting-save,
+  .interpreting-save-retry,
+  .interpreting-history-actions__confirm {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pending-interpreting-save .interpreting-action,
+  .interpreting-save-retry .interpreting-action,
+  .interpreting-history-actions .interpreting-action {
+    width: 100%;
+  }
+}

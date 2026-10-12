@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CHINESE_DIRECTIONS, getLanguage } from '../../domain/languages'
 import type { AudioRecordingRecord, Difficulty, EvaluationMode, InterpretingExercise, InterpretingMode, LocalModelStatus } from '../../domain/types'
 import { getInterpretingExercisesForDirection } from '../../data/interpreting-exercises'
-import { getLocalRecognitionCapability, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
+import { getLocalRecognitionCapability, installLocalRecognitionLanguage, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 
 export type InterpretingStart = {
   exercise: InterpretingExercise
@@ -71,10 +71,13 @@ export function InterpretingSetup({
   const [interpretingMode, setInterpretingMode] = useState<InterpretingMode>('consecutive')
   const [assetStatus, setAssetStatus] = useState<'checking' | 'ready' | 'available' | 'unavailable'>('checking')
   const [recognition, setRecognition] = useState<LocalRecognitionCapability>()
+  const [isInstallingRecognition, setIsInstallingRecognition] = useState(false)
   const [importedSource, setImportedSource] = useState<ImportedSource>()
   const [importedTranscript, setImportedTranscript] = useState('')
   const [importError, setImportError] = useState<string>()
   const transferredObjectUrl = useRef<string | undefined>(undefined)
+  const localAudioImportGeneration = useRef(0)
+  const recognitionCheckGeneration = useRef(0)
   const direction = CHINESE_DIRECTIONS.find((item) => item.id === directionId) ?? CHINESE_DIRECTIONS[0]
   const sourceLanguage = getLanguage(direction.sourceLanguage)
   const exercises = useMemo(
@@ -95,13 +98,35 @@ export function InterpretingSetup({
     }
   }, [importedObjectUrl])
 
+  useEffect(() => () => {
+    localAudioImportGeneration.current += 1
+    recognitionCheckGeneration.current += 1
+  }, [])
+
+  function changeDirection(nextDirectionId: typeof directionId) {
+    localAudioImportGeneration.current += 1
+    recognitionCheckGeneration.current += 1
+    setDirectionId(nextDirectionId)
+    setDifficulty('all')
+    setRecognition(undefined)
+    setImportedSource(undefined)
+    setImportedTranscript('')
+    setImportError(undefined)
+  }
+
   async function importLocalAudio(file: File | undefined) {
     if (!file) {
       return
     }
+    const importGeneration = ++localAudioImportGeneration.current
+    recognitionCheckGeneration.current += 1
+    setImportedSource(undefined)
+    setRecognition(undefined)
+    setAssetStatus('checking')
     setImportError(undefined)
     if (!file.type.startsWith('audio/')) {
       setImportError('Choose an audio file. The browser will keep the imported source on this device.')
+      setAssetStatus('unavailable')
       return
     }
     const objectUrl = URL.createObjectURL(file)
@@ -120,6 +145,10 @@ export function InterpretingSetup({
         metadataAudio.src = objectUrl
         metadataAudio.load()
       })
+      if (importGeneration !== localAudioImportGeneration.current) {
+        URL.revokeObjectURL(objectUrl)
+        return
+      }
       const exerciseId = createLocalId('local-audio')
       const segmentId = `${exerciseId}-segment-1`
       const importedExercise: InterpretingExercise = {
@@ -158,7 +187,10 @@ export function InterpretingSetup({
       setAssetStatus('ready')
     } catch (error) {
       URL.revokeObjectURL(objectUrl)
-      setImportError(error instanceof Error ? error.message : 'The selected audio file could not be imported.')
+      if (importGeneration === localAudioImportGeneration.current) {
+        setImportError(error instanceof Error ? error.message : 'The selected audio file could not be imported.')
+        setAssetStatus('unavailable')
+      }
     } finally {
       metadataAudio.removeAttribute('src')
       metadataAudio.load()
@@ -179,6 +211,7 @@ export function InterpretingSetup({
 
   useEffect(() => {
     let cancelled = false
+    const requestGeneration = ++recognitionCheckGeneration.current
     setAssetStatus('checking')
     setRecognition(undefined)
     if (!exercise) {
@@ -190,7 +223,7 @@ export function InterpretingSetup({
     const capabilityPromise = getLocalRecognitionCapability(getLanguage(exercise.targetLanguage).speechTag)
     if (importedSource) {
       void capabilityPromise.then((capability) => {
-        if (!cancelled) {
+        if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
           setAssetStatus('ready')
           setRecognition(capability)
         }
@@ -203,12 +236,12 @@ export function InterpretingSetup({
       getPackagedAudioStatus(exercise.audioUrl),
       capabilityPromise,
     ]).then(([assetAvailability, capability]) => {
-      if (!cancelled) {
+      if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
         setAssetStatus(assetAvailability)
         setRecognition(capability)
       }
     }).catch(() => {
-      if (!cancelled) {
+      if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
         setAssetStatus('unavailable')
         setRecognition({ status: 'unavailable', languageTag: getLanguage(exercise.targetLanguage).speechTag, reason: 'The local capability check could not complete. Manual transcript entry remains available.' })
       }
@@ -217,6 +250,26 @@ export function InterpretingSetup({
       cancelled = true
     }
   }, [exercise, importedSource])
+
+  async function installRecognitionPack() {
+    if (!recognition || recognition.status !== 'downloadable' || isInstallingRecognition) {
+      return
+    }
+    const requestGeneration = recognitionCheckGeneration.current
+    const languageTag = recognition.languageTag
+    setIsInstallingRecognition(true)
+    setRecognition({ ...recognition, status: 'downloading', reason: 'Installing the on-device language pack. Learner audio and transcripts are not part of this download.' })
+    try {
+      const capability = await installLocalRecognitionLanguage(languageTag)
+      if (requestGeneration === recognitionCheckGeneration.current) {
+        setRecognition(capability)
+      }
+    } finally {
+      if (requestGeneration === recognitionCheckGeneration.current) {
+        setIsInstallingRecognition(false)
+      }
+    }
+  }
 
   const statusText = localStatus === 'ready'
     ? 'Local evaluation is ready for transcript and delivery metrics.'
@@ -235,7 +288,7 @@ export function InterpretingSetup({
       <section className="setup-card interpreting-setup-card" aria-labelledby="interpreting-setup-heading">
         <div className="setup-card__heading"><div><p className="eyebrow">Audio choices</p><h2 id="interpreting-setup-heading">Set the conditions.</h2></div><span className="setup-card__step">Audio / 01</span></div>
         <div className="setup-fields">
-          <label className="field-label" htmlFor="interpreting-direction">Language direction<select id="interpreting-direction" value={directionId} onChange={(event) => { setDirectionId(event.target.value as typeof directionId); setDifficulty('all'); setImportedSource(undefined); setImportedTranscript(''); setImportError(undefined) }}>{CHINESE_DIRECTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <label className="field-label" htmlFor="interpreting-direction">Language direction<select id="interpreting-direction" value={directionId} onChange={(event) => changeDirection(event.target.value as typeof directionId)}>{CHINESE_DIRECTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <label className="field-label" htmlFor="interpreting-difficulty">Difficulty<select id="interpreting-difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value as 'all' | Difficulty)}><option value="all">Any difficulty</option><option value="beginner" disabled={!availableDifficulties.has('beginner')}>Beginner</option><option value="intermediate" disabled={!availableDifficulties.has('intermediate')}>Intermediate</option><option value="advanced" disabled={!availableDifficulties.has('advanced')}>Advanced</option></select></label>
           <label className="field-label" htmlFor="interpreting-mode">Interpreting mode<select id="interpreting-mode" value={interpretingMode} onChange={(event) => setInterpretingMode(event.target.value as InterpretingMode)}><option value="consecutive">Consecutive · listen then deliver</option><option value="simultaneous">Simultaneous · continuous take</option></select></label>
           <label className="field-label" htmlFor="interpreting-local-audio">Import local source audio<input id="interpreting-local-audio" type="file" accept="audio/*" onChange={(event) => void importLocalAudio(event.target.files?.[0])} /></label>
@@ -249,7 +302,7 @@ export function InterpretingSetup({
           </div>
         ) : <p className="form-message" role="status">No audio exercise matches this direction.</p>}
         {exercise?.sourceAudioDisclosure && <p className="interpreting-helper" role="note">Source-audio limitation: {exercise.sourceAudioDisclosure}</p>}
-        <div className="interpreting-capability" role="status"><strong>Target recognition</strong><span>{recognition?.status === 'available' ? 'On-device option available' : recognition?.status === 'downloadable' ? 'Language pack may be downloadable' : recognition?.status === 'downloading' ? 'Language pack downloading' : 'Manual transcript path'}</span><small>{recognition?.reason ?? 'Checking the browser capability…'}</small></div>
+        <div className="interpreting-capability" role="status"><strong>Target recognition</strong><span>{recognition?.status === 'available' ? 'On-device option available' : recognition?.status === 'downloadable' ? 'Language pack may be downloadable' : recognition?.status === 'downloading' ? 'Language pack downloading' : 'Manual transcript path'}</span><small>{recognition?.reason ?? 'Checking the browser capability…'}</small>{recognition?.status === 'downloadable' && <button className="button button--quiet interpreting-action" type="button" onClick={() => void installRecognitionPack()} disabled={isInstallingRecognition}>Download on-device language pack</button>}</div>
         <button className="button button--primary setup-card__start" type="button" disabled={!exercise || !['ready', 'available'].includes(assetStatus)} onClick={() => { if (!exercise) return; if (importedSource) transferredObjectUrl.current = importedSource.objectUrl; onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }) }}>Open interpreting desk <span aria-hidden="true">→</span></button>
         <p className="setup-card__note">Content and delivery feedback are separate practice estimates. Recognition is never treated as official evidence, and unsupported languages remain usable through manual transcript entry. Imported source audio is never sent automatically.</p>
       </section>

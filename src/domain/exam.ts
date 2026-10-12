@@ -201,3 +201,11 @@ export function isValidActiveRun(value: unknown): value is ActiveExamRun {
     candidate.answers !== null
   )
 }
+
+export function getElapsedTimerTick(anchorMs: number, nowMs: number): { elapsedSeconds: number; nextAnchorMs: number } {
+  const elapsedSeconds = Math.floor(Math.max(0, nowMs - anchorMs) / 1000)
+  return {
+    elapsedSeconds,
+    nextAnchorMs: anchorMs + elapsedSeconds * 1000,
+  }
+}

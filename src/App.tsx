@@ -43,7 +43,7 @@ import './features/progress/progress.css'
 import './features/exam/exam.css'
 import './features/interpreting/interpreting.css'
 
-export type Page = 'home' | 'practice' | 'exam' | 'progress' | 'settings'
+export type Page = 'home' | 'practice' | 'interpreting' | 'exam' | 'progress' | 'settings'
 
 type NavigationItem = {
   id: Page
@@ -54,6 +54,7 @@ type NavigationItem = {
 const navigationItems: NavigationItem[] = [
   { id: 'home', label: 'Home', icon: '⌂' },
   { id: 'practice', label: 'Practice', icon: '✎' },
+  { id: 'interpreting', label: 'Interpreting', icon: '♫' },
   { id: 'exam', label: 'Exam', icon: '◷' },
   { id: 'progress', label: 'Progress', icon: '↗' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
@@ -62,6 +63,7 @@ const navigationItems: NavigationItem[] = [
 const pageCopy: Record<Page, { eyebrow: string; title: string }> = {
   home: { eyebrow: 'Your study space', title: 'Translate with intention.' },
   practice: { eyebrow: 'Practice desk', title: 'Make a translation pass.' },
+  interpreting: { eyebrow: 'Audio practice', title: 'Listen, interpret, and review.' },
   exam: { eyebrow: 'Exam simulation', title: 'Test under realistic conditions.' },
   progress: { eyebrow: 'Local history', title: 'See the work you have done.' },
   settings: { eyebrow: 'Privacy and setup', title: 'Keep your practice yours.' },
@@ -104,6 +106,17 @@ type PendingPracticeConsent = {
 type PendingInterpretingConsent = {
   request: CloudConsentRequest
   input: InterpretingEvaluationInput
+}
+
+type PendingInterpretingPersistence = {
+  id: string
+  createdAt: string
+  input: InterpretingEvaluationInput
+  feedback: InterpretingFeedback
+  provider: 'local' | 'cloud' | 'manual'
+  generation: number
+  session?: InterpretingSessionRecord
+  recordings?: AudioRecordingRecord[]
 }
 
 function Navigation({ currentPage, onNavigate }: { currentPage: Page; onNavigate: (page: Page) => void }) {
@@ -190,6 +203,8 @@ export default function App() {
   const [activeInterpretingInput, setActiveInterpretingInput] = useState<InterpretingEvaluationInput | undefined>()
   const [interpretingFeedback, setInterpretingFeedback] = useState<InterpretingFeedback | undefined>()
   const [recentInterpretingSessions, setRecentInterpretingSessions] = useState<InterpretingSessionRecord[]>([])
+  const [pendingInterpretingSaves, setPendingInterpretingSaves] = useState<PendingInterpretingPersistence[]>([])
+  const [savingInterpretingSaveIds, setSavingInterpretingSaveIds] = useState<Set<string>>(new Set())
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | undefined>()
   const [draftAnswer, setDraftAnswer] = useState('')
   const [draftElapsedSeconds, setDraftElapsedSeconds] = useState(0)
@@ -218,6 +233,7 @@ export default function App() {
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
   const examResultOpenGenerationRef = useRef(0)
+  const savingInterpretingSaveIdsRef = useRef(new Set<string>())
 
   const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number) => {
     if (localProviderEpochRef.current !== providerEpoch) {
@@ -385,6 +401,7 @@ export default function App() {
     setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
     setRecentSessions([])
     setRecentInterpretingSessions([])
+    setPendingInterpretingSaves([])
     setActiveExamRun(undefined)
     setRecentExamResults([])
     setActiveExamResult(undefined)
@@ -394,7 +411,23 @@ export default function App() {
     setExamEvaluationNotice(undefined)
     setPendingExamConsent(undefined)
     setPendingInterpretingConsent(undefined)
-    resetPractice()
+    if (activeInterpretingSourceUrl) {
+      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    }
+    setActiveExercise(undefined)
+    setActiveInterpretingExercise(undefined)
+    setActiveInterpretingInput(undefined)
+    setActiveInterpretingSourceRecording(undefined)
+    setActiveInterpretingSourceUrl(undefined)
+    setInterpretingFeedback(undefined)
+    setPracticeSetupMode('written')
+    setTimeLimitSeconds(undefined)
+    setDraftAnswer('')
+    setDraftElapsedSeconds(0)
+    setFeedback(undefined)
+    setPendingConsent(undefined)
+    setPracticeNotice(undefined)
+    setCurrentPage('home')
   }
 
   function handleSelectExamProfile(profile: ExamProfile) {
@@ -444,6 +477,10 @@ export default function App() {
 
   function navigateToPage(page: Page) {
     examResultOpenGenerationRef.current += 1
+    if (page === 'interpreting') {
+      openInterpretingSetup()
+      return
+    }
     if (page !== 'progress') {
       interpretingSessionOpenGenerationRef.current += 1
     }
@@ -463,8 +500,17 @@ export default function App() {
 
   function openInterpretingSetup() {
     interpretingSessionOpenGenerationRef.current += 1
+    if (activeInterpretingSourceUrl) {
+      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    }
+    setActiveInterpretingExercise(undefined)
+    setActiveInterpretingInput(undefined)
+    setActiveInterpretingSourceRecording(undefined)
+    setActiveInterpretingSourceUrl(undefined)
+    setInterpretingFeedback(undefined)
+    setPendingInterpretingConsent(undefined)
     setPracticeSetupMode('interpreting')
-    setCurrentPage('practice')
+    setCurrentPage('interpreting')
   }
 
   async function handleDiscardExamRun(runId: string) {
@@ -674,6 +720,9 @@ export default function App() {
   }
 
   function beginPractice(selection: PracticeStart) {
+    if (activeInterpretingSourceUrl) {
+      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    }
     setPracticeSetupMode('written')
     setActiveExercise(selection.exercise)
     setActiveInterpretingExercise(undefined)
@@ -693,39 +742,39 @@ export default function App() {
       URL.revokeObjectURL(activeInterpretingSourceUrl)
     }
     setPracticeSetupMode('interpreting')
-    setActiveExercise(undefined)
     setActiveInterpretingExercise(selection.exercise)
     setActiveInterpretingMode(selection.interpretingMode)
     setActiveInterpretingSourceRecording(selection.sourceRecording)
     setActiveInterpretingSourceUrl(selection.sourceRecording ? selection.exercise.audioUrl : undefined)
     setActiveInterpretingInput(undefined)
     setInterpretingFeedback(undefined)
-    setDraftAnswer('')
-    setDraftElapsedSeconds(0)
-    setFeedback(undefined)
     setPracticeNotice(undefined)
     setPendingConsent(undefined)
     setPendingInterpretingConsent(undefined)
-    setCurrentPage('practice')
+    setCurrentPage('interpreting')
   }
 
   function resetPractice() {
-    if (activeInterpretingSourceUrl) {
-      URL.revokeObjectURL(activeInterpretingSourceUrl)
+    if (currentPage === 'interpreting') {
+      if (activeInterpretingSourceUrl) {
+        URL.revokeObjectURL(activeInterpretingSourceUrl)
+      }
+      setPracticeSetupMode('interpreting')
+      setActiveInterpretingExercise(undefined)
+      setActiveInterpretingInput(undefined)
+      setActiveInterpretingSourceRecording(undefined)
+      setActiveInterpretingSourceUrl(undefined)
+      setInterpretingFeedback(undefined)
+    } else {
+      setPracticeSetupMode('written')
+      setActiveExercise(undefined)
+      setTimeLimitSeconds(undefined)
+      setDraftAnswer('')
+      setDraftElapsedSeconds(0)
+      setFeedback(undefined)
+      setPendingConsent(undefined)
     }
-    setPracticeSetupMode('written')
-    setActiveExercise(undefined)
-    setActiveInterpretingExercise(undefined)
-    setActiveInterpretingInput(undefined)
-    setActiveInterpretingSourceRecording(undefined)
-    setActiveInterpretingSourceUrl(undefined)
-    setInterpretingFeedback(undefined)
-    setTimeLimitSeconds(undefined)
-    setDraftAnswer('')
-    setDraftElapsedSeconds(0)
-    setFeedback(undefined)
     setPracticeNotice(undefined)
-    setPendingConsent(undefined)
     setPendingInterpretingConsent(undefined)
   }
 
@@ -771,47 +820,114 @@ export default function App() {
     provider: 'local' | 'cloud' | 'manual',
     generation: number,
   ) {
-    const sessionId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `interpreting-session-${Date.now()}`
-    const { audioUrl: _audioUrl, ...sourceExercise } = input.exercise
+    const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `interpreting-session-${Date.now()}`
+    const pending: PendingInterpretingPersistence = {
+      id,
+      createdAt: new Date().toISOString(),
+      input,
+      feedback: nextFeedback,
+      provider,
+      generation,
+    }
     setActiveInterpretingInput(input)
     setInterpretingFeedback(nextFeedback)
-    setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : provider === 'local' ? 'Local' : 'Manual'} interpreting feedback is ready. Practice estimates are saved only on this device.`)
+    setPracticeNotice(provider === 'manual'
+      ? 'Scoreless self-review is ready. Saving its audio and notes only on this device.'
+      : `${provider === 'cloud' ? 'Cloud' : 'Local'} interpreting feedback is ready. Saving the practice estimate only on this device.`)
     if (dataLoadGeneration.current !== generation) {
       return
     }
+    setPendingInterpretingSaves((saves) => [pending, ...saves.filter((save) => save.id !== pending.id)])
+    await persistPendingInterpretingSession(pending)
+  }
+
+  async function persistPendingInterpretingSession(pending: PendingInterpretingPersistence) {
+    if (savingInterpretingSaveIdsRef.current.has(pending.id)) {
+      return
+    }
+    savingInterpretingSaveIdsRef.current.add(pending.id)
+    setSavingInterpretingSaveIds((ids) => new Set(ids).add(pending.id))
+    let prepared = pending
     try {
-      const sourceRecording = input.sourceRecording ?? await snapshotBundledSourceAudio(input.exercise)
-      if (dataLoadGeneration.current !== generation) {
+      if (!prepared.session || !prepared.recordings) {
+        const sourceRecording = prepared.input.sourceRecording ?? await snapshotBundledSourceAudio(prepared.input.exercise)
+        const { audioUrl: _audioUrl, ...sourceExercise } = prepared.input.exercise
+        const session: InterpretingSessionRecord = {
+          id: prepared.id,
+          createdAt: prepared.createdAt,
+          exerciseId: prepared.input.exercise.id,
+          mode: 'interpreting',
+          sourceLanguage: prepared.input.exercise.sourceLanguage,
+          targetLanguage: prepared.input.exercise.targetLanguage,
+          interpretingMode: prepared.input.interpretingMode,
+          responseSegments: prepared.input.responseSegments,
+          recordingIds: prepared.input.recordings.map((recording) => recording.id),
+          sourceRecordingId: sourceRecording.id,
+          sourceExercise,
+          exerciseSnapshotVersion: 1,
+          deliveryAnalysis: prepared.input.deliveryAnalysis,
+          feedback: prepared.feedback,
+          evaluator: prepared.provider,
+        }
+        const recordings = [...prepared.input.recordings, sourceRecording].map((recording) => ({ ...recording, sessionId: prepared.id }))
+        prepared = { ...prepared, session, recordings }
+        setPendingInterpretingSaves((saves) => saves.map((save) => save.id === prepared.id ? prepared : save))
+      }
+      if (dataLoadGeneration.current !== prepared.generation) {
         return
       }
-      const session: InterpretingSessionRecord = {
-        id: sessionId,
-        createdAt: new Date().toISOString(),
-        exerciseId: input.exercise.id,
-        mode: 'interpreting',
-        sourceLanguage: input.exercise.sourceLanguage,
-        targetLanguage: input.exercise.targetLanguage,
-        interpretingMode: input.interpretingMode,
-        responseSegments: input.responseSegments,
-        recordingIds: input.recordings.map((recording) => recording.id),
-        sourceRecordingId: sourceRecording.id,
-        sourceExercise,
-        exerciseSnapshotVersion: 1,
-        deliveryAnalysis: input.deliveryAnalysis,
-        feedback: nextFeedback,
-        evaluator: provider,
+      const session = prepared.session
+      const recordings = prepared.recordings
+      if (!session || !recordings) {
+        throw new Error('The saved self-review could not be prepared for local storage.')
       }
-      const recordings = [...input.recordings, sourceRecording].map((recording) => ({ ...recording, sessionId }))
       await trackPersistence(database.saveInterpretingSessionWithRecordings(session, recordings))
-      if (dataLoadGeneration.current !== generation) {
+      if (dataLoadGeneration.current !== prepared.generation) {
         return
       }
       setRecentInterpretingSessions((sessions) => [session, ...sessions.filter((item) => item.id !== session.id)])
-    } catch {
-      if (dataLoadGeneration.current === generation) {
-        setPracticeNotice('Interpreting feedback is ready, but this browser could not save the audio-backed session locally.')
+      setPendingInterpretingSaves((saves) => saves.filter((save) => save.id !== prepared.id))
+      setPracticeNotice(prepared.provider === 'manual'
+        ? 'Scoreless self-review and audio saved on this device. No automated score was generated.'
+        : 'Interpreting practice estimate and audio saved on this device.')
+    } catch (caught) {
+      if (dataLoadGeneration.current === prepared.generation) {
+        setPendingInterpretingSaves((saves) => saves.map((save) => save.id === prepared.id ? prepared : save))
+        const reason = caught instanceof Error ? caught.message : 'The local storage operation failed.'
+        setPracticeNotice(`This interpreting session is still only in memory; it could not be saved locally: ${reason} Retry the local save before leaving if possible.`)
       }
+    } finally {
+      savingInterpretingSaveIdsRef.current.delete(pending.id)
+      setSavingInterpretingSaveIds((ids) => {
+        const next = new Set(ids)
+        next.delete(pending.id)
+        return next
+      })
     }
+  }
+
+  async function retryPendingInterpretingSave(id: string) {
+    const pending = pendingInterpretingSaves.find((save) => save.id === id)
+    if (pending) {
+      await persistPendingInterpretingSession(pending)
+    }
+  }
+
+  function saveScorelessInterpretingSelfReview(input: InterpretingEvaluationInput) {
+    const enrichedInput = activeInterpretingSourceRecording
+      ? { ...input, sourceRecording: activeInterpretingSourceRecording }
+      : input
+    const feedback: InterpretingFeedback = {
+      contentScoreStatus: 'incomplete',
+      deliveryScoreStatus: 'incomplete',
+      summary: 'Saved for learner self-review. No AI evaluation or score was generated.',
+      strengths: [],
+      issues: [],
+      uncertainEvidence: [],
+      alternatives: [],
+      uncertainty: 'Compare your recording with the source audio and reference transcript. This local self-review contains no automated transcript assessment or delivery score.',
+    }
+    void saveCompletedInterpretingSession(enrichedInput, feedback, 'manual', dataLoadGeneration.current)
   }
 
   async function handleOpenInterpretingSession(session: InterpretingSessionRecord) {
@@ -882,7 +998,7 @@ export default function App() {
         ? 'Reopened from this device. Audio replay remains local.'
         : 'Reopened from this device, but one or more local replay files are missing.')
       sourceUrl = undefined
-      setCurrentPage('practice')
+      setCurrentPage('interpreting')
     } catch {
       if (sourceUrl) URL.revokeObjectURL(sourceUrl)
       if (requestIsCurrent()) {
@@ -890,6 +1006,11 @@ export default function App() {
         navigateToPage('progress')
       }
     }
+  }
+
+  async function handleDeleteInterpretingSession(id: string) {
+    await trackPersistence(database.deleteInterpretingSession(id))
+    setRecentInterpretingSessions((sessions) => sessions.filter((session) => session.id !== id))
   }
 
   async function submitAnswer(answer: string, elapsedSeconds: number) {
@@ -1031,12 +1152,23 @@ export default function App() {
 
   const pageCopyForCurrentPage = pageCopy[currentPage]
   const isTakingExam = currentPage === 'exam' && examView === 'runner' && selectedExamProfile !== undefined
-  const isTakingInterpreting = currentPage === 'practice' && activeInterpretingExercise !== undefined && interpretingFeedback === undefined
+  const isTakingInterpreting = currentPage === 'interpreting' && activeInterpretingExercise !== undefined && interpretingFeedback === undefined
+  const currentPendingInterpretingSave = pendingInterpretingSaves.find((save) => save.input === activeInterpretingInput)
+  const firstPendingInterpretingSave = pendingInterpretingSaves[0]
+  const currentPendingSaveVisibleInPanel = currentPage === 'interpreting' && interpretingFeedback !== undefined && currentPendingInterpretingSave !== undefined
 
   return (
     <div className="app-shell">
       {!isTakingExam && !isTakingInterpreting && <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></aside>}
       <main className="main-content">
+        {firstPendingInterpretingSave && !currentPendingSaveVisibleInPanel && (
+          <section className="notice-banner notice-banner--warning pending-interpreting-save" role="alert">
+            <span>{pendingInterpretingSaves.length === 1 ? 'One interpreting self-review is still only in memory.' : `${pendingInterpretingSaves.length} interpreting self-reviews are still only in memory.`} Retry local storage when it is available.</span>
+            <button className="button button--quiet interpreting-action" type="button" onClick={() => void retryPendingInterpretingSave(firstPendingInterpretingSave.id)} disabled={savingInterpretingSaveIds.has(firstPendingInterpretingSave.id)}>
+              {savingInterpretingSaveIds.has(firstPendingInterpretingSave.id) ? 'Saving locally…' : 'Retry local save'}
+            </button>
+          </section>
+        )}
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
             <div>
@@ -1060,12 +1192,12 @@ export default function App() {
             onNavigate={navigateToPage}
           />
         )}
-        {currentPage === 'practice' && !activeExercise && !activeInterpretingExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
-        {currentPage === 'practice' && !activeExercise && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
+        {currentPage === 'practice' && !activeExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
+        {currentPage === 'interpreting' && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
-        {currentPage === 'practice' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} />}
-        {currentPage === 'practice' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
+        {currentPage === 'interpreting' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} onSaveSelfReview={saveScorelessInterpretingSelfReview} />}
+        {currentPage === 'interpreting' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} pendingSave={currentPendingInterpretingSave !== undefined} isSaving={currentPendingInterpretingSave ? savingInterpretingSaveIds.has(currentPendingInterpretingSave.id) : false} onRetrySave={() => currentPendingInterpretingSave && void retryPendingInterpretingSave(currentPendingInterpretingSave.id)} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'exam' && !isEvaluatingExam && examEvaluationNotice && (
           <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>
             {examEvaluationNotice}
@@ -1130,6 +1262,7 @@ export default function App() {
             onStartPractice={() => navigateToPage('practice')}
             onStartInterpreting={openInterpretingSetup}
             onOpenInterpretingSession={(session) => void handleOpenInterpretingSession(session)}
+            onDeleteInterpretingSession={handleDeleteInterpretingSession}
             onOpenExamResult={(result) => void handleOpenExamResult(result)}
             onStartExam={() => navigateToPage('exam')}
           />

@@ -1,4 +1,5 @@
 import { getLanguage } from '../domain/languages'
+import { hasCompleteInterpretingDeliveryEvidence } from '../domain/scoring'
 import type { EvaluationInput, EvaluationRequest, InterpretingEvaluationInput, ScoreDimension } from '../domain/types'
 
 const dimensions: ScoreDimension[] = ['accuracy', 'terminology', 'grammar', 'fluency', 'taskStyle']
@@ -43,10 +44,7 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, a
   const sourceSegments = input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n')
   const responses = input.responseSegments.map((segment) => `${segment.id} (source ${segment.sourceSegmentId}, ${segment.transcriptSource}, ${segment.recognitionStatus}): ${segment.transcript}`).join('\n')
   const delivery = input.deliveryAnalysis.map((analysis) => JSON.stringify(analysis)).join('\n')
-  const deliveryCanBeScored = input.recordings.length > 0 && input.responseSegments.length > 0
-    && input.responseSegments.every((segment) => segment.recordingId
-      && input.recordings.some((recording) => recording.id === segment.recordingId)
-      && input.deliveryAnalysis.some((analysis) => analysis.recordingId === segment.recordingId && analysis.analysisConfidence >= 0.5))
+  const deliveryCanBeScored = hasCompleteInterpretingDeliveryEvidence(input)
   const deliveryScoreField = deliveryCanBeScored
     ? '  "deliveryScores": {"fluency": 0, "pacing": 0, "hesitation": 0},\n'
     : ''

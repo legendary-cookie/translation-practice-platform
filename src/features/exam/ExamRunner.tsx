@@ -5,6 +5,7 @@ import {
   createActiveExamRun,
   decrementTimers,
   advanceSectionAndForfeitTime,
+  getElapsedTimerTick,
   isLastSection,
 } from '../../domain/exam'
 import { database } from '../../storage/database'
@@ -173,10 +174,10 @@ export function ExamRunner({
       }
 
       const now = Date.now()
-      const elapsedSeconds = Math.floor((now - lastTickTime.current) / 1000)
+      const { elapsedSeconds, nextAnchorMs } = getElapsedTimerTick(lastTickTime.current, now)
 
       if (elapsedSeconds >= 1) {
-        lastTickTime.current = now
+        lastTickTime.current = nextAnchorMs
 
         const { run: updatedRun, sectionExpired, overallExpired } = decrementTimers(
           runRef.current,

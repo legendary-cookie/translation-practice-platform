@@ -23,6 +23,7 @@ type Props = {
   notice?: string
   onCancel: () => void
   onSubmit: (input: InterpretingEvaluationInput) => void
+  onSaveSelfReview: (input: InterpretingEvaluationInput) => void
 }
 
 type PlayerState = {
@@ -48,7 +49,7 @@ function fallbackAnalysis(durationMs: number): DeliveryAnalysis {
   }
 }
 
-export function InterpretingWorkspace({ exercise, initialInput, interpretingMode, isSubmitting, notice, onCancel, onSubmit }: Props) {
+export function InterpretingWorkspace({ exercise, initialInput, interpretingMode, isSubmitting, notice, onCancel, onSubmit, onSaveSelfReview }: Props) {
   const [segmentIndex, setSegmentIndex] = useState(0)
   const [playerState, setPlayerState] = useState<PlayerState>({ currentTimeSeconds: 0, isPlaying: false })
   const [recorderState, setRecorderState] = useState<{ status: RecorderState; elapsedMs: number; inputLevel: number; error?: string }>({ status: 'idle', elapsedMs: 0, inputLevel: 0 })
@@ -83,8 +84,10 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   const replayAudioRef = useRef<HTMLAudioElement>(null)
   const listenTargetSegmentRef = useRef<string | undefined>(undefined)
   const recordingTakeKeyRef = useRef<string | undefined>(undefined)
+  const simultaneousPlaybackOffsetMsRef = useRef(0)
   const pendingAnalysisRef = useRef(new Set<string>())
   const pendingRecognitionRef = useRef<string | undefined>(undefined)
+  const selfReviewStartedRef = useRef(false)
   const currentSegment = exercise.segments[segmentIndex]
   const currentTakeKey = interpretingMode === 'simultaneous' ? 'continuous' : currentSegment.id
   const currentTake = takes[currentTakeKey]
@@ -221,6 +224,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
       player?.pause()
       replayAudioRef.current?.pause()
       recordingTakeKeyRef.current = interpretingMode === 'simultaneous' ? 'continuous' : currentSegment.id
+      simultaneousPlaybackOffsetMsRef.current = 0
       if (interpretingMode === 'consecutive') {
         setSkippedSegments((current) => {
           const next = new Set(current)
@@ -235,6 +239,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
         }
         try {
           await player.playAllSegments()
+          simultaneousPlaybackOffsetMsRef.current = Math.max(0, recorder.getElapsedMs() - player.getCurrentTime() * 1000)
         } catch (caught) {
           await recorder.stop().catch(() => undefined)
           recordingTakeKeyRef.current = undefined
@@ -321,6 +326,9 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   }
 
   function discardCurrentTake() {
+    if (interpretingMode === 'simultaneous') {
+      simultaneousPlaybackOffsetMsRef.current = 0
+    }
     setTakes((current) => {
       const next = { ...current }
       delete next[currentTakeKey]
@@ -400,9 +408,11 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     const responseSegments: InterpretingResponseSegment[] = exercise.segments.map((segment) => {
       const recording = interpretingMode === 'simultaneous' ? continuousRecording : takes[segment.id]
       const skipped = skippedSegments.has(segment.id)
-      const responseStartMs = interpretingMode === 'simultaneous' ? Math.min(segment.startMs, recording?.durationMs ?? segment.startMs) : 0
+      const responseStartMs = interpretingMode === 'simultaneous'
+        ? Math.max(0, Math.min(segment.startMs + simultaneousPlaybackOffsetMsRef.current, recording?.durationMs ?? 0))
+        : 0
       const responseEndMs = interpretingMode === 'simultaneous'
-        ? Math.max(responseStartMs, Math.min(segment.endMs, recording?.durationMs ?? responseStartMs))
+        ? Math.max(responseStartMs, Math.min(segment.endMs + simultaneousPlaybackOffsetMsRef.current, recording?.durationMs ?? responseStartMs))
         : recording?.durationMs ?? 0
       return {
         id: `${exercise.id}-response-${segment.id}`,
@@ -447,6 +457,25 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     }
   }
 
+  function saveSelfReview() {
+    if (isSubmitting || selfReviewStartedRef.current || ['requesting', 'recording', 'paused', 'stopping'].includes(recorderState.status)) {
+      return
+    }
+    if (pendingAnalysisRef.current.size > 0) {
+      setError('Wait for the take analysis to finish before saving this self-review.')
+      return
+    }
+    if (pendingRecognitionRef.current) {
+      setError('Wait for on-device recognition to finish or fail before saving this self-review.')
+      return
+    }
+    const input = buildInput()
+    if (input) {
+      selfReviewStartedRef.current = true
+      onSaveSelfReview(input)
+    }
+  }
+
   const progress = currentSegment ? ((playerState.currentTimeSeconds - currentSegment.startMs / 1000) / Math.max(0.1, (currentSegment.endMs - currentSegment.startMs) / 1000)) * 100 : 0
   const canRecord = interpretingMode === 'simultaneous' || listenedSegments.has(currentSegment.id)
   const allSegmentsReady = !recorderBusy && pendingAnalysisKeys.size === 0 && pendingRecognitionSegmentId === undefined && exercise.segments.every((segment) => (interpretingMode === 'simultaneous' ? takes.continuous : takes[segment.id]) || skippedSegments.has(segment.id))
@@ -454,7 +483,8 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   return (
     <div className="interpreting-workspace" aria-label="Interpreting practice workspace" aria-busy={isSubmitting}>
       <header className="interpreting-workspace__header"><div><p className="eyebrow">{interpretingMode === 'consecutive' ? 'Consecutive interpreting' : 'Simultaneous interpreting'}</p><h2>{exercise.title}</h2><p>{sourceLanguage.nativeLabel} → {targetLanguage.nativeLabel} · {exercise.segments.length} authored segments · {isImportedSource ? 'source audio stays local to this browser' : 'source audio stays same-origin'}</p>{exercise.sourceAudioDisclosure && <p className="interpreting-helper" role="note">Source-audio limitation: {exercise.sourceAudioDisclosure}</p>}</div><button className="text-button interpreting-text-action" type="button" onClick={onCancel} disabled={isSubmitting} aria-disabled={isSubmitting}>Leave desk</button></header>
-      {(notice || error || recorderState.error) && <p className="interpreting-notice" role="alert">{notice ?? error ?? recorderState.error}</p>}
+      {(error || recorderState.error) && <p className="interpreting-notice" role="alert">{error ?? recorderState.error}</p>}
+      {notice && <p className="interpreting-helper" role="status">{notice}</p>}
       <div className="interpreting-columns">
         <aside className="interpreting-segment-rail" aria-label="Source segments"><p className="eyebrow">Segments</p>{exercise.segments.map((segment, index) => <button className={`interpreting-segment-button ${index === segmentIndex ? 'interpreting-segment-button--active' : ''}`} type="button" key={segment.id} disabled={isSubmitting || recorderBusy || pendingRecognitionSegmentId !== undefined} onClick={() => { listenTargetSegmentRef.current = undefined; setSegmentIndex(index); player?.pause() }}><span>{index + 1}</span><span>{formatSeconds((segment.endMs - segment.startMs) / 1000)}</span><small>{takes[segment.id] || takes.continuous ? 'Take saved' : skippedSegments.has(segment.id) ? 'Skipped' : 'Not recorded'}</small></button>)}</aside>
         <section className="interpreting-source-card" aria-labelledby="source-heading">
@@ -477,7 +507,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
           <label className="interpreting-toggle"><input type="checkbox" checked={skippedSegments.has(currentSegment.id)} disabled={isSubmitting || recorderBusy || Boolean(currentTake)} onChange={(event) => setSkippedSegments((current) => { const next = new Set(current); if (event.target.checked) next.add(currentSegment.id); else next.delete(currentSegment.id); return next })} /> I am skipping this segment</label>
         </section>
       </div>
-      <footer className="interpreting-workspace__footer"><p>{interpretingMode === 'simultaneous' ? 'Continuous takes use approximate segment boundaries; word-level alignment is not fabricated.' : 'Each saved take is tied to its authored source segment.'} Recordings stay in memory until you submit.{pendingAnalysisKeys.size > 0 && <span role="status"> Preparing local delivery analysis…</span>}</p><button className="button button--primary interpreting-submit" type="button" onClick={submit} disabled={isSubmitting || !allSegmentsReady}>{isSubmitting ? 'Preparing feedback…' : 'Submit for practice feedback'} <span aria-hidden="true">→</span></button></footer>
+      <footer className="interpreting-workspace__footer"><p>{interpretingMode === 'simultaneous' ? 'Continuous takes use approximate segment boundaries; word-level alignment is not fabricated.' : 'Each saved take is tied to its authored source segment.'} Recordings stay in memory until you submit or save a self-review.{pendingAnalysisKeys.size > 0 && <span role="status"> Preparing local delivery analysis…</span>}</p><div className="interpreting-control-row interpreting-submit-actions"><button className="button button--primary interpreting-action" type="button" onClick={submit} disabled={isSubmitting || !allSegmentsReady}>{isSubmitting ? 'Preparing feedback…' : 'Submit for practice feedback'} <span aria-hidden="true">→</span></button><button className="button button--quiet interpreting-action" type="button" onClick={saveSelfReview} disabled={isSubmitting || !allSegmentsReady}>Save self-review without a score</button></div></footer>
     </div>
   )
 }

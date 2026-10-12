@@ -15,6 +15,27 @@ import type {
   SectionResult,
   TranslationFeedback,
 } from './types'
+
+export function hasCompleteInterpretingDeliveryEvidence(
+  input: Pick<InterpretingEvaluationInput, 'responseSegments' | 'recordings' | 'deliveryAnalysis'>,
+): boolean {
+  if (input.responseSegments.length === 0) return false
+  const recordingsById = new Map(input.recordings.map((recording) => [recording.id, recording]))
+  return input.responseSegments.every((segment) => {
+    if (!segment.recordingId || !Number.isFinite(segment.responseStartMs) || !Number.isFinite(segment.responseEndMs)) {
+      return false
+    }
+    const recording = recordingsById.get(segment.recordingId)
+    const analysis = input.deliveryAnalysis.find((candidate) => candidate.recordingId === segment.recordingId)
+    return Boolean(recording
+      && recording.durationMs > 0
+      && segment.responseStartMs >= 0
+      && segment.responseEndMs > segment.responseStartMs
+      && segment.responseEndMs <= recording.durationMs
+      && analysis
+      && analysis.analysisConfidence >= 0.5)
+  })
+}
 import { getEstimatedStatus } from './exam'
 
 export type FeedbackValidationContext = {
@@ -328,15 +349,7 @@ export function validateInterpretingFeedback(
     ? normalizeInterpretingScores(rawContentScores, 'contentScores', ['meaningTransfer', 'omissions', 'additionsMistranslations', 'terminology']) as InterpretingContentScores
     : undefined
   const contentScoreStatus: InterpretingFeedback['contentScoreStatus'] = allResponsesVerified && contentScoreValues ? 'complete' : 'incomplete'
-  const recordingsById = new Map(context.recordings.map((recording) => [recording.id, recording]))
-  const hasReliableDeliveryEvidence = context.recordings.length > 0
-    && context.responseSegments.length > 0
-    && context.responseSegments.every((segment) => {
-      if (!segment.recordingId || !recordingsById.has(segment.recordingId)) return false
-      const analysis = context.deliveryAnalysis.find((candidate) => candidate.recordingId === segment.recordingId)
-        ?? (context.recordings.length === 1 && context.deliveryAnalysis.length === 1 && !context.deliveryAnalysis[0].recordingId ? context.deliveryAnalysis[0] : undefined)
-      return analysis !== undefined && analysis.analysisConfidence >= 0.5
-    })
+  const hasReliableDeliveryEvidence = hasCompleteInterpretingDeliveryEvidence(context)
   const deliveryScores = hasReliableDeliveryEvidence
     ? normalizeInterpretingScores(raw.deliveryScores ?? raw.delivery, 'deliveryScores', ['fluency', 'pacing', 'hesitation']) as InterpretingDeliveryScores
     : undefined

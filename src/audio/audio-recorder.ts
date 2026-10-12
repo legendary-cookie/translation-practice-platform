@@ -16,6 +16,7 @@ export type ResponseRecorder = {
   pause(): void
   resume(): void
   stop(): Promise<AudioRecordingRecord | undefined>
+  getElapsedMs(): number
   getActiveTrack(): MediaStreamTrack | undefined
   getReplayUrl(recording: AudioRecordingRecord): string
   revokeReplayUrl(url: string): void
@@ -297,6 +298,10 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
           reject(new Error(error))
         }
       })
+    },
+
+    getElapsedMs() {
+      return accumulatedDurationMs + (state === 'recording' && activeStartedAt > 0 ? Math.max(0, Date.now() - activeStartedAt) : 0)
     },
 
     getActiveTrack() {

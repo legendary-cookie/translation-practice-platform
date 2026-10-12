@@ -75,8 +75,11 @@ export async function getLocalRecognitionCapability(languageTag: string): Promis
     if (availability === 'downloading') {
       return { status: 'downloading', languageTag, reason: 'The on-device language pack is still downloading. Continue with the manual transcript path for now.' }
     }
-    if (availability === 'downloadable' || availability === false) {
+    if (availability === 'downloadable') {
       return { status: 'downloadable', languageTag, reason: 'An on-device language pack may be available. Download it only after an explicit action; learner audio stays local.' }
+    }
+    if (availability === false) {
+      return { status: 'unavailable', languageTag, reason: 'The browser did not confirm an installable on-device language pack. Enter a transcript manually; no remote recognition will be used.' }
     }
     return { status: 'unavailable', languageTag, reason: 'This language pack is unavailable for on-device recognition. Enter a transcript manually; no remote recognition will be used.' }
   } catch {

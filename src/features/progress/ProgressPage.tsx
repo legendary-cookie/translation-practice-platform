@@ -3,6 +3,49 @@ import { getLanguage } from '../../domain/languages'
 import type { ConsolidatedExamResult, InterpretingSessionRecord, ScoreDimension, SessionRecord } from '../../domain/types'
 import { PRACTICE_ESTIMATE_DISCLAIMER } from '../../domain/exam'
 
+function InterpretingHistoryActions({
+  session,
+  onOpen,
+  onDelete,
+}: {
+  session: InterpretingSessionRecord
+  onOpen?: (session: InterpretingSessionRecord) => void
+  onDelete?: (id: string) => Promise<void>
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [error, setError] = useState<string>()
+
+  async function deleteSession() {
+    if (!onDelete || isDeleting) return
+    setIsDeleting(true)
+    setError(undefined)
+    try {
+      await onDelete(session.id)
+      setConfirming(false)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The saved interpreting audio could not be deleted from this device.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  return (
+    <div className="interpreting-history-actions">
+      {onOpen && <button className="button button--quiet interpreting-action" type="button" onClick={() => onOpen(session)}>Open saved self-review</button>}
+      {onDelete && <button className="button button--danger interpreting-action" type="button" onClick={() => { setConfirming(true); setError(undefined) }}>Delete saved take</button>}
+      {confirming && <div className="interpreting-delete-confirmation" role="group" aria-label="Confirm deletion of saved interpreting take">
+        <p>Delete this session and its local source/response audio? This cannot be undone here. Export your data first if you need a backup.</p>
+        <div className="interpreting-history-actions__confirm">
+          <button className="button button--danger interpreting-action" type="button" onClick={() => void deleteSession()} disabled={isDeleting}>{isDeleting ? 'Deleting locally…' : 'Delete session and audio'}</button>
+          <button className="button button--quiet interpreting-action" type="button" onClick={() => setConfirming(false)} disabled={isDeleting}>Keep it</button>
+        </div>
+      </div>}
+      {error && <p className="settings-error" role="alert">{error}</p>}
+    </div>
+  )
+}
+
 const dimensions: ScoreDimension[] = ['accuracy', 'terminology', 'grammar', 'fluency', 'taskStyle']
 const dimensionLabels: Record<ScoreDimension, string> = {
   accuracy: 'Accuracy and meaning',
@@ -27,6 +70,7 @@ export function ProgressPage({
   onStartPractice,
   onStartInterpreting,
   onOpenInterpretingSession,
+  onDeleteInterpretingSession,
   onOpenExamResult,
   onStartExam,
 }: {
@@ -36,6 +80,7 @@ export function ProgressPage({
   onStartPractice: () => void
   onStartInterpreting?: () => void
   onOpenInterpretingSession?: (session: InterpretingSessionRecord) => void
+  onDeleteInterpretingSession?: (id: string) => Promise<void>
   onOpenExamResult?: (result: ConsolidatedExamResult) => void
   onStartExam?: () => void
 }) {
@@ -169,21 +214,39 @@ export function ProgressPage({
                     <span className="section-heading__note">Newest first</span>
                   </div>
                   <div className="trend-list">
-                    {sessions.slice(0, 8).map((session) => (
-                      <div className="trend-row" key={session.id}>
-                        <div className="trend-row__label">
-                          <span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span>
-                          <small>{formatDate(session.createdAt)} · Practice estimate</small>
+                    {sessions.map((session) => {
+                      const sourceLanguage = getLanguage(session.sourceLanguage)
+                      const targetLanguage = getLanguage(session.targetLanguage)
+                      return (
+                        <div className="progress-session-entry" key={session.id}>
+                          <div className="trend-row">
+                            <div className="trend-row__label">
+                              <span>{sourceLanguage.nativeLabel} → {targetLanguage.nativeLabel}</span>
+                              <small>{formatDate(session.createdAt)} · Practice estimate</small>
+                            </div>
+                            <div className="trend-row__track">
+                              <span style={{ width: `${session.feedback.overallScore}%` }} />
+                            </div>
+                            <strong>
+                              {session.feedback.overallScore}
+                              <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
+                            </strong>
+                          </div>
+                          <details className="progress-session-detail">
+                            <summary>Review answer and feedback</summary>
+                            <p className="progress-session-detail__disclaimer">{PRACTICE_ESTIMATE_DISCLAIMER}</p>
+                            <h4>Your answer</h4>
+                            <blockquote dir={targetLanguage.direction} lang={targetLanguage.code}>{session.answer || 'No answer was saved for this session.'}</blockquote>
+                            <h4>Summary</h4>
+                            <p>{session.feedback.summary}</p>
+                            {session.feedback.strengths.length > 0 && <><h4>Strengths</h4><ul>{session.feedback.strengths.map((strength, index) => <li key={`${session.id}-strength-${index}`}>{strength}</li>)}</ul></>}
+                            {session.feedback.issues.length > 0 && <><h4>Issues and evidence</h4><ul>{session.feedback.issues.map((issue, index) => <li key={`${session.id}-issue-${index}`}><strong>{issue.dimension}</strong><p>{issue.explanation}</p>{issue.sourceQuote && <blockquote dir={sourceLanguage.direction} lang={sourceLanguage.code}>{issue.sourceQuote}</blockquote>}{issue.learnerQuote && <blockquote dir={targetLanguage.direction} lang={targetLanguage.code}>{issue.learnerQuote}</blockquote>}{issue.suggestion && <p>Suggestion: {issue.suggestion}</p>}</li>)}</ul></>}
+                            {session.feedback.alternatives.length > 0 && <><h4>Alternatives</h4><ul>{session.feedback.alternatives.map((alternative, index) => <li key={`${session.id}-alternative-${index}`}>{alternative}</li>)}</ul></>}
+                            {session.feedback.uncertainty && <p><strong>Uncertainty:</strong> {session.feedback.uncertainty}</p>}
+                          </details>
                         </div>
-                        <div className="trend-row__track">
-                          <span style={{ width: `${session.feedback.overallScore}%` }} />
-                        </div>
-                        <strong>
-                          {session.feedback.overallScore}
-                          <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
-                        </strong>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </article>
                 <article className="progress-card">
@@ -256,7 +319,7 @@ export function ProgressPage({
                 <article className="progress-stat"><span className="eyebrow">Directions</span><strong>{new Set(interpretingSessions.map((session) => `${session.sourceLanguage}-${session.targetLanguage}`)).size}</strong><span>practised so far</span></article>
               </section>
               <section className="progress-panels">
-                <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Take history</p><h3>Recent interpreting estimates</h3></div><span className="section-heading__note">Newest first</span></div><div className="trend-list">{interpretingSessions.slice(0, 8).map((session) => <div className="interpreting-history-item" key={session.id}><div className="trend-row"><div className="trend-row__label"><span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span><small>{formatDate(session.createdAt)} · {session.interpretingMode}</small></div><div className="trend-row__track"><span style={{ width: `${session.feedback.overallScore ?? 0}%` }} /></div><strong>{session.feedback.overallScore === undefined ? 'Incomplete' : `${session.feedback.overallScore}/100`}<small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small></strong></div>{onOpenInterpretingSession && <button className="button button--quiet interpreting-action" type="button" onClick={() => onOpenInterpretingSession(session)}>Open saved self-review</button>}</div>)}</div></article>
+                <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Take history</p><h3>Saved interpreting takes</h3></div><span className="section-heading__note">Newest first</span></div><div className="trend-list">{interpretingSessions.map((session) => <div className="interpreting-history-item" key={session.id}><div className="trend-row"><div className="trend-row__label"><span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span><small>{formatDate(session.createdAt)} · {session.interpretingMode}</small></div><div className="trend-row__track"><span style={{ width: `${session.feedback.overallScore ?? 0}%` }} /></div><strong>{session.evaluator === 'manual' ? 'Self-review' : session.feedback.overallScore === undefined ? 'No score' : `${session.feedback.overallScore}/100`}<small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>{session.feedback.overallScore === undefined ? 'Saved locally' : 'Practice estimate'}</small></strong></div><InterpretingHistoryActions session={session} onOpen={onOpenInterpretingSession} onDelete={onDeleteInterpretingSession} /></div>)}</div></article>
                 <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Delivery trend</p><h3>Heuristic delivery averages</h3></div></div>{interpretingSessions.some((session) => session.feedback.deliveryScores) ? <div className="skill-list">{(['fluency', 'pacing', 'hesitation'] as const).map((dimension) => { const values = interpretingSessions.map((session) => session.feedback.deliveryScores?.[dimension]).filter((value): value is number => value !== undefined); const value = average(values); return <div className="skill-row" key={dimension}><div><span>{dimension[0].toUpperCase() + dimension.slice(1)}</span><strong>{value}</strong></div><div className="trend-row__track"><span style={{ width: `${value}%` }} /></div></div> })}</div> : <p>Delivery estimates are unavailable because no complete, confident audio analysis has been saved.</p>}</article>
               </section>
               <section className="progress-panels"><article className="progress-card progress-card--note" style={{ width: '100%' }}><span className="progress-card__mark">✦</span><h3>Interpreting evidence notice</h3><p>Audio-analysis measures are local heuristics. Recognition-uncertain evidence is kept separate for transcript review and does not become a learner-error annotation.</p></article></section>

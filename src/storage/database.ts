@@ -77,40 +77,46 @@ interface TranslationDatabaseSchema extends DBSchema {
 let databasePromise: Promise<IDBPDatabase<TranslationDatabaseSchema>> | undefined
 
 function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
-  databasePromise ??= openDB<TranslationDatabaseSchema>(DATABASE_NAME, DATABASE_VERSION, {
-    upgrade(database) {
-      if (!database.objectStoreNames.contains('settings')) {
-        database.createObjectStore('settings')
-      }
-      if (!database.objectStoreNames.contains('sessions')) {
-        const sessions = database.createObjectStore('sessions', { keyPath: 'id' })
-        sessions.createIndex('by-created-at', 'createdAt')
-        sessions.createIndex('by-direction', 'sourceLanguage')
-      }
-      if (!database.objectStoreNames.contains('examProfiles')) {
-        database.createObjectStore('examProfiles', { keyPath: 'id' })
-      }
-      if (!database.objectStoreNames.contains('examRuns')) {
-        const runs = database.createObjectStore('examRuns', { keyPath: 'id' })
-        runs.createIndex('by-status', 'status')
-        runs.createIndex('by-last-saved', 'lastSavedAt')
-      }
-      if (!database.objectStoreNames.contains('examResults')) {
-        const results = database.createObjectStore('examResults', { keyPath: 'id' })
-        results.createIndex('by-completed-at', 'completedAt')
-        results.createIndex('by-profile-id', 'profileId')
-      }
-      if (!database.objectStoreNames.contains('recordings')) {
-        const recordings = database.createObjectStore('recordings', { keyPath: 'id' })
-        recordings.createIndex('by-created-at', 'createdAt')
-        recordings.createIndex('by-exercise-id', 'exerciseId')
-      }
-      if (!database.objectStoreNames.contains('interpretingSessions')) {
-        const sessions = database.createObjectStore('interpretingSessions', { keyPath: 'id' })
-        sessions.createIndex('by-created-at', 'createdAt')
-      }
-    },
-  })
+  if (!databasePromise) {
+    const opening = openDB<TranslationDatabaseSchema>(DATABASE_NAME, DATABASE_VERSION, {
+      upgrade(database) {
+        if (!database.objectStoreNames.contains('settings')) {
+          database.createObjectStore('settings')
+        }
+        if (!database.objectStoreNames.contains('sessions')) {
+          const sessions = database.createObjectStore('sessions', { keyPath: 'id' })
+          sessions.createIndex('by-created-at', 'createdAt')
+          sessions.createIndex('by-direction', 'sourceLanguage')
+        }
+        if (!database.objectStoreNames.contains('examProfiles')) {
+          database.createObjectStore('examProfiles', { keyPath: 'id' })
+        }
+        if (!database.objectStoreNames.contains('examRuns')) {
+          const runs = database.createObjectStore('examRuns', { keyPath: 'id' })
+          runs.createIndex('by-status', 'status')
+          runs.createIndex('by-last-saved', 'lastSavedAt')
+        }
+        if (!database.objectStoreNames.contains('examResults')) {
+          const results = database.createObjectStore('examResults', { keyPath: 'id' })
+          results.createIndex('by-completed-at', 'completedAt')
+          results.createIndex('by-profile-id', 'profileId')
+        }
+        if (!database.objectStoreNames.contains('recordings')) {
+          const recordings = database.createObjectStore('recordings', { keyPath: 'id' })
+          recordings.createIndex('by-created-at', 'createdAt')
+          recordings.createIndex('by-exercise-id', 'exerciseId')
+        }
+        if (!database.objectStoreNames.contains('interpretingSessions')) {
+          const sessions = database.createObjectStore('interpretingSessions', { keyPath: 'id' })
+          sessions.createIndex('by-created-at', 'createdAt')
+        }
+      },
+    })
+    databasePromise = opening.catch((error: unknown) => {
+      databasePromise = undefined
+      throw error
+    })
+  }
   return databasePromise
 }
 
@@ -146,6 +152,24 @@ export const database = {
     const recordingWrites = recordings.map((recording) => transaction.objectStore('recordings').put(recording))
     recordingWrites.push(transaction.objectStore('interpretingSessions').put(session))
     await Promise.all(recordingWrites)
+    await transaction.done
+  },
+
+  async deleteInterpretingSession(id: string): Promise<void> {
+    const db = await getDatabase()
+    const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
+    const sessionStore = transaction.objectStore('interpretingSessions')
+    const [session, sessions] = await Promise.all([sessionStore.get(id), sessionStore.getAll()])
+    if (session) {
+      const stillReferenced = new Set(sessions
+        .filter((candidate) => candidate.id !== id)
+        .flatMap((candidate) => [...candidate.recordingIds, ...(candidate.sourceRecordingId ? [candidate.sourceRecordingId] : [])]))
+      const ownedRecordingIds = new Set([...session.recordingIds, ...(session.sourceRecordingId ? [session.sourceRecordingId] : [])])
+      const deletions = [sessionStore.delete(id), ...Array.from(ownedRecordingIds)
+        .filter((recordingId) => !stillReferenced.has(recordingId))
+        .map((recordingId) => transaction.objectStore('recordings').delete(recordingId))]
+      await Promise.all(deletions)
+    }
     await transaction.done
   },
 

@@ -16,6 +16,7 @@ import { InterpretingFeedbackPanel } from './features/interpreting/InterpretingF
 import { SessionHistoryNotice } from './features/progress/SessionHistoryNotice'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
+import { createLocalModelStatusSettingsUpdate, isLocalProgressGenerationCurrent } from './features/settings/local-model-progress-guard'
 import { mergeRecentSessions, persistWrittenPracticeSession, type SessionHistoryStatus } from './features/practice/session-history'
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
@@ -241,7 +242,7 @@ export default function App() {
   const dataLoadGeneration = useRef(0)
   const sessionHistoryLoadRequestRef = useRef(0)
   const localProviderEpochRef = useRef(0)
-  const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number) => void>(() => undefined)
+  const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number, dataGeneration: number) => void>(() => undefined)
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
@@ -264,24 +265,34 @@ export default function App() {
     }
   }, [activeInterpretingSourceUrl])
 
-  const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number) => {
-    if (localProviderEpochRef.current !== providerEpoch) {
+  const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number, dataGeneration: number) => {
+    const expectedGeneration = { providerEpoch, dataGeneration }
+    const isCurrent = () => isLocalProgressGenerationCurrent(expectedGeneration, {
+      providerEpoch: localProviderEpochRef.current,
+      dataGeneration: dataLoadGeneration.current,
+    })
+    if (!isCurrent()) {
       return
     }
     setLocalProgress(progress)
     if (progress.status === 'ready' || progress.status === 'unavailable') {
-      void updateSettings((current) => localProviderEpochRef.current === providerEpoch
-        ? { ...current, localModelStatus: progress.status }
-        : current).catch(() => undefined)
+      void updateSettings(createLocalModelStatusSettingsUpdate(progress.status, expectedGeneration, () => ({
+        providerEpoch: localProviderEpochRef.current,
+        dataGeneration: dataLoadGeneration.current,
+      }))).catch(() => undefined)
     }
   }
 
   localProgressHandlerRef.current = handleLocalProgress
   const localProvider = useMemo(() => {
     const providerEpoch = localProviderEpoch
+    const dataGeneration = dataLoadGeneration.current
     return createLocalProvider(DEFAULT_LOCAL_MODEL_ID, (progress) => {
-      if (localProviderEpochRef.current === providerEpoch) {
-        localProgressHandlerRef.current(progress, providerEpoch)
+      if (isLocalProgressGenerationCurrent({ providerEpoch, dataGeneration }, {
+        providerEpoch: localProviderEpochRef.current,
+        dataGeneration: dataLoadGeneration.current,
+      })) {
+        localProgressHandlerRef.current(progress, providerEpoch, dataGeneration)
       }
     })
   }, [localProviderEpoch])

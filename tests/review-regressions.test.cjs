@@ -5,6 +5,7 @@ const { renderToStaticMarkup } = require('react-dom/server')
 
 const writtenGuardModule = require('../src/features/practice/written-evaluation-guard.ts')
 const sessionHistoryModule = require('../src/features/practice/session-history.ts')
+const localProgressGuardModule = require('../src/features/settings/local-model-progress-guard.ts')
 const responseRangeModule = require('../src/features/interpreting/response-range.ts')
 const { buildEvaluationPrompt } = require('../src/ai/evaluation-prompt.ts')
 const { hasCompleteInterpretingDeliveryEvidence, validateInterpretingFeedback } = require('../src/domain/scoring.ts')
@@ -423,6 +424,32 @@ test('a written evaluation is not announced as saved when local persistence fail
     onSaveFailure: () => events.push('save-error'),
   })
   assert.deepEqual(events, ['save-error'])
+})
+
+test('queued local-model status callbacks cannot restore settings after data deletion', () => {
+  let currentGeneration = { providerEpoch: 3, dataGeneration: 8 }
+  const settings = {
+    id: 'default',
+    evaluationMode: 'local-only',
+    cloudBaseUrl: '',
+    cloudModel: '',
+    cloudSupportsAudio: false,
+    localModelStatus: 'preparing',
+  }
+
+  for (const status of ['ready', 'unavailable']) {
+    const expectedGeneration = { ...currentGeneration }
+    const queuedUpdate = localProgressGuardModule.createLocalModelStatusSettingsUpdate(
+      status,
+      expectedGeneration,
+      () => currentGeneration,
+    )
+
+    assert.deepEqual(queuedUpdate(settings), { ...settings, localModelStatus: status })
+    currentGeneration = { ...currentGeneration, providerEpoch: currentGeneration.providerEpoch + 1, dataGeneration: currentGeneration.dataGeneration + 1 }
+    assert.equal(localProgressGuardModule.isLocalProgressGenerationCurrent(expectedGeneration, currentGeneration), false)
+    assert.strictEqual(queuedUpdate(settings), settings)
+  }
 })
 
 test('seeking to a segment end does not count as listening, but playing through it does', async () => {

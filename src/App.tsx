@@ -46,7 +46,12 @@ import type {
 } from './domain/types'
 import { DEFAULT_LOCAL_MODEL_ID } from './domain/types'
 import { getLanguage } from './domain/languages'
-import { createExamRunEditorToken, EXAM_RUN_EDITOR_HEARTBEAT_MS } from './storage/exam-run-editor'
+import {
+  acquireExamRunEditorTabLock,
+  EXAM_RUN_EDITOR_HEARTBEAT_MS,
+  readOrCreateExamRunEditorToken,
+  type ExamRunEditorTabLock,
+} from './storage/exam-run-editor'
 import { isExamResultOpenCurrent } from './features/exam/exam-result-open-guard'
 import { fetchAudioBlobWithDeadline } from './features/interpreting/audio-asset-requests'
 import './features/practice/practice.css'
@@ -263,11 +268,44 @@ export default function App() {
   const interpretingSessionOpenGenerationRef = useRef(0)
   const examStartRequestRef = useRef(false)
   const examEditorTokenRef = useRef<string | undefined>(undefined)
+  const examEditorTabLockRef = useRef<ExamRunEditorTabLock | undefined>(undefined)
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
   const writtenEvaluationGuardRef = useRef(createWrittenEvaluationGuard())
 
-  if (!examEditorTokenRef.current) examEditorTokenRef.current = createExamRunEditorToken()
+  function getExamEditorToken(): string {
+    if (examEditorTokenRef.current) return examEditorTokenRef.current
+    try {
+      examEditorTokenRef.current = readOrCreateExamRunEditorToken(window.sessionStorage)
+    } catch {
+      throw new Error('Safe exam recovery requires session storage. Allow site storage in this browser; written and interpreting practice remain available.')
+    }
+    return examEditorTokenRef.current
+  }
+
+  async function acquireExamEditorTabLock(runId: string): Promise<ExamRunEditorTabLock | undefined> {
+    if (examEditorTabLockRef.current) return undefined
+    const lockManager = typeof navigator === 'undefined' ? undefined : navigator.locks
+    // This lifetime lock is distinct from the database write lock: editor saves take
+    // the data lock while holding this one, but clear never waits to acquire this lock.
+    const lock = await acquireExamRunEditorTabLock(runId, lockManager)
+    if (examEditorTabLockRef.current) {
+      lock.release()
+      return undefined
+    }
+    examEditorTabLockRef.current = lock
+    return lock
+  }
+
+  function releaseExamEditorTabLock(lock: ExamRunEditorTabLock | undefined) {
+    if (!lock || examEditorTabLockRef.current !== lock) return
+    examEditorTabLockRef.current = undefined
+    lock.release()
+  }
+
+  function releaseCurrentExamEditorTabLock() {
+    releaseExamEditorTabLock(examEditorTabLockRef.current)
+  }
 
   if (!settingsHydrationRef.current) settingsHydrationRef.current = createSettingsHydrationAttempt()
 
@@ -545,6 +583,7 @@ export default function App() {
   function resetUiAfterLocalDataClear(nextProviderEpoch: number, notice?: string) {
     examResultOpenGenerationRef.current += 1
     interpretingSessionOpenGenerationRef.current += 1
+    releaseCurrentExamEditorTabLock()
     setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
     const readySettingsHydration = createSettingsHydrationAttempt()
@@ -662,14 +701,21 @@ export default function App() {
     examStartRequestRef.current = true
     const generation = dataLoadGeneration.current
     setExamEvaluationNotice('Claiming the local exam attempt…')
+    let acquiredEditorLock: ExamRunEditorTabLock | undefined
     try {
-      const claim = await database.claimActiveExamRun(profile, examEditorTokenRef.current!)
-      if (dataLoadGeneration.current !== generation) return
+      const editorToken = getExamEditorToken()
+      acquiredEditorLock = await acquireExamEditorTabLock(profile.id)
+      const claim = await database.claimActiveExamRun(profile, editorToken)
+      if (dataLoadGeneration.current !== generation) {
+        releaseExamEditorTabLock(acquiredEditorLock)
+        return
+      }
       setActiveExamRun(claim.run)
       setExamEditorLeaseLost(false)
       setPendingExamConsent(undefined)
       setCurrentPage('exam')
       if (!claim.created) {
+        releaseExamEditorTabLock(acquiredEditorLock)
         setSelectedExamProfile(undefined)
         setExamView('catalog')
         setExamEvaluationNotice('An unfinished exam was claimed in another tab. Resume that saved attempt or discard it before starting a different simulation.')
@@ -679,12 +725,14 @@ export default function App() {
       setExamEvaluationNotice(undefined)
       setExamView('runner')
     } catch (error) {
+      releaseExamEditorTabLock(acquiredEditorLock)
       if (dataLoadGeneration.current === generation) {
-        const reason = error instanceof Error && error.message ? ` (${error.message})` : ''
         setSelectedExamProfile(undefined)
         setExamView('catalog')
         setCurrentPage('exam')
-        setExamEvaluationNotice(`The exam attempt could not be claimed locally${reason}. No new simulation was started.`)
+        setExamEvaluationNotice(error instanceof Error && error.name === 'ExamRunEditorOwnedError'
+          ? 'An unfinished exam is already open in another tab. Resume it there, or close that tab before starting another simulation.'
+          : `The exam attempt could not be claimed locally${error instanceof Error && error.message ? ` (${error.message})` : ''}. No new simulation was started.`)
       }
     } finally {
       examStartRequestRef.current = false
@@ -712,9 +760,15 @@ export default function App() {
     if (examStartRequestRef.current) return
     examStartRequestRef.current = true
     const generation = dataLoadGeneration.current
+    let acquiredEditorLock: ExamRunEditorTabLock | undefined
     try {
-      const claimedRun = await database.claimExamRunEditor(run.id, examEditorTokenRef.current!)
-      if (dataLoadGeneration.current !== generation) return
+      const editorToken = getExamEditorToken()
+      acquiredEditorLock = await acquireExamEditorTabLock(run.id)
+      const claimedRun = await database.claimExamRunEditor(run.id, editorToken)
+      if (dataLoadGeneration.current !== generation) {
+        releaseExamEditorTabLock(acquiredEditorLock)
+        return
+      }
       setSelectedExamProfile(profile)
       setActiveExamRun(claimedRun)
       setExamEditorLeaseLost(false)
@@ -723,6 +777,7 @@ export default function App() {
       setExamView('runner')
       setCurrentPage('exam')
     } catch (error) {
+      releaseExamEditorTabLock(acquiredEditorLock)
       if (dataLoadGeneration.current !== generation) return
       const message = error instanceof Error && /ExamRunEditorOwnedError/.test(error.name)
         ? 'This exam attempt is already open in another tab. Continue there, or wait for its editing lease to expire before resuming here.'
@@ -821,6 +876,7 @@ export default function App() {
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
+      releaseCurrentExamEditorTabLock()
       setActiveExamRun(undefined)
       setActiveExamResult(storedResult)
       setRecentExamResults((prev) => [storedResult, ...prev.filter((r) => r.id !== storedResult.id && r.runId !== storedResult.runId)])
@@ -851,6 +907,7 @@ export default function App() {
           if (dataLoadGeneration.current !== submissionGeneration) {
             return
           }
+          releaseCurrentExamEditorTabLock()
           setActiveExamRun(resumableRun)
           setSelectedExamProfile(undefined)
           setExamView('catalog')
@@ -926,6 +983,7 @@ export default function App() {
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
+      releaseCurrentExamEditorTabLock()
       setActiveExamRun(resumableRun)
       setPendingExamConsent(undefined)
       setSelectedExamProfile(undefined)
@@ -945,6 +1003,7 @@ export default function App() {
   }
 
   async function handleCancelExamRun(savedRun: ActiveExamRun) {
+    releaseCurrentExamEditorTabLock()
     const recovery = await getSavedExamRunAfterExit(savedRun, () => database.getActiveExamRun())
     setActiveExamRun(recovery.run)
     setExamEvaluationNotice(recovery.recoveryReadFailed
@@ -1604,6 +1663,7 @@ export default function App() {
             profiles={examProfiles}
             activeRun={activeExamRun}
             recoveryStatus={examRecoveryStatus}
+            examEditingAvailable={typeof navigator !== 'undefined' && Boolean(navigator.locks)}
             onSelectProfile={handleSelectExamProfile}
             onResumeRun={handleResumeExamRun}
             onDiscardRun={handleDiscardExamRun}

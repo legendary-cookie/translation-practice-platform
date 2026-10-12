@@ -14,6 +14,7 @@ export type ExamCatalogProps = {
   profiles: ExamProfile[]
   activeRun?: ActiveExamRun
   recoveryStatus?: 'loading' | 'ready' | 'failed'
+  examEditingAvailable: boolean
   onSelectProfile: (profile: ExamProfile) => void
   onResumeRun: (run: ActiveExamRun) => void
   onDiscardRun: (runId: string) => void
@@ -23,6 +24,7 @@ export function ExamCatalog({
   profiles,
   activeRun,
   recoveryStatus = 'ready',
+  examEditingAvailable,
   onSelectProfile,
   onResumeRun,
   onDiscardRun,
@@ -72,6 +74,7 @@ export function ExamCatalog({
             <button
               className="button button--primary"
               type="button"
+              disabled={!examEditingAvailable}
               onClick={() => onResumeRun(activeRun)}
             >
               Resume Exam ({formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}) →
@@ -93,6 +96,11 @@ export function ExamCatalog({
           {recoveryStatus === 'loading'
             ? 'Checking this device for a saved exam attempt. New simulations will be available when recovery finishes.'
             : 'Saved exam recovery could not be checked. Reload this page before starting another simulation.'}
+        </section>
+      )}
+      {!examEditingAvailable && (
+        <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
+          Exam simulations require browser Web Locks to prevent two tabs from editing the same attempt. Use a browser with Web Locks support to start or resume an exam; written and interpreting practice remain available.
         </section>
       )}
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
@@ -300,7 +308,7 @@ export function ExamCatalog({
                 <button
                   className="button button--primary"
                   type="button"
-                  disabled={recoveryStatus !== 'ready' || Boolean(activeRun)}
+                  disabled={!examEditingAvailable || recoveryStatus !== 'ready' || Boolean(activeRun)}
                   style={{ width: '100%' }}
                   onClick={() => onSelectProfile(profile)}
                 >

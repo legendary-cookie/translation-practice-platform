@@ -36,6 +36,74 @@ function memoryStorage(initial = []) {
   }
 }
 
+function createFakeExamEditorLockManager() {
+  const heldLocks = new Set()
+  return {
+    request(name, _options, callback) {
+      return Promise.resolve().then(async () => {
+        const lock = heldLocks.has(name) ? null : { name }
+        if (lock) heldLocks.add(name)
+        try {
+          return await callback(lock)
+        } finally {
+          if (lock) heldLocks.delete(name)
+        }
+      })
+    },
+  }
+}
+
+test('exam editor identity survives same-tab remount while copied session identity cannot bypass the tab lock', async () => {
+  const editor = require('../src/storage/exam-run-editor.ts')
+  const tabSession = memoryStorage()
+  const firstDocumentToken = editor.readOrCreateExamRunEditorToken(tabSession)
+  const reloadedDocumentToken = editor.readOrCreateExamRunEditorToken(tabSession)
+  assert.equal(reloadedDocumentToken, firstDocumentToken, 'same-tab reload keeps its session token')
+
+  const duplicatedTabSession = memoryStorage([[editor.EXAM_RUN_EDITOR_SESSION_TOKEN_KEY, firstDocumentToken]])
+  const duplicatedTabToken = editor.readOrCreateExamRunEditorToken(duplicatedTabSession)
+  assert.equal(duplicatedTabToken, firstDocumentToken, 'duplicated tabs may copy sessionStorage, so token equality is not ownership proof')
+
+  const locks = createFakeExamEditorLockManager()
+  const originalOwner = await editor.acquireExamRunEditorTabLock('run-reload', locks)
+  await assert.rejects(
+    editor.acquireExamRunEditorTabLock('run-reload', locks),
+    (error) => error.name === 'ExamRunEditorOwnedError',
+    'a second live document cannot use a copied session token to enter the same editor lock',
+  )
+
+  originalOwner.release()
+  await new Promise((resolve) => setImmediate(resolve))
+  const reloadedOwner = await editor.acquireExamRunEditorTabLock('run-reload', locks)
+  reloadedOwner.release()
+})
+
+test('exam editor tab ownership fails closed when Web Locks are unavailable', async () => {
+  const editor = require('../src/storage/exam-run-editor.ts')
+  await assert.rejects(
+    editor.acquireExamRunEditorTabLock('run-no-lock-api', undefined),
+    (error) => error.name === 'ExamRunEditorLocksUnavailableError',
+  )
+})
+
+test('a foreign token cannot reclaim an exam run while its current lease is live', async () => {
+  const editor = require('../src/storage/exam-run-editor.ts')
+  const now = Date.parse('2026-10-13T00:01:00.000Z')
+  const run = {
+    id: 'run-live-owner', status: 'in-progress', revision: 9, editorToken: 'owner-a',
+    editorLeaseExpiresAt: new Date(now + 20_000).toISOString(),
+    answers: { section: { passage: 'accepted answer' } }, lastSavedAt: new Date(now).toISOString(),
+  }
+  const store = createRunStore([run])
+
+  await assert.rejects(
+    editor.claimExamRunEditor(run.id, 'owner-b', store.transaction, now),
+    (error) => error.name === 'ExamRunEditorOwnedError',
+  )
+  assert.equal(store.runs[0].editorToken, 'owner-a')
+  assert.equal(store.runs[0].answers.section.passage, 'accepted answer')
+})
+
 test('serialized exam editor claims allow one owner and heartbeat survives a paused evaluation', async () => {
   const editor = require('../src/storage/exam-run-editor.ts')
   const store = createRunStore([{

@@ -4,8 +4,20 @@ export const EXAM_RUN_RECOVERY_KEY_PREFIX = 'lingo-practice-exam-run-recovery-v1
 export const EXAM_RUN_TOMBSTONE_KEY_PREFIX = 'lingo-practice-exam-run-discarded-v1:'
 export const EXAM_RUN_EDITOR_KEY_PREFIX = 'lingo-practice-exam-run-editor-v1:'
 export const EXAM_RUN_COMPLETION_KEY_PREFIX = 'lingo-practice-exam-run-completed-v1:'
+export const EXAM_RUN_EDITOR_SESSION_TOKEN_KEY = 'lingo-practice-exam-editor-session-v1'
+export const EXAM_RUN_EDITOR_TAB_LOCK_NAME = 'lingo-practice-exam-editor-tab-v1'
 export const EXAM_RUN_EDITOR_LEASE_MS = 30_000
 export const EXAM_RUN_EDITOR_HEARTBEAT_MS = 5_000
+
+export type ExamRunEditorLockManager = {
+  request<T>(
+    name: string,
+    options: { mode: 'exclusive'; ifAvailable: true },
+    callback: (lock: unknown | null) => Promise<T>,
+  ): Promise<T>
+}
+
+export type ExamRunEditorTabLock = { release: () => void }
 
 type EditorStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>
 
@@ -45,6 +57,13 @@ export class ExamRunRecoveryCheckpointError extends Error {
   }
 }
 
+export class ExamRunEditorLocksUnavailableError extends Error {
+  constructor() {
+    super('Safe exam editing requires browser Web Locks support. Use an updated browser to start or resume an exam; written and interpreting practice remain available.')
+    this.name = 'ExamRunEditorLocksUnavailableError'
+  }
+}
+
 export function examRunRecoveryKey(runId: string, editorToken?: string): string {
   const suffix = editorToken === undefined ? '' : `:${encodeURIComponent(editorToken)}`
   return `${EXAM_RUN_RECOVERY_KEY_PREFIX}${runId}${suffix}`
@@ -66,6 +85,50 @@ export function createExamRunEditorToken(): string {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `editor-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+export function readOrCreateExamRunEditorToken(storage: Pick<Storage, 'getItem' | 'setItem'>): string {
+  const existing = storage.getItem(EXAM_RUN_EDITOR_SESSION_TOKEN_KEY)
+  if (existing?.trim()) return existing
+  const token = createExamRunEditorToken()
+  storage.setItem(EXAM_RUN_EDITOR_SESSION_TOKEN_KEY, token)
+  return token
+}
+
+export function acquireExamRunEditorTabLock(
+  runId: string,
+  lockManager: ExamRunEditorLockManager | undefined,
+): Promise<ExamRunEditorTabLock> {
+  if (!lockManager) return Promise.reject(new ExamRunEditorLocksUnavailableError())
+
+  return new Promise((resolve, reject) => {
+    let acquired = false
+    let releaseLock: (() => void) | undefined
+    const lockHeld = new Promise<void>((release) => { releaseLock = release })
+    const request = lockManager.request(
+      EXAM_RUN_EDITOR_TAB_LOCK_NAME,
+      { mode: 'exclusive', ifAvailable: true },
+      async (lock) => {
+        if (!lock) {
+          reject(new ExamRunEditorOwnedError(runId))
+          return
+        }
+        acquired = true
+        let released = false
+        resolve({
+          release: () => {
+            if (released) return
+            released = true
+            releaseLock?.()
+          },
+        })
+        await lockHeld
+      },
+    )
+    void request.catch((error) => {
+      if (!acquired) reject(error)
+    })
+  })
 }
 
 function leaseExpiry(run: ActiveExamRun): number {

@@ -139,6 +139,7 @@
 
 .interpreting-alignment {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
@@ -148,12 +149,14 @@
 
 .interpreting-alignment-list {
   display: grid;
+  min-width: 0;
   gap: .85rem;
 }
 
 .interpreting-alignment-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
   gap: .85rem;
   padding: .9rem;
   border: 1px solid #e2e8f0;
@@ -204,6 +207,21 @@
   .interpreting-alignment .interpreting-card-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .interpreting-alignment .interpreting-card-heading,
+  .interpreting-alignment .interpreting-card-heading > div {
+    min-width: 0;
+  }
+
+  .interpreting-alignment .interpreting-card-heading > div {
+    width: 100%;
+  }
+
+  .interpreting-alignment .interpreting-card-heading audio {
+    width: 100%;
+    min-width: 0;
+    max-width: 20rem;
   }
 
   .interpreting-score-groups {

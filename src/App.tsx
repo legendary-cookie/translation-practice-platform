@@ -200,6 +200,7 @@ export default function App() {
   const [activeInterpretingMode, setActiveInterpretingMode] = useState<InterpretingMode>('consecutive')
   const [activeInterpretingSourceRecording, setActiveInterpretingSourceRecording] = useState<AudioRecordingRecord | undefined>()
   const [activeInterpretingSourceUrl, setActiveInterpretingSourceUrl] = useState<string | undefined>()
+  const [activeInterpretingSessionId, setActiveInterpretingSessionId] = useState<string | undefined>()
   const [activeInterpretingInput, setActiveInterpretingInput] = useState<InterpretingEvaluationInput | undefined>()
   const [interpretingFeedback, setInterpretingFeedback] = useState<InterpretingFeedback | undefined>()
   const [recentInterpretingSessions, setRecentInterpretingSessions] = useState<InterpretingSessionRecord[]>([])
@@ -234,6 +235,15 @@ export default function App() {
   const interpretingSessionOpenGenerationRef = useRef(0)
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
+
+  useEffect(() => {
+    const sourceUrl = activeInterpretingSourceUrl
+    return () => {
+      if (sourceUrl) {
+        URL.revokeObjectURL(sourceUrl)
+      }
+    }
+  }, [activeInterpretingSourceUrl])
 
   const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number) => {
     if (localProviderEpochRef.current !== providerEpoch) {
@@ -411,14 +421,12 @@ export default function App() {
     setExamEvaluationNotice(undefined)
     setPendingExamConsent(undefined)
     setPendingInterpretingConsent(undefined)
-    if (activeInterpretingSourceUrl) {
-      URL.revokeObjectURL(activeInterpretingSourceUrl)
-    }
     setActiveExercise(undefined)
     setActiveInterpretingExercise(undefined)
     setActiveInterpretingInput(undefined)
     setActiveInterpretingSourceRecording(undefined)
     setActiveInterpretingSourceUrl(undefined)
+    setActiveInterpretingSessionId(undefined)
     setInterpretingFeedback(undefined)
     setPracticeSetupMode('written')
     setTimeLimitSeconds(undefined)
@@ -500,11 +508,9 @@ export default function App() {
 
   function openInterpretingSetup() {
     interpretingSessionOpenGenerationRef.current += 1
-    if (activeInterpretingSourceUrl) {
-      URL.revokeObjectURL(activeInterpretingSourceUrl)
-    }
     setActiveInterpretingExercise(undefined)
     setActiveInterpretingInput(undefined)
+    setActiveInterpretingSessionId(undefined)
     setActiveInterpretingSourceRecording(undefined)
     setActiveInterpretingSourceUrl(undefined)
     setInterpretingFeedback(undefined)
@@ -720,13 +726,11 @@ export default function App() {
   }
 
   function beginPractice(selection: PracticeStart) {
-    if (activeInterpretingSourceUrl) {
-      URL.revokeObjectURL(activeInterpretingSourceUrl)
-    }
     setPracticeSetupMode('written')
     setActiveExercise(selection.exercise)
     setActiveInterpretingExercise(undefined)
     setActiveInterpretingInput(undefined)
+    setActiveInterpretingSessionId(undefined)
     setInterpretingFeedback(undefined)
     setTimeLimitSeconds(selection.timeLimitSeconds)
     setDraftAnswer('')
@@ -738,14 +742,12 @@ export default function App() {
   }
 
   function beginInterpreting(selection: InterpretingStart) {
-    if (activeInterpretingSourceUrl && activeInterpretingSourceUrl !== selection.exercise.audioUrl) {
-      URL.revokeObjectURL(activeInterpretingSourceUrl)
-    }
     setPracticeSetupMode('interpreting')
     setActiveInterpretingExercise(selection.exercise)
     setActiveInterpretingMode(selection.interpretingMode)
     setActiveInterpretingSourceRecording(selection.sourceRecording)
     setActiveInterpretingSourceUrl(selection.sourceRecording ? selection.exercise.audioUrl : undefined)
+    setActiveInterpretingSessionId(undefined)
     setActiveInterpretingInput(undefined)
     setInterpretingFeedback(undefined)
     setPracticeNotice(undefined)
@@ -756,14 +758,12 @@ export default function App() {
 
   function resetPractice() {
     if (currentPage === 'interpreting') {
-      if (activeInterpretingSourceUrl) {
-        URL.revokeObjectURL(activeInterpretingSourceUrl)
-      }
       setPracticeSetupMode('interpreting')
       setActiveInterpretingExercise(undefined)
       setActiveInterpretingInput(undefined)
       setActiveInterpretingSourceRecording(undefined)
       setActiveInterpretingSourceUrl(undefined)
+      setActiveInterpretingSessionId(undefined)
       setInterpretingFeedback(undefined)
     } else {
       setPracticeSetupMode('written')
@@ -830,6 +830,7 @@ export default function App() {
       generation,
     }
     setActiveInterpretingInput(input)
+    setActiveInterpretingSessionId(id)
     setInterpretingFeedback(nextFeedback)
     setPracticeNotice(provider === 'manual'
       ? 'Scoreless self-review is ready. Saving its audio and notes only on this device.'
@@ -976,15 +977,13 @@ export default function App() {
         if (sourceUrl) URL.revokeObjectURL(sourceUrl)
         return
       }
-      if (activeInterpretingSourceUrl) {
-        URL.revokeObjectURL(activeInterpretingSourceUrl)
-      }
       setActiveExercise(undefined)
       setPracticeSetupMode('interpreting')
       setActiveInterpretingExercise(exercise)
       setActiveInterpretingMode(session.interpretingMode)
       setActiveInterpretingSourceRecording(sourceRecording)
       setActiveInterpretingSourceUrl(sourceUrl)
+      setActiveInterpretingSessionId(session.id)
       setActiveInterpretingInput({
         exercise,
         interpretingMode: session.interpretingMode,
@@ -1011,6 +1010,15 @@ export default function App() {
   async function handleDeleteInterpretingSession(id: string) {
     await trackPersistence(database.deleteInterpretingSession(id))
     setRecentInterpretingSessions((sessions) => sessions.filter((session) => session.id !== id))
+    if (activeInterpretingSessionId === id) {
+      setActiveInterpretingSessionId(undefined)
+      setActiveInterpretingExercise(undefined)
+      setActiveInterpretingInput(undefined)
+      setActiveInterpretingSourceRecording(undefined)
+      setActiveInterpretingSourceUrl(undefined)
+      setInterpretingFeedback(undefined)
+      setPracticeNotice('The saved interpreting session and its local audio were deleted from this device.')
+    }
   }
 
   async function submitAnswer(answer: string, elapsedSeconds: number) {

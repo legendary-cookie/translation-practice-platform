@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type SyntheticEvent } from 'react'
+import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { getLanguage } from '../../domain/languages'
 import type { InterpretingExercise, InterpretingFeedback, InterpretingEvaluationInput } from '../../domain/types'
 
@@ -37,13 +37,19 @@ export function TranscriptAlignment({
 }) {
   const sourceAudio = useRef<HTMLAudioElement>(null)
   const sourceRangeEndSeconds = useRef<number | undefined>(undefined)
-  const replayUrls = useMemo(() => new Map(input.recordings.map((recording) => [recording.id, URL.createObjectURL(recording.blob)])), [input.recordings])
+  const [replayUrlSet, setReplayUrlSet] = useState<{
+    recordings: InterpretingEvaluationInput['recordings']
+    urls: Map<string, string>
+  }>()
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
+  const replayUrls = replayUrlSet?.recordings === input.recordings ? replayUrlSet.urls : undefined
 
-  useEffect(() => () => {
-    replayUrls.forEach((url) => URL.revokeObjectURL(url))
-  }, [replayUrls])
+  useEffect(() => {
+    const urls = new Map(input.recordings.map((recording) => [recording.id, URL.createObjectURL(recording.blob)]))
+    setReplayUrlSet({ recordings: input.recordings, urls })
+    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+  }, [input.recordings])
 
   useEffect(() => {
     const audio = sourceAudio.current
@@ -76,7 +82,7 @@ export function TranscriptAlignment({
       <div className="interpreting-alignment-list">
         {exercise.segments.map((segment) => {
           const response = input.responseSegments.find((candidate) => candidate.sourceSegmentId === segment.id)
-          const recordingUrl = response?.recordingId ? replayUrls.get(response.recordingId) : undefined
+          const recordingUrl = response?.recordingId ? replayUrls?.get(response.recordingId) : undefined
           const segmentAnnotations = [...feedback.issues, ...feedback.uncertainEvidence].filter((annotation) => annotation.sourceSegmentId === segment.id || annotation.responseSegmentId === response?.id)
           return (
             <article className="interpreting-alignment-row" key={segment.id}>

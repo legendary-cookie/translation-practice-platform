@@ -5,6 +5,24 @@ export type LiveInputMonitor = {
   dispose(): void
 }
 
+const AUDIO_ANALYSIS_TIMEOUT_MS = 15_000
+
+export type AudioAnalysisOptions = {
+  timeoutMs?: number
+  createContext?: () => AudioContext
+}
+
+export function createFallbackAnalysis(durationMs: number): DeliveryAnalysis {
+  return {
+    durationMs,
+    activeSpeechRatio: 0,
+    pauseCount: 0,
+    longestPauseMs: 0,
+    analysisConfidence: 0.2,
+    method: 'local-analysis-unavailable-v1',
+  }
+}
+
 export function createLiveInputMonitor(stream: MediaStream): LiveInputMonitor | undefined {
   const AudioContextConstructor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
   if (!AudioContextConstructor) {
@@ -45,14 +63,29 @@ export function createLiveInputMonitor(stream: MediaStream): LiveInputMonitor | 
   }
 }
 
-export async function analyzeRecording(blob: Blob): Promise<DeliveryAnalysis> {
+export async function analyzeRecording(blob: Blob, options: AudioAnalysisOptions = {}): Promise<DeliveryAnalysis> {
   const AudioContextConstructor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  if (!AudioContextConstructor) {
+  if (!AudioContextConstructor && !options.createContext) {
     throw new Error('Web Audio analysis is unavailable in this browser.')
   }
-  const context = new AudioContextConstructor()
-  try {
-    const buffer = await context.decodeAudioData(await blob.arrayBuffer())
+  const context = options.createContext?.() ?? new AudioContextConstructor!()
+  let closeStarted = false
+  const closeContext = () => {
+    if (closeStarted) return
+    closeStarted = true
+    try {
+      void Promise.resolve(context.close()).catch(() => undefined)
+    } catch {
+      // Decoder cleanup must not hold the analysis result open.
+    }
+  }
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let analysisTimedOut = false
+  const work = (async (): Promise<DeliveryAnalysis> => {
+    const encodedAudio = await blob.arrayBuffer()
+    if (analysisTimedOut) throw new Error('Local audio analysis timed out.')
+    const buffer = await context.decodeAudioData(encodedAudio)
+    if (analysisTimedOut) throw new Error('Local audio analysis timed out.')
     const channel = buffer.getChannelData(0)
     const windowSize = Math.max(1, Math.floor(buffer.sampleRate * 0.02))
     const energies: number[] = []
@@ -96,7 +129,18 @@ export async function analyzeRecording(blob: Blob): Promise<DeliveryAnalysis> {
       analysisConfidence: 0.35,
       method: 'local-web-audio-energy-v2',
     }
+  })()
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      analysisTimedOut = true
+      closeContext()
+      reject(new Error('Local audio analysis timed out. The recording was kept; retry or continue with limited-confidence self-review.'))
+    }, options.timeoutMs ?? AUDIO_ANALYSIS_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([work, timeout])
   } finally {
-    await context.close()
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+    closeContext()
   }
 }

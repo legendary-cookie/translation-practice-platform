@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { analyzeRecording } from '../../audio/audio-analysis'
+import { analyzeRecording, createFallbackAnalysis } from '../../audio/audio-analysis'
 import { createAudioPlayer, type AudioPlayer } from '../../audio/audio-player'
 import { createResponseRecorder, type RecorderState, type ResponseRecorder } from '../../audio/audio-recorder'
 import { getLocalRecognitionCapabilityWithTimeout, recognizeLocal, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
@@ -35,17 +35,6 @@ type PlayerState = {
 function formatSeconds(seconds: number): string {
   const wholeSeconds = Math.max(0, Math.floor(seconds))
   return `${Math.floor(wholeSeconds / 60).toString().padStart(2, '0')}:${(wholeSeconds % 60).toString().padStart(2, '0')}`
-}
-
-function fallbackAnalysis(durationMs: number): DeliveryAnalysis {
-  return {
-    durationMs,
-    activeSpeechRatio: 0,
-    pauseCount: 0,
-    longestPauseMs: 0,
-    analysisConfidence: 0.2,
-    method: 'local-analysis-unavailable-v1',
-  }
 }
 
 export function InterpretingWorkspace({ exercise, initialInput, interpretingMode, isSubmitting, notice, onCancel, onSubmit, onSaveSelfReview }: Props) {
@@ -310,7 +299,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
       const analysis = await analyzeRecording(recording.blob)
       setDeliveryByTake((current) => ({ ...current, [key]: { ...analysis, recordingId: recording.id } }))
     } catch {
-      setDeliveryByTake((current) => ({ ...current, [key]: { ...fallbackAnalysis(recording.durationMs), recordingId: recording.id } }))
+      setDeliveryByTake((current) => ({ ...current, [key]: { ...createFallbackAnalysis(recording.durationMs), recordingId: recording.id } }))
       setError('The take was saved, but local delivery analysis was unavailable. The feedback will say so.')
     } finally {
       pendingAnalysisRef.current.delete(key)

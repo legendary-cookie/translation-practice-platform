@@ -30,6 +30,11 @@ export type ResponseRecorder = {
 }
 
 const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4']
+const MICROPHONE_PERMISSION_TIMEOUT_MS = 15_000
+
+export type ResponseRecorderOptions = {
+  permissionTimeoutMs?: number
+}
 
 function chooseMimeType(): string | undefined {
   if (typeof MediaRecorder === 'undefined') {
@@ -53,7 +58,7 @@ function readableMicrophoneError(error: unknown): string {
   return error instanceof Error ? error.message : 'The microphone could not be opened.'
 }
 
-export function createResponseRecorder(exerciseId: string): ResponseRecorder {
+export function createResponseRecorder(exerciseId: string, options: ResponseRecorderOptions = {}): ResponseRecorder {
   type ActiveRecording = {
     activeRecorder: MediaRecorder
     promise: Promise<AudioRecordingRecord | undefined>
@@ -76,6 +81,8 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
   let levelTimer: ReturnType<typeof setInterval> | undefined
   let liveMonitor: LiveInputMonitor | undefined
   let permissionRequest: Promise<void> | undefined
+  let permissionGeneration = 0
+  let rejectPendingPermission: ((error: Error) => void) | undefined
   let startInProgress = false
   let disposed = false
   const replayUrls = new Set<string>()
@@ -109,19 +116,44 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
     }
   }
 
-  const openStream = async () => {
+  const openStream = async (generation: number): Promise<MediaStream> => {
     if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       throw new Error('Microphone recording requires HTTPS or localhost. The audio stays on this device.')
     }
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('This browser does not expose microphone recording. You can still review the source transcript manually.')
     }
-    const requestedStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    if (disposed) {
-      requestedStream.getTracks().forEach((track) => track.stop())
-      throw new Error('This recording workspace has closed. The microphone was released.')
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let rejectCancellation: ((error: Error) => void) | undefined
+    const cancelled = new Promise<never>((_, reject) => { rejectCancellation = reject })
+    rejectPendingPermission = rejectCancellation
+    const requestedStream = Promise.resolve()
+      .then(() => {
+        if (disposed || generation !== permissionGeneration) {
+          throw new Error('This microphone request is no longer active.')
+        }
+        return navigator.mediaDevices.getUserMedia({ audio: true })
+      })
+      .then((openedStream) => {
+        if (disposed || generation !== permissionGeneration) {
+          openedStream.getTracks().forEach((track) => track.stop())
+          throw new Error('This microphone request is no longer active. Any late stream was released.')
+        }
+        return openedStream
+      })
+    const timeoutMs = options.permissionTimeoutMs ?? MICROPHONE_PERMISSION_TIMEOUT_MS
+    const timedOut = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        if (generation === permissionGeneration) permissionGeneration += 1
+        reject(new Error(`Microphone permission did not respond within ${Math.ceil(timeoutMs / 1000)} seconds. Check browser permission and retry.`))
+      }, timeoutMs)
+    })
+    try {
+      return await Promise.race([requestedStream, cancelled, timedOut])
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+      if (rejectPendingPermission === rejectCancellation) rejectPendingPermission = undefined
     }
-    stream = requestedStream
   }
 
   return {
@@ -133,16 +165,20 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
       error = undefined
       notify()
       if (permissionRequest) return permissionRequest
+      const generation = ++permissionGeneration
       permissionRequest = (async () => {
         try {
-          await openStream()
+          stream = await openStream(generation)
           state = 'idle'
           notify()
         } catch (caught) {
-          state = 'error'
-          error = readableMicrophoneError(caught)
-          notify()
-          throw new Error(error)
+          const message = readableMicrophoneError(caught)
+          if (!disposed) {
+            state = 'error'
+            error = message
+            notify()
+          }
+          throw new Error(message)
         } finally {
           permissionRequest = undefined
         }
@@ -383,6 +419,9 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
 
     dispose() {
       disposed = true
+      permissionGeneration += 1
+      rejectPendingPermission?.(new Error('This recording workspace has closed.'))
+      rejectPendingPermission = undefined
       if (activeRecording) activeRecording.suppressCompletion = true
       if (recorder && recorder.state !== 'inactive') {
         try {

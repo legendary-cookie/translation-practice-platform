@@ -3,6 +3,7 @@ import type { LanguageCode } from '../domain/languages'
 import { DEFAULT_LOCAL_MODEL_ID } from '../domain/types'
 import { hasModelInCache, prebuiltAppConfig } from '@mlc-ai/web-llm'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
+import { withCapabilityDeadline } from './capability-deadline'
 
 export type CapabilityTier = 'L0' | 'L1' | 'L2' | 'L3' | 'L4'
 
@@ -89,6 +90,7 @@ export const WEAK_LOCAL_LANGUAGES: LanguageCode[] = ['hi', 'ar']
 const LOCAL_MODEL_STORAGE_RESERVE_BYTES = 1_250_000_000
 const LOCAL_MODEL_OUTPUT_TOKEN_RESERVE = 1400
 const LOCAL_MODEL_CONTEXT_SAFETY_MARGIN = 256
+const CAPABILITY_CHECK_TIMEOUT_MS = 10_000
 const HAN_CHARACTER = /\p{Script=Han}/u
 
 const tierRank: Record<CapabilityTier, number> = {
@@ -287,7 +289,7 @@ export function createInitialCapability(): CapabilityAssessment {
   }
 }
 
-export async function detectDeviceCapability(): Promise<CapabilityAssessment> {
+export async function detectDeviceCapability(timeoutMs = CAPABILITY_CHECK_TIMEOUT_MS): Promise<CapabilityAssessment> {
   if (typeof navigator === 'undefined') {
     return createInitialCapability()
   }
@@ -298,7 +300,18 @@ export async function detectDeviceCapability(): Promise<CapabilityAssessment> {
   const jsHeapLimitGiB = typeof performanceSignals.memory?.jsHeapSizeLimit === 'number'
     ? performanceSignals.memory.jsHeapSizeLimit / 1024 ** 3
     : undefined
-  const [webGpu, storage] = await Promise.all([detectWebGpu(signals), detectStorage()])
+  const [webGpu, storage] = await Promise.all([
+    withCapabilityDeadline(detectWebGpu(signals), timeoutMs, () => ({
+      status: 'unavailable' as const,
+      adapterAvailable: false,
+      features: [],
+      reason: 'WebGPU adapter detection timed out. Retry the device capability check from Settings.',
+    })),
+    withCapabilityDeadline(detectStorage(), timeoutMs, () => ({
+      status: 'unknown' as const,
+      reason: 'The browser storage check timed out. Model caching remains best-effort; retry the device capability check from Settings.',
+    })),
+  ])
   const { deviceClass, deviceLabel } = classifyDevice(signals)
   const tier = assessTier(deviceClass, webGpu, storage, deviceMemoryGiB)
 

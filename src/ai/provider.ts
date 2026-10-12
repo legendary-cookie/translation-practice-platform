@@ -1,5 +1,6 @@
 import type { EvaluationFeedback, EvaluationMode, EvaluationRequest, InterpretingEvaluationInput, InterpretingExercise, InterpretingFeedback, Exercise, LanguageCode, TranslationFeedback } from '../domain/types'
 import { getLocalEvaluationDecision, type CapabilityAssessment } from './capability'
+import { LocalEvaluationCancelledError } from './local-evaluation-lifecycle'
 
 export interface EvaluationProvider {
   evaluate(input: EvaluationRequest): Promise<EvaluationFeedback>
@@ -11,6 +12,7 @@ export type LocalProviderLike = EvaluationProvider & {
   getErrorMessage(): string | undefined
   isCached(): Promise<boolean>
   isReady(): boolean
+  cancelEvaluation(): boolean
   dispose(): void
 }
 
@@ -91,6 +93,9 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
         try {
           return { status: 'evaluated', provider: 'local', feedback: await localProvider.evaluate(input) }
         } catch (error) {
+          if (error instanceof LocalEvaluationCancelledError) {
+            return { status: 'unavailable', reason: error.message }
+          }
           localFailure = error instanceof Error ? error.message : 'The local evaluator failed.'
         }
       } else if (capabilityDecision.allowed && localProvider) {

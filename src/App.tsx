@@ -221,6 +221,7 @@ export default function App() {
   const [settingsHydrationStatus, setSettingsHydrationStatus] = useState<SessionHistoryStatus>('loading')
   const [localProgress, setLocalProgress] = useState<LocalModelProgress>({ status: 'not-prepared', text: 'Local model has not been prepared.' })
   const [capability, setCapability] = useState<CapabilityAssessment>(createInitialCapability)
+  const [isCheckingCapability, setIsCheckingCapability] = useState(true)
   const [recentSessions, setRecentSessions] = useState<SessionRecord[]>([])
   const [sessionHistoryStatus, setSessionHistoryStatus] = useState<SessionHistoryStatus>('loading')
   const [activeExercise, setActiveExercise] = useState<Exercise | undefined>()
@@ -281,6 +282,7 @@ export default function App() {
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
   const writtenEvaluationGuardRef = useRef(createWrittenEvaluationGuard())
+  const capabilityCheckGenerationRef = useRef(0)
 
   function getExamEditorToken(): string {
     if (examEditorTokenRef.current) return examEditorTokenRef.current
@@ -473,16 +475,31 @@ export default function App() {
   remoteDataClearHandlerRef.current = handleRemoteDataCleared
   useEffect(() => subscribeToDataCleared((epoch) => remoteDataClearHandlerRef.current(epoch)), [])
 
-  useEffect(() => {
-    let cancelled = false
-    void detectDeviceCapability().then((nextCapability) => {
-      if (!cancelled) {
-        setCapability(nextCapability)
+  async function recheckDeviceCapability() {
+    const generation = ++capabilityCheckGenerationRef.current
+    setIsCheckingCapability(true)
+    setCapability(createInitialCapability())
+    try {
+      const nextCapability = await detectDeviceCapability()
+      if (capabilityCheckGenerationRef.current === generation) setCapability(nextCapability)
+    } catch (error) {
+      if (capabilityCheckGenerationRef.current === generation) {
+        const reason = error instanceof Error ? error.message : 'Device capability detection failed.'
+        const initial = createInitialCapability()
+        setCapability({
+          ...initial,
+          webGpu: { status: 'unavailable', adapterAvailable: false, features: [], reason: `${reason} Retry the device capability check from Settings.` },
+          localModel: { ...initial.localModel, status: 'unavailable', reason },
+        })
       }
-    })
-    return () => {
-      cancelled = true
+    } finally {
+      if (capabilityCheckGenerationRef.current === generation) setIsCheckingCapability(false)
     }
+  }
+
+  useEffect(() => {
+    void recheckDeviceCapability()
+    return () => { capabilityCheckGenerationRef.current += 1 }
   }, [])
 
   useEffect(() => {
@@ -647,6 +664,7 @@ export default function App() {
     dataLoadGeneration.current += 1
     examResultOpenGenerationRef.current += 1
     writtenEvaluationGuardRef.current.activate(undefined)
+    localProvider.cancelEvaluation()
     pendingConsent?.request.revokePreview?.()
     pendingInterpretingConsent?.request.revokePreview?.()
     setPendingConsent(undefined)
@@ -672,6 +690,7 @@ export default function App() {
     dataLoadGeneration.current += 1
     examResultOpenGenerationRef.current += 1
     writtenEvaluationGuardRef.current.activate(undefined)
+    localProvider.cancelEvaluation()
     pendingConsent?.request.revokePreview?.()
     setPendingConsent(undefined)
     const nextProviderEpoch = localProviderEpochRef.current + 1
@@ -811,6 +830,7 @@ export default function App() {
   function navigateToPage(page: Page) {
     examResultOpenGenerationRef.current += 1
     if (currentPage === 'practice' && page !== 'practice') {
+      localProvider.cancelEvaluation()
       writtenEvaluationGuardRef.current.invalidate()
       pendingConsent?.request.revokePreview?.()
       setPendingConsent(undefined)
@@ -1091,6 +1111,7 @@ export default function App() {
   }
 
   function beginPractice(selection: PracticeStart) {
+    localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(selection.exercise.id)
     pendingConsent?.request.revokePreview?.()
     setIsEvaluating(false)
@@ -1111,6 +1132,7 @@ export default function App() {
   }
 
   function beginInterpreting(selection: InterpretingStart) {
+    localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
     setPracticeSetupMode('interpreting')
     setActiveInterpretingExercise(selection.exercise)
@@ -1127,6 +1149,7 @@ export default function App() {
   }
 
   function resetPractice() {
+    localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
     pendingConsent?.request.revokePreview?.()
     setIsEvaluating(false)
@@ -1157,6 +1180,7 @@ export default function App() {
     if (hasMeaningfulDraft && !window.confirm('Starting news practice will discard your current written draft. Continue?')) {
       return
     }
+    localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
     pendingConsent?.request.revokePreview?.()
     setIsEvaluating(false)
@@ -1386,6 +1410,7 @@ export default function App() {
         if (sourceUrl) URL.revokeObjectURL(sourceUrl)
         return
       }
+      localProvider.cancelEvaluation()
       writtenEvaluationGuardRef.current.activate(undefined)
       setActiveExercise(undefined)
       setPracticeSetupMode('interpreting')
@@ -1717,7 +1742,7 @@ export default function App() {
             onRetryExamHistory={() => void loadExamHistory()}
           />
         )}
-        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} isCheckingCapability={isCheckingCapability} onRecheckCapability={() => void recheckDeviceCapability()} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined); setWrittenClockPaused(false) }} onConfirm={() => void confirmCloudEvaluation()} />}

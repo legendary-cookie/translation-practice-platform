@@ -10,6 +10,7 @@ import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prom
 import { ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
 import { parseJsonResponse } from './response-parsing'
 import { createInactivityDeadline } from './inactivity-timeout'
+import { createLocalEvaluationLifecycle, isLocalEngineGenerationCurrent, LocalEvaluationCancelledError, raceWithAbort } from './local-evaluation-lifecycle'
 
 export type LocalModelProgress = {
   status: 'not-prepared' | 'preparing' | 'ready' | 'unavailable'
@@ -23,6 +24,7 @@ export type LocalModelProgressCallback = (progress: LocalModelProgress) => void
 export const LOCAL_MODEL_CACHE_EVICTED_MESSAGE = 'The local model cache is missing. Your browser may have evicted the downloaded model; prepare it again before retrying local evaluation.'
 export const LOCAL_EVALUATION_INVALID_RESPONSE_MESSAGE = 'The local evaluator returned incomplete or invalid feedback twice. No score was saved. Try again, review manually, or choose explicit cloud consent.'
 export const LOCAL_EVALUATION_TIMEOUT_MESSAGE = 'Local evaluation timed out after 120 seconds. The local model was reset; prepare it again before retrying.'
+const LOCAL_EVALUATION_CANCELLED_MESSAGE = 'Local evaluation was cancelled because the practice task changed. Prepare the local model again before retrying.'
 const LOCAL_MODEL_READY_MARKER = 'lingo-practice-local-model-ready'
 const LOCAL_EVALUATION_MAX_TOKENS = 1400
 const LOCAL_EVALUATION_MAX_ATTEMPTS = 2
@@ -96,8 +98,10 @@ function withTimeout<T>(
   timeoutMs: number,
   onTimeout: () => void,
   message: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       try {
@@ -108,10 +112,17 @@ function withTimeout<T>(
     }, timeoutMs)
   })
 
-  return Promise.race([operation, timeoutPromise]).finally(() => {
+  const abortPromise = signal ? new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason instanceof Error ? signal.reason : new LocalEvaluationCancelledError())
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+  }) : undefined
+
+  return Promise.race(abortPromise ? [operation, timeoutPromise, abortPromise] : [operation, timeoutPromise]).finally(() => {
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId)
     }
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort)
   })
 }
 
@@ -236,7 +247,9 @@ export function createLocalProvider(
   let worker: Worker | undefined
   let enginePromise: Promise<WebWorkerMLCEngine> | undefined
   let preparationGeneration = 0
+  let engineGeneration = 0
   let diagnosticStarted = false
+  const evaluationLifecycle = createLocalEvaluationLifecycle()
 
   const startRequestedDiagnostic = async (engine: WebWorkerMLCEngine) => {
     const mode = requestedDiagnosticMode()
@@ -281,8 +294,11 @@ export function createLocalProvider(
         return
       }
 
+      evaluationLifecycle.cancelActive('The local model worker is being replaced; retry the practice evaluation after preparation finishes.')
       const generation = ++preparationGeneration
       worker?.terminate()
+      engineGeneration += 1
+      const currentEngineGeneration = engineGeneration
       const attemptWorker = createWorker()
       worker = attemptWorker
       instrumentWorker(attemptWorker)
@@ -293,6 +309,9 @@ export function createLocalProvider(
       const deadline = createInactivityDeadline(LOCAL_MODEL_PREPARATION_INACTIVITY_TIMEOUT_MS, () => {
         if (generation !== preparationGeneration) return
         preparationGeneration += 1
+        if (isLocalEngineGenerationCurrent({ generation: currentEngineGeneration, worker: attemptWorker }, { generation: engineGeneration, worker })) {
+          engineGeneration += 1
+        }
         attemptWorker.terminate()
         if (worker === attemptWorker) worker = undefined
         if (enginePromise === preparationPromise) enginePromise = undefined
@@ -327,6 +346,9 @@ export function createLocalProvider(
         if (generation === preparationGeneration) {
           preparationGeneration += 1
           attemptWorker.terminate()
+          if (isLocalEngineGenerationCurrent({ generation: currentEngineGeneration, worker: attemptWorker }, { generation: engineGeneration, worker })) {
+            engineGeneration += 1
+          }
           if (worker === attemptWorker) worker = undefined
           if (enginePromise === preparationPromise) enginePromise = undefined
           forgetLocalModelReady()
@@ -340,14 +362,52 @@ export function createLocalProvider(
       if (status !== 'ready' || !enginePromise) {
         throw new ProviderUnavailableError(errorMessage ?? 'The local model is not ready.')
       }
-      if (!(await provider.isCached())) {
-        report({ status: 'unavailable', error: LOCAL_MODEL_CACHE_EVICTED_MESSAGE, text: 'The local model cache is missing.' })
-        throw new ProviderUnavailableError(LOCAL_MODEL_CACHE_EVICTED_MESSAGE)
+      const attemptWorker = worker
+      const attemptEnginePromise = enginePromise
+      const attemptEngineIdentity = { generation: engineGeneration, worker: attemptWorker }
+      let engine: WebWorkerMLCEngine | undefined
+      const isAttemptEngineCurrent = () => isLocalEngineGenerationCurrent(attemptEngineIdentity, { generation: engineGeneration, worker })
+      const releaseAttemptEngine = (message: string, displayText: string) => {
+        if (!isAttemptEngineCurrent()) return false
+        try {
+          engine?.interruptGenerate()
+        } catch {
+          // Terminating the worker below remains the cancellation boundary.
+        }
+        attemptWorker?.terminate()
+        worker = undefined
+        enginePromise = undefined
+        engineGeneration += 1
+        forgetLocalModelReady()
+        report({ status: 'unavailable', error: message, text: displayText })
+        return true
       }
-      const engine = await enginePromise
+      const evaluationAttempt = evaluationLifecycle.begin((cancelled) => {
+        releaseAttemptEngine(cancelled.message, 'Local evaluation was cancelled; prepare the model again before retrying.')
+      })
+      if (!evaluationAttempt) {
+        throw new ProviderUnavailableError('A local evaluation is already in progress. Wait for it to finish before retrying.')
+      }
+
+      try {
+        if (!(await raceWithAbort(provider.isCached(), evaluationAttempt.signal))) {
+          if (isAttemptEngineCurrent()) {
+            report({ status: 'unavailable', error: LOCAL_MODEL_CACHE_EVICTED_MESSAGE, text: 'The local model cache is missing.' })
+          }
+          throw new ProviderUnavailableError(LOCAL_MODEL_CACHE_EVICTED_MESSAGE)
+        }
+        engine = await raceWithAbort(attemptEnginePromise, evaluationAttempt.signal)
+        evaluationAttempt.throwIfCancelled()
+        if (!isAttemptEngineCurrent()) {
+          throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
+        }
       const evaluationStartedAt = performance.now()
       let lastError: unknown
       for (let attempt = 1; attempt <= LOCAL_EVALUATION_MAX_ATTEMPTS; attempt += 1) {
+        evaluationAttempt.throwIfCancelled()
+        if (!isAttemptEngineCurrent()) {
+          throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
+        }
         const attemptStartedAt = performance.now()
         logLocalEvent('evaluation.start', {
           attempt,
@@ -363,16 +423,9 @@ export function createLocalProvider(
         })
         try {
           const resetTimedOutEngine = () => {
-            try {
-              engine.interruptGenerate()
-            } catch {
-              // The worker may already have exited while the timeout fired.
+            if (evaluationAttempt.isCurrent()) {
+              releaseAttemptEngine(LOCAL_EVALUATION_TIMEOUT_MESSAGE, 'Local evaluation timed out; prepare the model again before retrying.')
             }
-            worker?.terminate()
-            worker = undefined
-            enginePromise = undefined
-            forgetLocalModelReady()
-            report({ status: 'unavailable', error: LOCAL_EVALUATION_TIMEOUT_MESSAGE, text: 'Local evaluation timed out; prepare the model again before retrying.' })
           }
           const generated = await withTimeout(
             (async () => {
@@ -398,7 +451,12 @@ export function createLocalProvider(
             LOCAL_EVALUATION_TIMEOUT_MS,
             resetTimedOutEngine,
             LOCAL_EVALUATION_TIMEOUT_MESSAGE,
+            evaluationAttempt.signal,
           )
+          evaluationAttempt.throwIfCancelled()
+          if (!isAttemptEngineCurrent()) {
+            throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
+          }
           if (generated.finishReason === 'length') {
             throw new FeedbackValidationError('The local evaluator response was truncated before completion.')
           }
@@ -419,9 +477,14 @@ export function createLocalProvider(
           const feedback = 'learnerAnswer' in input
             ? validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
             : validateInterpretingFeedback(raw, input)
+          evaluationAttempt.throwIfCancelled()
+          if (!isAttemptEngineCurrent()) {
+            throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
+          }
           logLocalEvent('evaluation.validated', { attempt, elapsedMs: Math.round(performance.now() - evaluationStartedAt) })
           return feedback
         } catch (error) {
+          if (error instanceof LocalEvaluationCancelledError) throw error
           lastError = error
           if (!isRecoverableFeedbackError(error) || attempt === LOCAL_EVALUATION_MAX_ATTEMPTS) {
             break
@@ -441,6 +504,13 @@ export function createLocalProvider(
         throw new ProviderUnavailableError(LOCAL_EVALUATION_INVALID_RESPONSE_MESSAGE)
       }
       throw lastError instanceof Error ? lastError : new ProviderUnavailableError('The local evaluator failed.')
+      } finally {
+        evaluationAttempt.finish()
+      }
+    },
+
+    cancelEvaluation() {
+      return evaluationLifecycle.cancelActive(LOCAL_EVALUATION_CANCELLED_MESSAGE)
     },
 
     getStatus() {
@@ -464,7 +534,9 @@ export function createLocalProvider(
     },
 
     dispose() {
+      evaluationLifecycle.cancelActive(LOCAL_EVALUATION_CANCELLED_MESSAGE)
       preparationGeneration += 1
+      engineGeneration += 1
       worker?.terminate()
       worker = undefined
       enginePromise = undefined

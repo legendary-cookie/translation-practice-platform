@@ -16,6 +16,7 @@ export type ResponseRecorder = {
   pause(): void
   resume(): void
   stop(): Promise<AudioRecordingRecord | undefined>
+  getActiveTrack(): MediaStreamTrack | undefined
   getReplayUrl(recording: AudioRecordingRecord): string
   revokeReplayUrl(url: string): void
   subscribe(listener: RecorderListener): () => void
@@ -218,6 +219,10 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
         }, { once: true })
         activeRecorder.stop()
       })
+    },
+
+    getActiveTrack() {
+      return stream?.getAudioTracks()[0]
     },
 
     getReplayUrl(recording) {

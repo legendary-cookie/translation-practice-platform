@@ -43,6 +43,10 @@ export function isTranslationFeedback(feedback: EvaluationFeedback): feedback is
   return 'dimensions' in feedback
 }
 
+export function isInterpretingFeedback(feedback: EvaluationFeedback): feedback is Extract<EvaluationFeedback, { deliveryScores: unknown }> {
+  return 'deliveryScores' in feedback
+}
+
 export type EvaluationRouter = {
   evaluate(input: EvaluationRequest): Promise<EvaluationResult>
 }

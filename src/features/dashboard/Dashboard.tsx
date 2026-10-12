@@ -12,12 +12,14 @@ export function Dashboard({
   activeExamRun,
   recentExamResults = [],
   onNavigate,
+  onStartInterpreting,
 }: {
   localProgress: LocalModelProgress
   recentSessions: SessionRecord[]
   activeExamRun?: ActiveExamRun
   recentExamResults?: ConsolidatedExamResult[]
   onNavigate: (page: DashboardPage) => void
+  onStartInterpreting?: () => void
 }) {
   const localStatusLabel = localProgress.status === 'ready'
     ? 'Ready on this device'
@@ -105,14 +107,14 @@ export function Dashboard({
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
-          <div className="mode-card mode-card--planned">
+          <button className="mode-card mode-card--active" type="button" onClick={onStartInterpreting ?? (() => onNavigate('practice'))}>
             <span className="mode-card__icon">◌</span>
             <span className="mode-card__content">
               <strong>Interpreting</strong>
-              <span>Planned mode · audio and delivery practice.</span>
+              <span>Listen, record, replay, and review delivery from local audio.</span>
             </span>
-            <span className="pill">Planned</span>
-          </div>
+            <span className="mode-card__arrow" aria-hidden="true">↗</span>
+          </button>
         </div>
       </section>
 

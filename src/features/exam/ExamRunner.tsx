@@ -10,6 +10,7 @@ import {
 } from '../../domain/exam'
 import { database } from '../../storage/database'
 import { reconcilePersistedRun } from './persisted-run-reconciliation'
+import { requestExamSectionTransition } from './section-transition'
 import { ExamHeader } from './ExamHeader'
 import { ExamSectionWorkspace } from './ExamSectionWorkspace'
 import './exam.css'
@@ -253,7 +254,8 @@ export function ExamRunner({
   const currentSection = profile.sections[run.currentSectionIndex] ?? profile.sections[0]
   const currentSectionAnswers = run.answers[currentSection.id] ?? {}
   const currentSectionSeconds = run.sectionRemainingSeconds[currentSection.id] ?? 0
-  const isCurrentSectionLocked = submissionStartedRef.current || hasLostEditorLease || isEditorLeaseLost || Boolean(run.evaluationPausedAt) || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
+  const isEditorReadOnly = hasLostEditorLease || isEditorLeaseLost
+  const isCurrentSectionLocked = submissionStartedRef.current || isEditorReadOnly || Boolean(run.evaluationPausedAt) || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
 
   const handleAnswerChange = (passageId: string, text: string) => {
     if (submissionStartedRef.current) {
@@ -305,26 +307,37 @@ export function ExamRunner({
   }
 
   const handleNextSection = () => {
-    if (submissionStartedRef.current) {
-      return
-    }
     const currentRun = runRef.current
-    if (isLastSection(currentRun, profile)) {
-      setShowSubmitModal(true)
-    } else {
-      const nextRun = advanceSectionAndForfeitTime(currentRun, profile)
-      runRef.current = nextRun
-      isDirtyRef.current = true
-      try {
-        database.stageExamRunRecoverySync(nextRun)
-      } catch (error) {
-        reportPersistenceError('The synchronous section-change recovery checkpoint', error)
-      }
-      setRun(nextRun)
-      void database.saveExamRun(nextRun).catch((error) => {
-        reportPersistenceError('The section-change exam save', error)
-      })
-    }
+    requestExamSectionTransition({
+      isEditorReadOnly: hasLostEditorLease || isEditorLeaseLost,
+      submissionStarted: submissionStartedRef.current,
+      isLastSection: isLastSection(currentRun, profile),
+      requestSubmitConfirmation: () => setShowSubmitModal(true),
+      advance: () => {
+        const nextRun = advanceSectionAndForfeitTime(currentRun, profile)
+        runRef.current = nextRun
+        isDirtyRef.current = true
+        try {
+          database.stageExamRunRecoverySync(nextRun)
+        } catch (error) {
+          reportPersistenceError('The synchronous section-change recovery checkpoint', error)
+        }
+        setRun(nextRun)
+        void database.saveExamRun(nextRun).catch((error) => {
+          reportPersistenceError('The section-change exam save', error)
+        })
+      },
+    })
+  }
+
+  const handleRequestSubmitConfirmation = () => {
+    requestExamSectionTransition({
+      isEditorReadOnly: hasLostEditorLease || isEditorLeaseLost,
+      submissionStarted: submissionStartedRef.current,
+      isLastSection: true,
+      advance: () => undefined,
+      requestSubmitConfirmation: () => setShowSubmitModal(true),
+    })
   }
 
   const handleConfirmSubmit = () => {
@@ -416,7 +429,7 @@ export function ExamRunner({
         aidPolicy={profile.allowedAids}
         isProvisional={profile.status === 'provisional_draft'}
         onOpenAidsModal={() => setShowAidsModal(true)}
-        onSubmitEarly={() => setShowSubmitModal(true)}
+        onSubmitEarly={handleRequestSubmitConfirmation}
         onExit={() => void handleSaveAndExit()}
       />
 
@@ -428,6 +441,7 @@ export function ExamRunner({
         onNextSection={handleNextSection}
         isLastSection={isLastSection(run, profile)}
         isLocked={isCurrentSectionLocked}
+        isEditorReadOnly={isEditorReadOnly}
         unusedSectionSeconds={currentSectionSeconds}
       />
 

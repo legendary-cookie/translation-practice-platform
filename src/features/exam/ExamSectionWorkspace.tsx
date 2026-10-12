@@ -10,6 +10,7 @@ export type ExamSectionWorkspaceProps = {
   onNextSection: () => void
   isLastSection: boolean
   isLocked?: boolean
+  isEditorReadOnly?: boolean
   unusedSectionSeconds?: number
 }
 
@@ -21,6 +22,7 @@ export function ExamSectionWorkspace({
   onNextSection,
   isLastSection,
   isLocked = false,
+  isEditorReadOnly = false,
   unusedSectionSeconds = 0,
 }: ExamSectionWorkspaceProps) {
   const [selectedPassageIndex, setSelectedPassageIndex] = useState(0)
@@ -184,6 +186,7 @@ export function ExamSectionWorkspace({
           <button
             className="button button--primary"
             type="button"
+            disabled={isEditorReadOnly}
             onClick={onNextSection}
           >
             {isLastSection ? 'Proceed to Final Submission' : unusedSectionSeconds > 0 ? 'Finish Section Early →' : 'Next Section →'}

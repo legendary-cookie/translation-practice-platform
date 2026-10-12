@@ -39,6 +39,7 @@ export function InterpretingSetup({
   const [importError, setImportError] = useState<string>()
   const transferredObjectUrl = useRef<string | undefined>(undefined)
   const direction = CHINESE_DIRECTIONS.find((item) => item.id === directionId) ?? CHINESE_DIRECTIONS[0]
+  const sourceLanguage = getLanguage(direction.sourceLanguage)
   const exercises = useMemo(
     () => getInterpretingExercisesForDirection(direction.sourceLanguage, direction.targetLanguage),
     [direction.sourceLanguage, direction.targetLanguage],
@@ -202,7 +203,7 @@ export function InterpretingSetup({
           <label className="field-label" htmlFor="interpreting-mode">Interpreting mode<select id="interpreting-mode" value={interpretingMode} onChange={(event) => setInterpretingMode(event.target.value as InterpretingMode)}><option value="consecutive">Consecutive · listen then deliver</option><option value="simultaneous">Simultaneous · continuous take</option></select></label>
           <label className="field-label" htmlFor="interpreting-local-audio">Import local source audio<input id="interpreting-local-audio" type="file" accept="audio/*" onChange={(event) => void importLocalAudio(event.target.files?.[0])} /></label>
         </div>
-        {importedSource && <div className="interpreting-local-import"><label className="field-label" htmlFor="interpreting-source-transcript">Source transcript (optional)<textarea id="interpreting-source-transcript" value={importedTranscript} onChange={(event) => updateImportedTranscript(event.target.value)} placeholder="Add the source transcript to enable content feedback; delivery-only feedback remains available without it." /></label><p>{importedSource.recording.fileName} · {importedSource.recording.mimeType} · {(importedSource.recording.byteLength / 1024).toFixed(1)} KB · {(importedSource.recording.durationMs / 1000).toFixed(1)} seconds. The file remains local until a completed session is saved.</p></div>}
+        {importedSource && <div className="interpreting-local-import"><label className="field-label" htmlFor="interpreting-source-transcript">Source transcript (optional)<textarea id="interpreting-source-transcript" dir={sourceLanguage.direction} lang={sourceLanguage.code} value={importedTranscript} onChange={(event) => updateImportedTranscript(event.target.value)} placeholder="Add the source transcript to enable content feedback; delivery-only feedback remains available without it." /></label><p>{importedSource.recording.fileName} · {importedSource.recording.mimeType} · {(importedSource.recording.byteLength / 1024).toFixed(1)} KB · {(importedSource.recording.durationMs / 1000).toFixed(1)} seconds. The file remains local until a completed session is saved.</p></div>}
         {importError && <p className="form-message" role="alert">{importError}</p>}
         {exercise ? (
           <div className="selected-exercise interpreting-selected-exercise">

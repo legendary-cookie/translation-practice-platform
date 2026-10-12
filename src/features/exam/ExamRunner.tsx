@@ -139,6 +139,11 @@ export function ExamRunner({
   useEffect(() => {
     const persistLatestRun = (operation: string) => {
       const runToSave = runRef.current
+      try {
+        database.stageExamRunRecovery(runToSave)
+      } catch (error) {
+        reportPersistenceError('The synchronous exam recovery checkpoint', error)
+      }
       void database.saveExamRun(runToSave).then(() => {
         if (runRef.current === runToSave) {
           isDirtyRef.current = false
@@ -246,11 +251,6 @@ export function ExamRunner({
 
     return () => {
       clearInterval(autoSaveInterval)
-      if (isDirtyRef.current) {
-        const runToSave = runRef.current
-        void database.saveExamRun(runToSave)
-          .catch((error) => reportPersistenceError('The final exam autosave', error))
-      }
     }
   }, [])
 
@@ -278,6 +278,11 @@ export function ExamRunner({
     }
     runRef.current = updatedRun
     isDirtyRef.current = true
+    try {
+      database.stageExamRunRecovery(updatedRun)
+    } catch (error) {
+      reportPersistenceError('The synchronous exam recovery checkpoint', error)
+    }
     setRun(updatedRun)
   }
 
@@ -287,6 +292,11 @@ export function ExamRunner({
     }
     const runToSave = runRef.current
     isDirtyRef.current = true
+    try {
+      database.stageExamRunRecovery(runToSave)
+    } catch (error) {
+      reportPersistenceError('The synchronous exam recovery checkpoint', error)
+    }
     void database.saveExamRun(runToSave).then(() => {
       if (runRef.current === runToSave) {
         isDirtyRef.current = false

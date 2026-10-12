@@ -9,11 +9,111 @@ import type {
   SessionRecord,
   StoredSettings,
 } from '../domain/types'
+import { isValidActiveRun } from '../domain/exam'
 import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
 
 const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 3
 const SETTINGS_KEY = 'default'
+const EXAM_RUN_RECOVERY_KEY_PREFIX = 'lingo-practice-exam-run-recovery-v1:'
+
+function getLocalStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+function readExamRunRecoverySnapshots(): ActiveExamRun[] {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return []
+  }
+
+  const snapshots: ActiveExamRun[] = []
+  try {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index)
+      if (!key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX)) {
+        continue
+      }
+      try {
+        const serialized = storage.getItem(key)
+        if (!serialized) {
+          continue
+        }
+        const candidate: unknown = JSON.parse(serialized)
+        if (isValidActiveRun(candidate)
+          && candidate.status === 'in-progress'
+          && Number.isFinite(Date.parse(candidate.lastSavedAt))
+          && key === `${EXAM_RUN_RECOVERY_KEY_PREFIX}${candidate.id}`) {
+          snapshots.push(candidate)
+        }
+      } catch {
+        // Ignore one corrupt journal record without losing other recoverable runs.
+      }
+    }
+  } catch {
+    // Recovery snapshots are best-effort; IndexedDB remains the primary store.
+  }
+  return snapshots
+}
+
+function clearExamRunRecoverySnapshot(runId: string, persistedRun?: ActiveExamRun): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+  const key = `${EXAM_RUN_RECOVERY_KEY_PREFIX}${runId}`
+  try {
+    if (persistedRun) {
+      const serialized = storage.getItem(key)
+      if (serialized) {
+        const pending: unknown = JSON.parse(serialized)
+        if (isValidActiveRun(pending)) {
+          const savedAt = Date.parse(persistedRun.lastSavedAt)
+          const pendingAt = Date.parse(pending.lastSavedAt)
+          if (savedAt < pendingAt || (savedAt === pendingAt && JSON.stringify(persistedRun) !== JSON.stringify(pending))) {
+            return
+          }
+        }
+      }
+    }
+    storage.removeItem(key)
+  } catch {
+    // Failure to retire a snapshot is safe: reads reconcile it against IndexedDB.
+  }
+}
+
+function clearAllExamRunRecoverySnapshots(): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+  try {
+    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
+      .filter((key): key is string => Boolean(key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX)))
+    keys.forEach((key) => storage.removeItem(key))
+  } catch {
+    // A blocked localStorage must not prevent the IndexedDB privacy reset.
+  }
+}
+
+function mergeExamRunRecoverySnapshots(runs: ActiveExamRun[], completedRunIds: Set<string>): ActiveExamRun[] {
+  const runsById = new Map(runs.map((run) => [run.id, run]))
+  for (const snapshot of readExamRunRecoverySnapshots()) {
+    if (completedRunIds.has(snapshot.id)) {
+      continue
+    }
+    const storedRun = runsById.get(snapshot.id)
+    if (!storedRun || (storedRun.status === 'in-progress'
+      && Date.parse(snapshot.lastSavedAt) >= Date.parse(storedRun.lastSavedAt))) {
+      runsById.set(snapshot.id, snapshot)
+    }
+  }
+  return Array.from(runsById.values())
+}
 
 export const DEFAULT_SETTINGS: StoredSettings = {
   id: 'default',
@@ -247,11 +347,17 @@ export const database = {
   // Active exam runs (crash recovery)
   async getActiveExamRun(): Promise<ActiveExamRun | undefined> {
     const db = await getDatabase()
-    const inProgressRuns = await db.getAllFromIndex('examRuns', 'by-status', 'in-progress')
-    if (!inProgressRuns.length) {
+    const [inProgressRuns, results] = await Promise.all([
+      db.getAllFromIndex('examRuns', 'by-status', 'in-progress'),
+      db.getAll('examResults'),
+    ])
+    const completedRunIds = new Set(results.map((result) => result.runId))
+    const recoverableRuns = mergeExamRunRecoverySnapshots(inProgressRuns, completedRunIds)
+      .filter((run) => run.status === 'in-progress')
+    if (!recoverableRuns.length) {
       return undefined
     }
-    return inProgressRuns.sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))[0]
+    return recoverableRuns.sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))[0]
   },
 
   async getExamRun(id: string): Promise<ActiveExamRun | undefined> {
@@ -261,18 +367,30 @@ export const database = {
 
   async listExamRuns(): Promise<ActiveExamRun[]> {
     const db = await getDatabase()
-    const runs = await db.getAll('examRuns')
-    return runs.sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))
+    const [runs, results] = await Promise.all([db.getAll('examRuns'), db.getAll('examResults')])
+    const completedRunIds = new Set(results.map((result) => result.runId))
+    return mergeExamRunRecoverySnapshots(runs, completedRunIds)
+      .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))
+  },
+
+  stageExamRunRecovery(run: ActiveExamRun): void {
+    const storage = getLocalStorage()
+    if (!storage) {
+      throw new Error('Synchronous browser recovery storage is unavailable.')
+    }
+    storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run))
   },
 
   async saveExamRun(run: ActiveExamRun): Promise<void> {
     const db = await getDatabase()
     await db.put('examRuns', run)
+    clearExamRunRecoverySnapshot(run.id, run)
   },
 
   async deleteExamRun(id: string): Promise<void> {
     const db = await getDatabase()
     await db.delete('examRuns', id)
+    clearExamRunRecoverySnapshot(id)
   },
 
   // Exam results
@@ -293,6 +411,7 @@ export const database = {
     }
     await transaction.objectStore('examRuns').delete(runId)
     await transaction.done
+    clearExamRunRecoverySnapshot(runId)
     return completedResult
   },
 
@@ -345,6 +464,7 @@ export const database = {
 
   async clearData(): Promise<void> {
     const db = await getDatabase()
+    clearAllExamRunRecoverySnapshots()
     const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions'> = [
       'settings',
       'sessions',

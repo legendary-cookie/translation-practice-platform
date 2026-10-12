@@ -2,6 +2,16 @@
 const CACHE_NAME = 'lingo-practice-shell-__RELEASE_ID__'
 const CACHE_PREFIX = 'lingo-practice-shell-'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg']
+const AUDIO_ASSETS = [
+  '/audio/interpreting/rights.json',
+  '/audio/interpreting/zh-community-garden.wav',
+  '/audio/interpreting/en-library.wav',
+  '/audio/interpreting/ru-repair.wav',
+  '/audio/interpreting/fr-rooftop.wav',
+  '/audio/interpreting/hi-seeds.wav',
+  '/audio/interpreting/es-notebook.wav',
+  '/audio/interpreting/ar-map.wav',
+]
 const PRECACHE_MANIFEST = '/precache-manifest.json'
 
 function toRootAssetUrl(path) {
@@ -20,7 +30,7 @@ async function precacheAppShell() {
     .map(toRootAssetUrl)
 
   const cache = await caches.open(CACHE_NAME)
-  await cache.addAll([...new Set([...APP_SHELL, PRECACHE_MANIFEST, ...generatedAssets])])
+  await cache.addAll([...new Set([...APP_SHELL, ...AUDIO_ASSETS, PRECACHE_MANIFEST, ...generatedAssets])])
 }
 
 self.addEventListener('install', (event) => {
@@ -41,7 +51,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  const isAppShellRequest = request.mode === 'navigate' || ['script', 'style', 'image', 'font'].includes(request.destination)
+  const isPackagedAudioRequest = requestUrl.pathname.startsWith('/audio/interpreting/')
+  const isAppShellRequest = request.mode === 'navigate' || isPackagedAudioRequest || ['script', 'style', 'image', 'font'].includes(request.destination)
 
   if (!isAppShellRequest) {
     return

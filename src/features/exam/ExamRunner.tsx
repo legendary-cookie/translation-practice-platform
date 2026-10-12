@@ -128,7 +128,7 @@ export function ExamRunner({
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue =
-        'You have an active exam in progress. Your work is saved locally on this device, but leaving may interrupt your timing.'
+        'You have an active exam in progress. Changes that were not successfully saved locally may not be recoverable. Leaving may interrupt your timing.'
       return event.returnValue
     }
     window.addEventListener('beforeunload', handleBeforeUnload)

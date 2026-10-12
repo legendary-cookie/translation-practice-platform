@@ -166,6 +166,7 @@
 .interpreting-alignment-source,
 .interpreting-alignment-response {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: .5rem;
 }
@@ -229,7 +230,7 @@
   }
 
   .interpreting-alignment-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .interpreting-alignment-annotations {

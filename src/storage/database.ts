@@ -16,6 +16,21 @@ const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 3
 const SETTINGS_KEY = 'default'
 const EXAM_RUN_RECOVERY_KEY_PREFIX = 'lingo-practice-exam-run-recovery-v1:'
+const DATABASE_UPGRADE_BLOCKED_NOTICE = 'A local database upgrade is waiting for another Lingo Practice tab. Close older tabs to continue; saved records are not being deleted.'
+
+const databaseNoticeListeners = new Set<(notice: string | undefined) => void>()
+let currentDatabaseNotice: string | undefined
+
+function publishDatabaseNotice(notice: string | undefined) {
+  currentDatabaseNotice = notice
+  databaseNoticeListeners.forEach((listener) => listener(notice))
+}
+
+export function subscribeToDatabaseNotice(listener: (notice: string | undefined) => void): () => void {
+  databaseNoticeListeners.add(listener)
+  listener(currentDatabaseNotice)
+  return () => databaseNoticeListeners.delete(listener)
+}
 
 function getLocalStorage(): Storage | undefined {
   try {
@@ -179,6 +194,15 @@ let databasePromise: Promise<IDBPDatabase<TranslationDatabaseSchema>> | undefine
 function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
   if (!databasePromise) {
     const opening = openDB<TranslationDatabaseSchema>(DATABASE_NAME, DATABASE_VERSION, {
+      blocked(currentVersion, blockedVersion) {
+        const requestedVersion = blockedVersion ?? DATABASE_VERSION
+        publishDatabaseNotice(`${DATABASE_UPGRADE_BLOCKED_NOTICE} Version ${currentVersion} is blocking version ${requestedVersion}.`)
+      },
+      blocking() {
+        const connection = databasePromise
+        databasePromise = undefined
+        void connection?.then((db) => db.close()).catch(() => undefined)
+      },
       upgrade(database) {
         if (!database.objectStoreNames.contains('settings')) {
           database.createObjectStore('settings')
@@ -212,7 +236,10 @@ function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
         }
       },
     })
-    databasePromise = opening.catch((error: unknown) => {
+    databasePromise = opening.then((db) => {
+      publishDatabaseNotice(undefined)
+      return db
+    }).catch((error: unknown) => {
       databasePromise = undefined
       throw error
     })
@@ -464,7 +491,6 @@ export const database = {
 
   async clearData(): Promise<void> {
     const db = await getDatabase()
-    clearAllExamRunRecoverySnapshots()
     const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions'> = [
       'settings',
       'sessions',
@@ -477,5 +503,6 @@ export const database = {
     const transaction = db.transaction(storeNames, 'readwrite')
     await Promise.all(storeNames.map((name) => transaction.objectStore(name).clear()))
     await transaction.done
+    clearAllExamRunRecoverySnapshots()
   },
 }

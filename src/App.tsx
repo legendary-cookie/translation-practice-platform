@@ -4,7 +4,7 @@ import { forgetLocalModelReady, hadLocalModelReady, type LocalModelProgress } fr
 import { createLocalProvider } from './ai/local-provider'
 import { createInitialCapability, detectDeviceCapability, type CapabilityAssessment } from './ai/capability'
 import { createEvaluationRouter, isInterpretingFeedback, isTranslationFeedback, type CloudConsentRequest } from './ai/provider'
-import { database, DEFAULT_SETTINGS } from './storage/database'
+import { database, DEFAULT_SETTINGS, subscribeToDatabaseNotice } from './storage/database'
 import { Dashboard } from './features/dashboard/Dashboard'
 import { FeedbackPanel } from './features/practice/FeedbackPanel'
 import { PracticeSetup, type PracticeStart } from './features/practice/PracticeSetup'
@@ -191,6 +191,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home')
   const [settings, setSettings] = useState<StoredSettings>(DEFAULT_SETTINGS)
   const [cloudDraft, setCloudDraft] = useState({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
+  const [databaseNotice, setDatabaseNotice] = useState<string | undefined>()
   const [localProgress, setLocalProgress] = useState<LocalModelProgress>({ status: 'not-prepared', text: 'Local model has not been prepared.' })
   const [capability, setCapability] = useState<CapabilityAssessment>(createInitialCapability)
   const [recentSessions, setRecentSessions] = useState<SessionRecord[]>([])
@@ -229,6 +230,8 @@ export default function App() {
   const [initialPracticeMode, setInitialPracticeMode] = useState<'written' | 'news'>('written')
   const settingsRef = useRef<StoredSettings>(DEFAULT_SETTINGS)
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const settingsHydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | undefined>(undefined)
+  const cloudDraftRevisionRef = useRef(0)
   const dataLoadGeneration = useRef(0)
   const localProviderEpochRef = useRef(0)
   const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number) => void>(() => undefined)
@@ -237,6 +240,12 @@ export default function App() {
   const interpretingSessionOpenGenerationRef = useRef(0)
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
+
+  if (!settingsHydrationRef.current) {
+    let resolveHydration: () => void = () => undefined
+    const promise = new Promise<void>((resolve) => { resolveHydration = resolve })
+    settingsHydrationRef.current = { promise, resolve: resolveHydration }
+  }
 
   useEffect(() => {
     const sourceUrl = activeInterpretingSourceUrl
@@ -278,6 +287,8 @@ export default function App() {
 
   useEffect(() => () => localProvider.dispose(), [localProvider])
 
+  useEffect(() => subscribeToDatabaseNotice(setDatabaseNotice), [])
+
   useEffect(() => {
     let cancelled = false
     void detectDeviceCapability().then((nextCapability) => {
@@ -316,14 +327,17 @@ export default function App() {
 
   useEffect(() => {
     const loadGeneration = dataLoadGeneration.current
+    const cloudDraftRevisionAtLoad = cloudDraftRevisionRef.current
     void database.getSettings().then((savedSettings) => {
       if (dataLoadGeneration.current !== loadGeneration) {
         return
       }
       settingsRef.current = savedSettings
       setSettings(savedSettings)
-      setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
-    }).catch(() => undefined)
+      if (cloudDraftRevisionRef.current === cloudDraftRevisionAtLoad) {
+        setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
+      }
+    }).catch(() => undefined).finally(() => settingsHydrationRef.current?.resolve())
     void database.listSessions().then((sessions) => {
       if (dataLoadGeneration.current === loadGeneration) {
         setRecentSessions(sessions)
@@ -377,6 +391,7 @@ export default function App() {
 
   function updateSettings(update: Partial<StoredSettings> | ((current: StoredSettings) => StoredSettings)): Promise<void> {
     const operation = settingsWriteQueueRef.current.then(async () => {
+      await settingsHydrationRef.current?.promise
       const previous = settingsRef.current
       const nextSettings = typeof update === 'function' ? update(previous) : { ...previous, ...update }
       if (nextSettings === previous) return
@@ -418,7 +433,16 @@ export default function App() {
     setIsEvaluatingExam(false)
     setExamEvaluationProgress(undefined)
     await Promise.allSettled([...pendingPersistenceRef.current])
-    await database.clearData()
+    try {
+      await database.clearData()
+    } catch (error) {
+      const restartNotice = 'Data deletion failed after the local evaluator was stopped. Prepare the model again before using local evaluation.'
+      settingsRef.current = { ...settingsRef.current, localModelStatus: 'not-prepared' }
+      setSettings(settingsRef.current)
+      setLocalProgress({ status: 'not-prepared', text: 'Local model needs preparation after the failed deletion.', error: restartNotice })
+      setLocalProviderEpoch(nextProviderEpoch)
+      throw error
+    }
     setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
     settingsRef.current = DEFAULT_SETTINGS
@@ -536,10 +560,15 @@ export default function App() {
   }
 
   async function handleDiscardExamRun(runId: string) {
-    await database.deleteExamRun(runId)
-    setActiveExamRun(undefined)
-    setExamEvaluationNotice(undefined)
-    setPendingExamConsent(undefined)
+    try {
+      await database.deleteExamRun(runId)
+      setActiveExamRun(undefined)
+      setExamEvaluationNotice(undefined)
+      setPendingExamConsent(undefined)
+    } catch (error) {
+      const reason = error instanceof Error ? ` (${error.message})` : ''
+      setExamEvaluationNotice(`The saved exam draft could not be discarded${reason}. It remains available for recovery.`)
+    }
   }
 
   async function handleSubmitExamRun(
@@ -1209,6 +1238,7 @@ export default function App() {
             </button>
           </section>
         )}
+        {databaseNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{databaseNotice}</section>}
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
             <div>
@@ -1307,7 +1337,7 @@ export default function App() {
             onStartExam={() => navigateToPage('exam')}
           />
         )}
-        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}

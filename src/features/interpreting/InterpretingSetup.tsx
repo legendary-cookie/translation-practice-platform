@@ -88,6 +88,9 @@ export function InterpretingSetup({
   const packagedExercise = exercises.find((candidate) => difficulty === 'all' || candidate.difficulty === difficulty) ?? exercises[0]
   const exercise = importedSource?.exercise ?? packagedExercise
   const importedObjectUrl = importedSource?.objectUrl
+  const exerciseAudioUrl = exercise?.audioUrl
+  const targetSpeechTag = exercise ? getLanguage(exercise.targetLanguage).speechTag : undefined
+  const isImportedAudio = importedSource !== undefined
 
   useEffect(() => {
     const objectUrl = importedObjectUrl
@@ -106,6 +109,7 @@ export function InterpretingSetup({
   function changeDirection(nextDirectionId: typeof directionId) {
     localAudioImportGeneration.current += 1
     recognitionCheckGeneration.current += 1
+    setIsInstallingRecognition(false)
     setDirectionId(nextDirectionId)
     setDifficulty('all')
     setRecognition(undefined)
@@ -120,6 +124,7 @@ export function InterpretingSetup({
     }
     const importGeneration = ++localAudioImportGeneration.current
     recognitionCheckGeneration.current += 1
+    setIsInstallingRecognition(false)
     setImportedSource(undefined)
     setRecognition(undefined)
     setAssetStatus('checking')
@@ -212,16 +217,17 @@ export function InterpretingSetup({
   useEffect(() => {
     let cancelled = false
     const requestGeneration = ++recognitionCheckGeneration.current
+    setIsInstallingRecognition(false)
     setAssetStatus('checking')
     setRecognition(undefined)
-    if (!exercise) {
+    if (!exerciseAudioUrl || !targetSpeechTag) {
       setAssetStatus('unavailable')
       return () => {
         cancelled = true
       }
     }
-    const capabilityPromise = getLocalRecognitionCapability(getLanguage(exercise.targetLanguage).speechTag)
-    if (importedSource) {
+    const capabilityPromise = getLocalRecognitionCapability(targetSpeechTag)
+    if (isImportedAudio) {
       void capabilityPromise.then((capability) => {
         if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
           setAssetStatus('ready')
@@ -233,7 +239,7 @@ export function InterpretingSetup({
       }
     }
     void Promise.all([
-      getPackagedAudioStatus(exercise.audioUrl),
+      getPackagedAudioStatus(exerciseAudioUrl),
       capabilityPromise,
     ]).then(([assetAvailability, capability]) => {
       if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
@@ -249,7 +255,7 @@ export function InterpretingSetup({
     return () => {
       cancelled = true
     }
-  }, [exercise, importedSource])
+  }, [exerciseAudioUrl, isImportedAudio, targetSpeechTag])
 
   async function installRecognitionPack() {
     if (!recognition || recognition.status !== 'downloadable' || isInstallingRecognition) {

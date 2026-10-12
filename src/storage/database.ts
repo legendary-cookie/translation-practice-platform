@@ -12,11 +12,17 @@ import type {
 import { isValidActiveRun } from '../domain/exam'
 import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
 import { createDataWriteCoordinator, DATA_CLEARED_NOTICE } from './data-write-coordinator'
+import {
+  assertExamRunNotDiscarded,
+  discardExamRunWithTombstone,
+  EXAM_RUN_RECOVERY_KEY_PREFIX,
+  EXAM_RUN_TOMBSTONE_KEY_PREFIX,
+  isExamRunDiscarded,
+} from './exam-run-lifecycle'
 
 const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 3
 const SETTINGS_KEY = 'default'
-const EXAM_RUN_RECOVERY_KEY_PREFIX = 'lingo-practice-exam-run-recovery-v1:'
 const DATABASE_UPGRADE_BLOCKED_NOTICE = 'A local database upgrade is waiting for another Lingo Practice tab. Close older tabs to continue; saved records are not being deleted.'
 
 const databaseNoticeListeners = new Set<(notice: string | undefined) => void>()
@@ -106,7 +112,7 @@ function recoverySnapshotEntries(storage: Storage): Array<[string, string]> {
   const entries: Array<[string, string]> = []
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index)
-    if (key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX)) {
+    if (key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX) || key?.startsWith(EXAM_RUN_TOMBSTONE_KEY_PREFIX)) {
       const value = storage.getItem(key)
       if (value !== null) entries.push([key, value])
     }
@@ -171,9 +177,12 @@ export function subscribeToDataCleared(listener: (epoch: string) => void): () =>
 }
 
 function mergeExamRunRecoverySnapshots(runs: ActiveExamRun[], completedRunIds: Set<string>): ActiveExamRun[] {
-  const runsById = new Map(runs.map((run) => [run.id, run]))
+  const storage = getLocalStorage()
+  const runsById = new Map(runs
+    .filter((run) => !storage || !isExamRunDiscarded(storage, run.id))
+    .map((run) => [run.id, run]))
   for (const snapshot of readExamRunRecoverySnapshots()) {
-    if (completedRunIds.has(snapshot.id)) {
+    if (completedRunIds.has(snapshot.id) || (storage && isExamRunDiscarded(storage, snapshot.id))) {
       continue
     }
     const storedRun = runsById.get(snapshot.id)
@@ -464,6 +473,8 @@ export const database = {
   },
 
   async getExamRun(id: string): Promise<ActiveExamRun | undefined> {
+    const storage = getLocalStorage()
+    if (storage && isExamRunDiscarded(storage, id)) return undefined
     const db = await getDatabase()
     return db.get('examRuns', id)
   },
@@ -480,6 +491,7 @@ export const database = {
     await withDataWrite(async () => {
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable.')
+      await assertExamRunNotDiscarded(storage, run.id)
       storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run))
     })
   },
@@ -487,16 +499,22 @@ export const database = {
   async saveExamRun(run: ActiveExamRun): Promise<void> {
     await withDataWrite(async () => {
       const db = await getDatabase()
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; this exam attempt was not saved.')
+      await assertExamRunNotDiscarded(storage, run.id)
       await db.put('examRuns', run)
       clearExamRunRecoverySnapshot(run.id, run)
     })
   },
 
   async deleteExamRun(id: string): Promise<void> {
-    await withDataWrite(async () => {
+    await dataWriteCoordinator.runExclusive(async () => {
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; this exam attempt was not discarded.')
       const db = await getDatabase()
-      await db.delete('examRuns', id)
-      clearExamRunRecoverySnapshot(id)
+      await discardExamRunWithTombstone(storage, id, async () => {
+        await db.delete('examRuns', id)
+      })
     })
   },
 
@@ -511,6 +529,9 @@ export const database = {
   async completeExamRun(runId: string, result: ConsolidatedExamResult): Promise<ConsolidatedExamResult> {
     return withDataWrite(async () => {
       const db = await getDatabase()
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; the completed attempt could not be finalized safely.')
+      await assertExamRunNotDiscarded(storage, runId)
       const transaction = db.transaction(['examResults', 'examRuns'], 'readwrite')
       const existingResults = await transaction.objectStore('examResults').getAll()
       const existingResult = existingResults.find((storedResult) => storedResult.runId === runId)

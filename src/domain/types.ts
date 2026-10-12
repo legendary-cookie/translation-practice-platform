@@ -190,6 +190,7 @@ export type InterpretingFeedback = {
   contentScoreStatus: 'complete' | 'incomplete'
   deliveryScores?: InterpretingDeliveryScores
   deliveryScoreStatus?: 'complete' | 'incomplete'
+  deliveryEvidenceSource?: 'local-analysis' | 'consented-cloud-audio'
   overallScore?: number
   summary: string
   strengths: string[]

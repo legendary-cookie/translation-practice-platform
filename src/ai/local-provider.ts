@@ -9,6 +9,7 @@ import { DEFAULT_LOCAL_MODEL_ID, type EvaluationFeedback, type EvaluationRequest
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
 import { parseJsonResponse } from './response-parsing'
+import { createInactivityDeadline } from './inactivity-timeout'
 
 export type LocalModelProgress = {
   status: 'not-prepared' | 'preparing' | 'ready' | 'unavailable'
@@ -26,6 +27,8 @@ const LOCAL_MODEL_READY_MARKER = 'lingo-practice-local-model-ready'
 const LOCAL_EVALUATION_MAX_TOKENS = 1400
 const LOCAL_EVALUATION_MAX_ATTEMPTS = 2
 const LOCAL_EVALUATION_TIMEOUT_MS = 120_000
+const LOCAL_MODEL_PREPARATION_INACTIVITY_TIMEOUT_MS = 180_000
+const LOCAL_MODEL_PREPARATION_TIMEOUT_MESSAGE = 'Local model preparation stopped reporting progress for 180 seconds. The worker was reset; retry preparation when ready.'
 const QWEN3_NON_THINKING_BODY = { enable_thinking: false } as const
 type DiagnosticMode = 'unconstrained' | 'json' | 'json-prompt' | 'thinking-on'
 type StreamChunk = {
@@ -232,6 +235,7 @@ export function createLocalProvider(
   let errorMessage: string | undefined
   let worker: Worker | undefined
   let enginePromise: Promise<WebWorkerMLCEngine> | undefined
+  let preparationGeneration = 0
   let diagnosticStarted = false
 
   const startRequestedDiagnostic = async (engine: WebWorkerMLCEngine) => {
@@ -277,28 +281,57 @@ export function createLocalProvider(
         return
       }
 
+      const generation = ++preparationGeneration
       worker?.terminate()
-      worker = createWorker()
-      instrumentWorker(worker)
+      const attemptWorker = createWorker()
+      worker = attemptWorker
+      instrumentWorker(attemptWorker)
       logLocalEvent('prepare.worker-created')
       errorMessage = undefined
       report({ status: 'preparing', progress: 0, text: 'Starting the local model worker…' })
-      enginePromise = CreateWebWorkerMLCEngine(worker, modelId, {
-        appConfig: prebuiltAppConfig,
-        initProgressCallback: (progress) => report({ status: 'preparing', progress: progress.progress, text: progress.text }),
-      })
+      let preparationPromise: Promise<WebWorkerMLCEngine> | undefined
+      const deadline = createInactivityDeadline(LOCAL_MODEL_PREPARATION_INACTIVITY_TIMEOUT_MS, () => {
+        if (generation !== preparationGeneration) return
+        preparationGeneration += 1
+        attemptWorker.terminate()
+        if (worker === attemptWorker) worker = undefined
+        if (enginePromise === preparationPromise) enginePromise = undefined
+        forgetLocalModelReady()
+        report({
+          status: 'unavailable',
+          error: LOCAL_MODEL_PREPARATION_TIMEOUT_MESSAGE,
+          text: 'Local model preparation timed out; retry is available.',
+        })
+      }, LOCAL_MODEL_PREPARATION_TIMEOUT_MESSAGE)
 
       try {
-        await enginePromise
+        const rawPreparation = CreateWebWorkerMLCEngine(attemptWorker, modelId, {
+          appConfig: prebuiltAppConfig,
+          initProgressCallback: (progress) => {
+            if (generation !== preparationGeneration) return
+            deadline.reset()
+            report({ status: 'preparing', progress: progress.progress, text: progress.text })
+          },
+        })
+        preparationPromise = deadline.wrap(rawPreparation)
+        enginePromise = preparationPromise
+        const engine = await preparationPromise
+        if (generation !== preparationGeneration) throw new ProviderUnavailableError(LOCAL_MODEL_PREPARATION_TIMEOUT_MESSAGE)
         report({ status: 'ready', progress: 1, text: 'Local model ready.' })
+        preparationGeneration += 1
         logLocalEvent('prepare.engine-ready')
-        void startRequestedDiagnostic(await enginePromise)
+        void startRequestedDiagnostic(engine)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'The local model could not be prepared.'
-        worker?.terminate()
-        worker = undefined
-        enginePromise = undefined
-        report({ status: 'unavailable', error: message, text: 'Local model preparation failed.' })
+        deadline.cancel()
+        if (generation === preparationGeneration) {
+          preparationGeneration += 1
+          attemptWorker.terminate()
+          if (worker === attemptWorker) worker = undefined
+          if (enginePromise === preparationPromise) enginePromise = undefined
+          forgetLocalModelReady()
+          report({ status: 'unavailable', error: message, text: 'Local model preparation failed; retry is available.' })
+        }
         throw new ProviderUnavailableError(message)
       }
     },
@@ -431,6 +464,7 @@ export function createLocalProvider(
     },
 
     dispose() {
+      preparationGeneration += 1
       worker?.terminate()
       worker = undefined
       enginePromise = undefined

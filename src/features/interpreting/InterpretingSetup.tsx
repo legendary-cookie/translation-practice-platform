@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { CHINESE_DIRECTIONS, getLanguage } from '../../domain/languages'
-import { hasUnsupportedDeclaredAudioMime, inferImportedAudioMime } from './audio-import'
+import { createImportedAudioExercise, hasUnsupportedDeclaredAudioMime, importedTranscriptReducer, inferImportedAudioMime } from './audio-import'
 import type { AudioRecordingRecord, Difficulty, EvaluationMode, InterpretingExercise, InterpretingMode, LocalModelStatus } from '../../domain/types'
 import { getInterpretingExercisesForDirection, INTERPRETING_EXERCISES } from '../../data/interpreting-exercises'
 import { validateInterpretingRightsManifest } from '../../data/interpreting-rights'
@@ -78,7 +78,7 @@ export function InterpretingSetup({
   const [recognition, setRecognition] = useState<LocalRecognitionCapability>()
   const [isInstallingRecognition, setIsInstallingRecognition] = useState(false)
   const [importedSource, setImportedSource] = useState<ImportedSource>()
-  const [importedTranscript, setImportedTranscript] = useState('')
+  const [importedTranscript, dispatchImportedTranscript] = useReducer(importedTranscriptReducer, '')
   const [importError, setImportError] = useState<string>()
   const transferredObjectUrl = useRef<string | undefined>(undefined)
   const localAudioImportGeneration = useRef(0)
@@ -119,7 +119,7 @@ export function InterpretingSetup({
     setDifficulty('all')
     setRecognition(undefined)
     setImportedSource(undefined)
-    setImportedTranscript('')
+    dispatchImportedTranscript({ type: 'replace-audio' })
     setImportError(undefined)
   }
 
@@ -131,6 +131,7 @@ export function InterpretingSetup({
     recognitionCheckGeneration.current += 1
     setIsInstallingRecognition(false)
     setImportedSource(undefined)
+    dispatchImportedTranscript({ type: 'replace-audio' })
     setRecognition(undefined)
     setAssetStatus('checking')
     setImportError(undefined)
@@ -162,23 +163,16 @@ export function InterpretingSetup({
       }
       const exerciseId = createLocalId('local-audio')
       const segmentId = `${exerciseId}-segment-1`
-      const importedExercise: InterpretingExercise = {
+      const importedExercise = createImportedAudioExercise({
         id: exerciseId,
-        mode: 'interpreting',
         sourceLanguage: direction.sourceLanguage,
         targetLanguage: direction.targetLanguage,
         title: file.name.replace(/\.[^/.]+$/, '') || 'Imported local audio',
-        topic: 'Imported local audio',
         difficulty: difficulty === 'all' ? 'intermediate' : difficulty,
         audioUrl: objectUrl,
         audioMimeType: importedMimeType || 'audio/*',
         durationMs,
-        segments: [{ id: segmentId, startMs: 0, endMs: durationMs, transcript: importedTranscript.trim() }],
-        glossary: [],
-        tags: ['general'],
-        rightsRecordId: `local-import:${file.name}`,
-        sourceTranscriptStatus: importedTranscript.trim() ? 'authored' : 'missing',
-      }
+      })
       setImportedSource({
         exercise: importedExercise,
         objectUrl,
@@ -209,7 +203,7 @@ export function InterpretingSetup({
   }
 
   function updateImportedTranscript(value: string) {
-    setImportedTranscript(value)
+    dispatchImportedTranscript({ type: 'edit', value })
     setImportedSource((current) => current ? {
       ...current,
       exercise: {

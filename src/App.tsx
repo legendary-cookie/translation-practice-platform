@@ -13,6 +13,7 @@ import { createWrittenEvaluationGuard, runWrittenEvaluationAttempt, type Written
 import { InterpretingSetup, type InterpretingStart } from './features/interpreting/InterpretingSetup'
 import { InterpretingWorkspace } from './features/interpreting/InterpretingWorkspace'
 import { InterpretingFeedbackPanel } from './features/interpreting/InterpretingFeedbackPanel'
+import { rebasePendingInterpretingSaves } from './features/interpreting/pending-persistence'
 import { SessionHistoryNotice } from './features/progress/SessionHistoryNotice'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
@@ -585,6 +586,7 @@ export default function App() {
     try {
       await database.clearData()
     } catch (error) {
+      setPendingInterpretingSaves((saves) => rebasePendingInterpretingSaves(saves, dataLoadGeneration.current))
       const restartNotice = 'Data deletion failed after the local evaluator was stopped. Prepare the model again before using local evaluation.'
       settingsRef.current = { ...settingsRef.current, localModelStatus: 'not-prepared' }
       setSettings(settingsRef.current)
@@ -1196,7 +1198,11 @@ export default function App() {
         deliveryAnalysis: session.deliveryAnalysis,
         sourceRecording,
       })
-      setInterpretingFeedback(session.feedback)
+      setInterpretingFeedback({
+        ...session.feedback,
+        deliveryEvidenceSource: session.feedback.deliveryEvidenceSource
+          ?? (session.evaluator === 'cloud' && session.feedback.deliveryScores ? 'consented-cloud-audio' : undefined),
+      })
       setPracticeNotice(recordings.length === session.recordingIds.length && (!session.sourceRecordingId || sourceRecording !== undefined)
         ? 'Reopened from this device. Audio replay remains local.'
         : 'Reopened from this device, but one or more local replay files are missing.')

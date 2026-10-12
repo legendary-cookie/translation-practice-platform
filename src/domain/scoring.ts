@@ -411,8 +411,9 @@ export function validateInterpretingFeedback(
     ? normalizeInterpretingScores(rawContentScores, 'contentScores', ['meaningTransfer', 'omissions', 'additionsMistranslations', 'terminology']) as InterpretingContentScores
     : undefined
   const contentScoreStatus: InterpretingFeedback['contentScoreStatus'] = allResponsesVerified && contentScoreValues ? 'complete' : 'incomplete'
-  const hasReliableDeliveryEvidence = hasCompleteInterpretingDeliveryEvidence(context)
-    || hasConsentedCloudAudioDeliveryEvidence(context, cloudAudioEvidence)
+  const hasLocalDeliveryEvidence = hasCompleteInterpretingDeliveryEvidence(context)
+  const hasCloudAudioEvidence = hasConsentedCloudAudioDeliveryEvidence(context, cloudAudioEvidence)
+  const hasReliableDeliveryEvidence = hasLocalDeliveryEvidence || hasCloudAudioEvidence
   const deliveryScores = hasReliableDeliveryEvidence
     ? normalizeInterpretingScores(raw.deliveryScores ?? raw.delivery, 'deliveryScores', ['fluency', 'pacing', 'hesitation']) as InterpretingDeliveryScores
     : undefined
@@ -449,6 +450,9 @@ export function validateInterpretingFeedback(
     contentScoreStatus,
     deliveryScores,
     deliveryScoreStatus,
+    deliveryEvidenceSource: deliveryScores
+      ? hasCloudAudioEvidence ? 'consented-cloud-audio' : 'local-analysis'
+      : undefined,
     overallScore,
     summary: requiredText(raw.summary, 'summary'),
     strengths: normalizeStringList(raw.strengths, 'strengths'),

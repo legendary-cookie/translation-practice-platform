@@ -139,6 +139,25 @@ export function createDataWriteCoordinator(options: {
     })
   }
 
+  async function runExclusive<T>(operation: () => Promise<T> | T): Promise<T> {
+    const locks = getLockManager()
+    let storage: StorageLike | undefined
+    try {
+      storage = getStorage()
+      if (!locks || !storage) throw new CrossTabClearUnavailableError()
+      storage.getItem(DATA_EPOCH_STORAGE_KEY)
+      storage.setItem(DATA_EPOCH_STORAGE_KEY, storage.getItem(DATA_EPOCH_STORAGE_KEY) ?? INITIAL_EPOCH)
+    } catch (error) {
+      if (error instanceof CrossTabClearUnavailableError) throw error
+      throw new CrossTabClearUnavailableError()
+    }
+
+    return locks.request(DATA_WRITE_LOCK_NAME, { mode: 'exclusive' }, async () => {
+      if (readEpoch(storage) !== capturedEpoch) throw new DataEpochInvalidatedError()
+      return operation()
+    })
+  }
+
   function assertCanClearData(): void {
     const locks = getLockManager()
     let storage: StorageLike | undefined
@@ -153,5 +172,5 @@ export function createDataWriteCoordinator(options: {
     }
   }
 
-  return { runWrite, clearData, assertCanClearData }
+  return { runWrite, runExclusive, clearData, assertCanClearData }
 }

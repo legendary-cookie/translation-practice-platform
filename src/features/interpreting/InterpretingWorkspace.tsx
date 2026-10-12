@@ -117,6 +117,9 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
     }
     try {
       await recorder.start(interpretingMode === 'consecutive' ? currentSegment.id : undefined, interpretingMode)
+      if (interpretingMode === 'simultaneous') {
+        await player.playAllSegments()
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The microphone could not start.')
     }
@@ -124,6 +127,7 @@ export function InterpretingWorkspace({ exercise, interpretingMode, isSubmitting
 
   async function stopRecording() {
     setError(undefined)
+    player.pause()
     try {
       const recording = await recorder.stop()
       if (!recording) {

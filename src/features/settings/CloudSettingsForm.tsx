@@ -2,6 +2,7 @@ export type CloudSettingsDraft = {
   baseUrl: string
   model: string
   apiKey: string
+  supportsAudio: boolean
 }
 
 export function CloudSettingsForm({
@@ -47,6 +48,7 @@ export function CloudSettingsForm({
         />
       </label>
       <p className="field-help">The endpoint and model preference are stored locally. The key stays in memory for this tab and is never written to IndexedDB or exported.</p>
+      <label className="mode-choice" htmlFor="cloud-audio-capable"><input id="cloud-audio-capable" type="checkbox" checked={value.supportsAudio} onChange={(event) => onChange({ ...value, supportsAudio: event.target.checked })} /><span><strong>I verified this endpoint accepts audio input</strong><small>Only then can an interpreting task offer a consent preview. The app never sends audio automatically.</small></span></label>
     </div>
   )
 }

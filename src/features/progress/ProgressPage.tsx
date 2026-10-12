@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { getLanguage } from '../../domain/languages'
-import type { ConsolidatedExamResult, ScoreDimension, SessionRecord } from '../../domain/types'
+import type { ConsolidatedExamResult, InterpretingSessionRecord, ScoreDimension, SessionRecord } from '../../domain/types'
 import { PRACTICE_ESTIMATE_DISCLAIMER } from '../../domain/exam'
 
 const dimensions: ScoreDimension[] = ['accuracy', 'terminology', 'grammar', 'fluency', 'taskStyle']
@@ -22,20 +22,24 @@ function average(values: number[]): number {
 
 export function ProgressPage({
   sessions,
+  interpretingSessions = [],
   examResults = [],
   onStartPractice,
+  onStartInterpreting,
   onOpenExamResult,
   onStartExam,
 }: {
   sessions: SessionRecord[]
+  interpretingSessions?: InterpretingSessionRecord[]
   examResults?: ConsolidatedExamResult[]
   onStartPractice: () => void
+  onStartInterpreting?: () => void
   onOpenExamResult?: (result: ConsolidatedExamResult) => void
   onStartExam?: () => void
 }) {
-  const [activeTab, setActiveTab] = useState<'sessions' | 'exams'>('sessions')
+  const [activeTab, setActiveTab] = useState<'sessions' | 'interpreting' | 'exams'>('sessions')
 
-  const hasAnyData = sessions.length > 0 || examResults.length > 0
+  const hasAnyData = sessions.length > 0 || interpretingSessions.length > 0 || examResults.length > 0
 
   if (!hasAnyData) {
     return (
@@ -45,7 +49,7 @@ export function ProgressPage({
           <p className="eyebrow">Local history</p>
           <h2>Your progress starts with your first pass.</h2>
           <p>
-            There are no saved sessions or mock exams on this browser yet. Complete a written translation or an exam simulation to see practice estimates and dimension trends here.
+            There are no saved sessions or mock exams on this browser yet. Complete a written translation, interpreting take, or exam simulation to see practice estimates and dimension trends here.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
             <button className="button button--primary" type="button" onClick={onStartPractice}>
@@ -56,6 +60,7 @@ export function ProgressPage({
                 Try an exam simulation <span aria-hidden="true">→</span>
               </button>
             )}
+            {onStartInterpreting && <button className="button button--quiet" type="button" onClick={onStartInterpreting}>Try interpreting</button>}
           </div>
         </section>
       </div>
@@ -101,6 +106,13 @@ export function ProgressPage({
           onClick={() => setActiveTab('exams')}
         >
           Mock Exam Simulations ({examResults.length})
+        </button>
+        <button
+          className={`button ${activeTab === 'interpreting' ? 'button--primary' : 'button--quiet'}`}
+          type="button"
+          onClick={() => setActiveTab('interpreting')}
+        >
+          Interpreting ({interpretingSessions.length})
         </button>
       </div>
 
@@ -218,6 +230,34 @@ export function ProgressPage({
                   <p>These summaries help you decide what to revisit. They are not calibrated, official, or a substitute for CATTI or MTI scoring.</p>
                 </article>
               </section>
+            </>
+          )}
+        </>
+      )}
+
+      {activeTab === 'interpreting' && (
+        <>
+          {interpretingSessions.length === 0 ? (
+            <section className="progress-empty">
+              <p>No interpreting sessions completed yet.</p>
+              {onStartInterpreting && <button className="button button--primary" type="button" onClick={onStartInterpreting}>Start an interpreting take <span aria-hidden="true">→</span></button>}
+            </section>
+          ) : (
+            <>
+              <section className="progress-overview">
+                <div><p className="eyebrow">Local interpreting history</p><h2>Listen for the pattern.</h2><p>Content and delivery remain separate practice estimates. Incomplete transcript evidence is shown as incomplete, never as a precise official score.</p></div>
+                <div className="progress-overview__score"><strong>{average(interpretingSessions.map((session) => session.feedback.overallScore).filter((score): score is number => score !== undefined))}</strong><span>average complete<br />estimate</span></div>
+              </section>
+              <section className="progress-stat-grid">
+                <article className="progress-stat"><span className="eyebrow">Takes</span><strong>{interpretingSessions.length}</strong><span>saved locally</span></article>
+                <article className="progress-stat"><span className="eyebrow">Complete content</span><strong>{interpretingSessions.filter((session) => session.feedback.contentScoreStatus === 'complete').length}</strong><span>with verified transcripts</span></article>
+                <article className="progress-stat"><span className="eyebrow">Directions</span><strong>{new Set(interpretingSessions.map((session) => `${session.sourceLanguage}-${session.targetLanguage}`)).size}</strong><span>practised so far</span></article>
+              </section>
+              <section className="progress-panels">
+                <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Take history</p><h3>Recent interpreting estimates</h3></div><span className="section-heading__note">Newest first</span></div><div className="trend-list">{interpretingSessions.slice(0, 8).map((session) => <div className="trend-row" key={session.id}><div className="trend-row__label"><span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span><small>{formatDate(session.createdAt)} · {session.interpretingMode}</small></div><div className="trend-row__track"><span style={{ width: `${session.feedback.overallScore ?? 0}%` }} /></div><strong>{session.feedback.overallScore === undefined ? 'Incomplete' : `${session.feedback.overallScore}/100`}<small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small></strong></div>)}</div></article>
+                <article className="progress-card"><div className="progress-card__heading"><div><p className="eyebrow">Delivery trend</p><h3>Heuristic delivery averages</h3></div></div><div className="skill-list">{(['fluency', 'pacing', 'hesitation'] as const).map((dimension) => { const value = average(interpretingSessions.map((session) => session.feedback.deliveryScores[dimension])); return <div className="skill-row" key={dimension}><div><span>{dimension[0].toUpperCase() + dimension.slice(1)}</span><strong>{value}</strong></div><div className="trend-row__track"><span style={{ width: `${value}%` }} /></div></div> })}</div></article>
+              </section>
+              <section className="progress-panels"><article className="progress-card progress-card--note" style={{ width: '100%' }}><span className="progress-card__mark">✦</span><h3>Interpreting evidence notice</h3><p>Audio-analysis measures are local heuristics. Recognition-uncertain evidence is kept separate for transcript review and does not become a learner-error annotation.</p></article></section>
             </>
           )}
         </>

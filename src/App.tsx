@@ -11,6 +11,7 @@ import { PracticeSetup, type PracticeStart } from './features/practice/PracticeS
 import { TranslationWorkspace } from './features/practice/TranslationWorkspace'
 import { InterpretingSetup, type InterpretingStart } from './features/interpreting/InterpretingSetup'
 import { InterpretingWorkspace } from './features/interpreting/InterpretingWorkspace'
+import { InterpretingFeedbackPanel } from './features/interpreting/InterpretingFeedbackPanel'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { ExamCatalog } from './features/exam/ExamCatalog'
@@ -123,16 +124,17 @@ function ConsentDialog({
     <div className="consent-backdrop" role="presentation">
       <div className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-heading">
         <p className="eyebrow">One task · explicit consent</p>
-        <h2 id="consent-heading">Send this translation to the cloud?</h2>
-        <p>The local evaluator is not available for this task. A cloud provider will receive exactly the source passage and your answer shown below, along with the rubric prompt.</p>
+        <h2 id="consent-heading">Send this task to the cloud?</h2>
+        <p>The local evaluator is not available for this task. Review the exact provider, model, text, audio metadata, and derived metrics below before making a one-time decision.</p>
+        <p className="consent-warning">Provider: {request.payloadPreview.providerUrl} · Model: {request.payloadPreview.model}</p>
         <div className="consent-evidence">
           {isWritten ? (
             <>
               <section><h3>Exact source · {sourceLanguage.nativeLabel}</h3><p className="consent-quote" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{request.sourceText}</p></section>
               <section><h3>Exact answer · {targetLanguage.nativeLabel}</h3><p className="consent-quote" dir={targetLanguage.direction} lang={exercise.targetLanguage}>{request.learnerAnswer}</p></section>
             </>
-          ) : request.payloadPreview.parts.map((part) => (
-            <section key={part.kind}><h3>{part.label}</h3><p className="consent-quote">{part.text ?? `${part.mimeType ?? 'audio'} · ${part.durationMs ?? 0} ms · ${part.byteLength ?? 0} bytes`}</p></section>
+          ) : request.payloadPreview.parts.map((part, index) => (
+            <section key={`${part.kind}-${index}`}><h3>{part.label}</h3>{part.text && <p className="consent-quote">{part.text}</p>}{part.previewUrl && <><audio controls preload="metadata" src={part.previewUrl}>Audio preview is unavailable.</audio><p className="consent-quote">{part.mimeType} · {part.durationMs} ms · {part.byteLength} bytes</p></>}</section>
           ))}
         </div>
         <p className="consent-warning">This is a one-time decision for this task. The API key remains session-only, and the service worker does not cache this request or response.</p>
@@ -145,7 +147,7 @@ function ConsentDialog({
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home')
   const [settings, setSettings] = useState<StoredSettings>(DEFAULT_SETTINGS)
-  const [cloudDraft, setCloudDraft] = useState({ baseUrl: '', model: '', apiKey: '' })
+  const [cloudDraft, setCloudDraft] = useState({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
   const [localProgress, setLocalProgress] = useState<LocalModelProgress>({ status: 'not-prepared', text: 'Local model has not been prepared.' })
   const [capability, setCapability] = useState<CapabilityAssessment>(createInitialCapability)
   const [recentSessions, setRecentSessions] = useState<SessionRecord[]>([])
@@ -235,7 +237,7 @@ export default function App() {
         return
       }
       setSettings(savedSettings)
-      setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '' })
+      setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
     }).catch(() => undefined)
     void database.listSessions().then((sessions) => {
       if (dataLoadGeneration.current === loadGeneration) {
@@ -308,7 +310,7 @@ export default function App() {
     localProvider.dispose()
     forgetLocalModelReady()
     setSettings(DEFAULT_SETTINGS)
-    setCloudDraft({ baseUrl: '', model: '', apiKey: '' })
+    setCloudDraft({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
     setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
     setRecentSessions([])
     setRecentInterpretingSessions([])
@@ -436,6 +438,7 @@ export default function App() {
     setIsEvaluatingExam(true)
     try {
       const feedback = await pending.request.confirm()
+      pending.request.revokePreview?.()
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -449,6 +452,7 @@ export default function App() {
         [pending.passageId]: feedback,
       })
     } catch (error) {
+      pending.request.revokePreview?.()
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -503,8 +507,8 @@ export default function App() {
   }
 
 
-  function saveCloudPreferences(baseUrl: string, model: string) {
-    updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim() })
+  function saveCloudPreferences(baseUrl: string, model: string, supportsAudio: boolean) {
+    updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
   }
 
   function beginPractice(selection: PracticeStart) {
@@ -711,6 +715,7 @@ export default function App() {
     setIsEvaluating(true)
     try {
       const nextFeedback = await pending.request.confirm()
+      pending.request.revokePreview?.()
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -721,6 +726,7 @@ export default function App() {
       setPendingConsent(undefined)
       await saveCompletedSession(nextFeedback, 'cloud', pending.answer, pending.elapsedSeconds, submissionGeneration)
     } catch (error) {
+      pending.request.revokePreview?.()
       if (dataLoadGeneration.current === submissionGeneration) {
         setPracticeNotice(error instanceof Error ? error.message : 'Cloud evaluation could not be completed. You can review the consent and try again.')
       }
@@ -740,6 +746,7 @@ export default function App() {
     setIsEvaluating(true)
     try {
       const nextFeedback = await pending.request.confirm()
+      pending.request.revokePreview?.()
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -750,6 +757,7 @@ export default function App() {
       setPendingInterpretingConsent(undefined)
       await saveCompletedInterpretingSession(pending.input, nextFeedback, 'cloud', submissionGeneration)
     } catch (error) {
+      pending.request.revokePreview?.()
       if (dataLoadGeneration.current === submissionGeneration) {
         setPracticeNotice(error instanceof Error ? error.message : 'Cloud interpreting evaluation could not be completed. The audio and transcript remain local.')
       }
@@ -801,17 +809,7 @@ export default function App() {
         {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'practice' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} />}
-        {currentPage === 'practice' && activeInterpretingExercise && interpretingFeedback && (
-          <section className="interpreting-feedback-placeholder" aria-labelledby="interpreting-feedback-heading">
-            <p className="eyebrow">Interpreting practice estimate</p>
-            <h2 id="interpreting-feedback-heading">Your local evidence is ready.</h2>
-            <p>{interpretingFeedback.summary}</p>
-            <p>Delivery: {interpretingFeedback.deliveryScores.fluency}/100 fluency · {interpretingFeedback.deliveryScores.pacing}/100 pacing · {interpretingFeedback.deliveryScores.hesitation}/100 hesitation.</p>
-            {interpretingFeedback.contentScores && <p>Content: {interpretingFeedback.contentScores.meaningTransfer}/100 meaning transfer · {interpretingFeedback.contentScores.omissions}/100 completeness · {interpretingFeedback.contentScores.terminology}/100 terminology.</p>}
-            <p>{interpretingFeedback.contentScoreStatus === 'incomplete' ? 'Content scoring is incomplete because one or more transcripts were not verified. Review the audio and transcript manually.' : interpretingFeedback.uncertainty}</p>
-            <div className="interpreting-control-row"><button className="button button--quiet interpreting-action" type="button" onClick={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }}>Revise take</button><button className="button button--primary interpreting-action" type="button" onClick={resetPractice}>Change setup</button></div>
-          </section>
-        )}
+        {currentPage === 'practice' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'exam' && !isEvaluatingExam && examEvaluationNotice && (
           <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>
             {examEvaluationNotice}
@@ -869,8 +867,10 @@ export default function App() {
         {currentPage === 'progress' && (
           <ProgressPage
             sessions={recentSessions}
+            interpretingSessions={recentInterpretingSessions}
             examResults={recentExamResults}
             onStartPractice={() => setCurrentPage('practice')}
+            onStartInterpreting={() => { setPracticeSetupMode('interpreting'); setCurrentPage('practice') }}
             onOpenExamResult={(result) => void handleOpenExamResult(result)}
             onStartExam={() => {
               setExamView('catalog')
@@ -880,17 +880,18 @@ export default function App() {
             }}
           />
         )}
-        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={setCurrentPage} /></div>}
-      {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => setPendingConsent(undefined)} onConfirm={() => void confirmCloudEvaluation()} />}
-      {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
+      {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}
+      {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
       {pendingExamConsent && (
         <ConsentDialog
           exercise={pendingExamConsent.request.exercise}
           request={pendingExamConsent.request}
           isSubmitting={isEvaluatingExam}
           onCancel={() => {
+            pendingExamConsent.request.revokePreview?.()
             setPendingExamConsent(undefined)
             setExamEvaluationNotice('Cloud evaluation was not approved. No practice estimate was saved; the exam remains available for retry.')
           }}

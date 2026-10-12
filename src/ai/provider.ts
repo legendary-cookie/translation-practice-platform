@@ -31,6 +31,7 @@ export type CloudConsentRequest = {
       previewUrl?: string
     }>
   }
+  revokePreview?: () => void
   confirm: () => Promise<EvaluationFeedback>
 }
 
@@ -54,8 +55,12 @@ export type EvaluationRouter = {
 export type EvaluationRouterDependencies = {
   getMode: () => EvaluationMode
   getLocalProvider: () => LocalProviderLike | undefined
-  getCloudProvider: () => EvaluationProvider | undefined
+  getCloudProvider: () => CloudProviderLike | undefined
   getCapability: () => CapabilityAssessment
+}
+
+export type CloudProviderLike = EvaluationProvider & {
+  getConsentDetails(): { providerUrl: string; model: string; supportsAudio: boolean }
 }
 
 export class ProviderUnavailableError extends Error {
@@ -106,6 +111,28 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
         return { status: 'unavailable', reason: `${localFailure} Configure a cloud endpoint before choosing cloud fallback.` }
       }
 
+      const cloudDetails = cloudProvider.getConsentDetails()
+      if (!('learnerAnswer' in input) && !cloudDetails.supportsAudio) {
+        return { status: 'unavailable', reason: `${localFailure} The configured cloud endpoint is not marked as audio-capable, so the learner audio remains local.` }
+      }
+
+      const previewUrls: string[] = []
+      const parts: CloudConsentRequest['payloadPreview']['parts'] = 'learnerAnswer' in input
+        ? [
+            { kind: 'source-transcript', label: 'Exact source passage', text: input.exercise.sourceText },
+            { kind: 'learner-transcript', label: 'Exact learner answer', text: input.learnerAnswer },
+          ]
+        : [
+            { kind: 'source-transcript', label: 'Exact source segment transcripts', text: input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n') },
+            { kind: 'learner-transcript', label: 'Learner transcripts with recognition status', text: input.responseSegments.map((segment) => `${segment.id} (${segment.recognitionStatus}): ${segment.transcript || '[empty]'}`).join('\n') },
+            ...input.recordings.map((recording) => {
+              const previewUrl = URL.createObjectURL(recording.blob)
+              previewUrls.push(previewUrl)
+              return { kind: 'learner-audio' as const, label: `Learner audio · ${recording.id}`, mimeType: recording.mimeType, durationMs: recording.durationMs, byteLength: recording.byteLength, previewUrl }
+            }),
+            { kind: 'delivery-metrics', label: 'Local delivery metrics', text: JSON.stringify(input.deliveryAnalysis) },
+          ]
+
       return {
         status: 'needs-consent',
         reason: localFailure ?? 'Local evaluation is unavailable.',
@@ -113,16 +140,8 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
           exercise: input.exercise,
           sourceText: 'learnerAnswer' in input ? input.exercise.sourceText : undefined,
           learnerAnswer: 'learnerAnswer' in input ? input.learnerAnswer : undefined,
-          payloadPreview: {
-            providerUrl: 'configured cloud endpoint',
-            model: 'configured cloud model',
-            parts: 'learnerAnswer' in input
-              ? [
-                  { kind: 'source-transcript', label: 'Source passage', text: input.exercise.sourceText },
-                  { kind: 'learner-transcript', label: 'Learner answer', text: input.learnerAnswer },
-                ]
-              : [],
-          },
+          payloadPreview: { providerUrl: cloudDetails.providerUrl, model: cloudDetails.model, parts },
+          revokePreview: previewUrls.length > 0 ? () => previewUrls.forEach((url) => URL.revokeObjectURL(url)) : undefined,
           confirm: () => cloudProvider.evaluate(input),
         },
       }

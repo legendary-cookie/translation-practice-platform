@@ -42,7 +42,7 @@ export function InterpretingSetup({
       }
     }
     void Promise.all([
-      fetch(exercise.audioUrl, { method: 'HEAD', cache: 'no-store' }).then((response) => response.ok),
+      fetch(exercise.audioUrl, { cache: 'default' }).then((response) => response.ok),
       getLocalRecognitionCapability(getLanguage(exercise.targetLanguage).speechTag),
     ]).then(([assetReady, capability]) => {
       if (!cancelled) {

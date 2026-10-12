@@ -225,6 +225,7 @@ export type StoredSettings = {
   evaluationMode: EvaluationMode
   cloudBaseUrl: string
   cloudModel: string
+  cloudSupportsAudio: boolean
   localModelStatus: LocalModelStatus
 }
 

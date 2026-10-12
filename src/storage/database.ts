@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   evaluationMode: 'local-only',
   cloudBaseUrl: '',
   cloudModel: '',
+  cloudSupportsAudio: false,
   localModelStatus: 'not-prepared',
 }
 
@@ -162,7 +163,7 @@ export const database = {
   async getSettings(): Promise<StoredSettings> {
     const db = await getDatabase()
     const settings = await db.get('settings', SETTINGS_KEY)
-    return settings ? { ...settings } : { ...DEFAULT_SETTINGS }
+    return settings ? { ...DEFAULT_SETTINGS, ...settings, cloudSupportsAudio: settings.cloudSupportsAudio ?? false } : { ...DEFAULT_SETTINGS }
   },
 
   async saveSettings(settings: StoredSettings): Promise<void> {

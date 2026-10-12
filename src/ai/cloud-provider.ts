@@ -1,7 +1,7 @@
 import { validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
-import type { EvaluationFeedback, EvaluationInput, EvaluationRequest, InterpretingEvaluationInput } from '../domain/types'
+import type { EvaluationFeedback, EvaluationRequest } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
-import { parseJsonResponse, type EvaluationProvider } from './provider'
+import { parseJsonResponse, type CloudProviderLike } from './provider'
 
 export type CloudProviderConfig = {
   baseUrl: string
@@ -103,7 +103,7 @@ async function buildCloudRequestBody(
   }
 }
 
-export function createCloudProvider(config: CloudProviderConfig): EvaluationProvider {
+export function createCloudProvider(config: CloudProviderConfig): CloudProviderLike {
   const endpoint = getCompletionEndpoint(config.baseUrl)
   const model = config.model.trim()
   const apiKey = config.apiKey
@@ -117,6 +117,10 @@ export function createCloudProvider(config: CloudProviderConfig): EvaluationProv
   }
 
   return {
+    getConsentDetails() {
+      return { providerUrl: endpoint, model, supportsAudio }
+    },
+
     async evaluate(input: EvaluationRequest): Promise<EvaluationFeedback> {
       if (!('learnerAnswer' in input) && !supportsAudio) {
         throw new Error('The configured cloud endpoint has not been verified for audio input. Keep the recording local or configure an audio-capable endpoint explicitly.')

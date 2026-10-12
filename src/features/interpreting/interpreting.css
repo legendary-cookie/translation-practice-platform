@@ -172,6 +172,13 @@
   gap: .5rem;
 }
 
+.interpreting-alignment-response > audio {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 20rem;
+}
+
 .interpreting-alignment-source > p,
 .interpreting-alignment-response > p {
   min-height: 3rem;

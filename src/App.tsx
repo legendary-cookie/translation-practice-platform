@@ -216,6 +216,7 @@ export default function App() {
   const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number) => void>(() => undefined)
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
+  const interpretingSessionOpenGenerationRef = useRef(0)
 
   const handleLocalProgress = (progress: LocalModelProgress, providerEpoch: number) => {
     if (localProviderEpochRef.current !== providerEpoch) {
@@ -441,6 +442,9 @@ export default function App() {
   }
 
   function navigateToPage(page: Page) {
+    if (page !== 'progress') {
+      interpretingSessionOpenGenerationRef.current += 1
+    }
     if (page === 'practice') {
       setInitialPracticeMode('written')
       setPracticeSetupMode('written')
@@ -453,6 +457,12 @@ export default function App() {
       setPendingExamConsent(undefined)
     }
     setCurrentPage(page)
+  }
+
+  function openInterpretingSetup() {
+    interpretingSessionOpenGenerationRef.current += 1
+    setPracticeSetupMode('interpreting')
+    setCurrentPage('practice')
   }
 
   async function handleDiscardExamRun(runId: string) {
@@ -632,6 +642,7 @@ export default function App() {
   }
 
   async function handleOpenExamResult(result: ConsolidatedExamResult) {
+    interpretingSessionOpenGenerationRef.current += 1
     try {
       const storedResult = await database.getExamResult(result.id)
       if (!storedResult) {
@@ -797,57 +808,81 @@ export default function App() {
   }
 
   async function handleOpenInterpretingSession(session: InterpretingSessionRecord) {
+    const requestGeneration = ++interpretingSessionOpenGenerationRef.current
+    const requestIsCurrent = () => requestGeneration === interpretingSessionOpenGenerationRef.current && currentPage === 'progress'
     const bundledExercise = getInterpretingExerciseById(session.exerciseId)
     if (!session.exerciseSnapshotVersion && !session.sourceExercise && !session.sourceRecordingId) {
-      setPracticeNotice('This older saved take has no immutable source-audio snapshot, so reopening it could mismatch the original evidence. Start a new take instead.')
-      setCurrentPage('progress')
+      if (requestIsCurrent()) {
+        setPracticeNotice('This older saved take has no immutable source-audio snapshot, so reopening it could mismatch the original evidence. Start a new take instead.')
+        navigateToPage('progress')
+      }
       return
     }
     let exercise = bundledExercise
     let sourceRecording: AudioRecordingRecord | undefined
     let sourceUrl: string | undefined
-    if (session.sourceRecordingId) {
-      sourceRecording = await database.getAudioRecording(session.sourceRecordingId)
-      if (!sourceRecording) {
-        setPracticeNotice('This saved local source audio is no longer available in this browser.')
-        setCurrentPage('progress')
+    try {
+      if (session.sourceRecordingId) {
+        sourceRecording = await database.getAudioRecording(session.sourceRecordingId)
+        if (!requestIsCurrent()) {
+          return
+        }
+        if (!sourceRecording) {
+          setPracticeNotice('This saved local source audio is no longer available in this browser.')
+          navigateToPage('progress')
+          return
+        }
+        sourceUrl = URL.createObjectURL(sourceRecording.blob)
+        if (session.sourceExercise) {
+          exercise = { ...session.sourceExercise, audioUrl: sourceUrl }
+        }
+      } else if (session.sourceExercise && bundledExercise) {
+        exercise = { ...session.sourceExercise, audioUrl: bundledExercise.audioUrl }
+      }
+      if (!exercise) {
+        if (sourceUrl) {
+          URL.revokeObjectURL(sourceUrl)
+          sourceUrl = undefined
+        }
+        setPracticeNotice('This saved interpreting exercise is no longer available in the installed catalog.')
+        navigateToPage('progress')
         return
       }
-      sourceUrl = URL.createObjectURL(sourceRecording.blob)
-      if (session.sourceExercise) {
-        exercise = { ...session.sourceExercise, audioUrl: sourceUrl }
+      const recordings = (await Promise.all(session.recordingIds.map((recordingId) => database.getAudioRecording(recordingId)))).filter((recording): recording is AudioRecordingRecord => recording !== undefined)
+      if (!requestIsCurrent()) {
+        if (sourceUrl) URL.revokeObjectURL(sourceUrl)
+        return
       }
-    } else if (session.sourceExercise && bundledExercise) {
-      exercise = { ...session.sourceExercise, audioUrl: bundledExercise.audioUrl }
+      if (activeInterpretingSourceUrl) {
+        URL.revokeObjectURL(activeInterpretingSourceUrl)
+      }
+      setActiveExercise(undefined)
+      setPracticeSetupMode('interpreting')
+      setActiveInterpretingExercise(exercise)
+      setActiveInterpretingMode(session.interpretingMode)
+      setActiveInterpretingSourceRecording(sourceRecording)
+      setActiveInterpretingSourceUrl(sourceUrl)
+      setActiveInterpretingInput({
+        exercise,
+        interpretingMode: session.interpretingMode,
+        responseSegments: session.responseSegments,
+        recordings,
+        deliveryAnalysis: session.deliveryAnalysis,
+        sourceRecording,
+      })
+      setInterpretingFeedback(session.feedback)
+      setPracticeNotice(recordings.length === session.recordingIds.length && (!session.sourceRecordingId || sourceRecording !== undefined)
+        ? 'Reopened from this device. Audio replay remains local.'
+        : 'Reopened from this device, but one or more local replay files are missing.')
+      sourceUrl = undefined
+      setCurrentPage('practice')
+    } catch {
+      if (sourceUrl) URL.revokeObjectURL(sourceUrl)
+      if (requestIsCurrent()) {
+        setPracticeNotice('This saved interpreting session could not be opened from local storage.')
+        navigateToPage('progress')
+      }
     }
-    if (!exercise) {
-      setPracticeNotice('This saved interpreting exercise is no longer available in the installed catalog.')
-      setCurrentPage('progress')
-      return
-    }
-    const recordings = (await Promise.all(session.recordingIds.map((recordingId) => database.getAudioRecording(recordingId)))).filter((recording): recording is AudioRecordingRecord => recording !== undefined)
-    if (activeInterpretingSourceUrl) {
-      URL.revokeObjectURL(activeInterpretingSourceUrl)
-    }
-    setActiveExercise(undefined)
-    setPracticeSetupMode('interpreting')
-    setActiveInterpretingExercise(exercise)
-    setActiveInterpretingMode(session.interpretingMode)
-    setActiveInterpretingSourceRecording(sourceRecording)
-    setActiveInterpretingSourceUrl(sourceUrl)
-    setActiveInterpretingInput({
-      exercise,
-      interpretingMode: session.interpretingMode,
-      responseSegments: session.responseSegments,
-      recordings,
-      deliveryAnalysis: session.deliveryAnalysis,
-      sourceRecording,
-    })
-    setInterpretingFeedback(session.feedback)
-    setPracticeNotice(recordings.length === session.recordingIds.length && (!session.sourceRecordingId || sourceRecording !== undefined)
-      ? 'Reopened from this device. Audio replay remains local.'
-      : 'Reopened from this device, but one or more local replay files are missing.')
-    setCurrentPage('practice')
   }
 
   async function submitAnswer(answer: string, elapsedSeconds: number) {
@@ -1013,7 +1048,7 @@ export default function App() {
             recentSessions={recentSessions}
             activeExamRun={activeExamRun}
             recentExamResults={recentExamResults}
-            onStartInterpreting={() => { setPracticeSetupMode('interpreting'); setCurrentPage('practice') }}
+            onStartInterpreting={openInterpretingSetup}
             onStartNews={() => { setPracticeSetupMode('written'); setInitialPracticeMode('news'); setCurrentPage('practice') }}
             onNavigate={navigateToPage}
           />
@@ -1086,8 +1121,8 @@ export default function App() {
             interpretingSessions={recentInterpretingSessions}
             examResults={recentExamResults}
             onStartPractice={() => navigateToPage('practice')}
-            onStartInterpreting={() => { setPracticeSetupMode('interpreting'); setCurrentPage('practice') }}
-            onOpenInterpretingSession={(session) => void handleOpenInterpretingSession(session).catch(() => { setPracticeNotice('This saved interpreting session could not be opened from local storage.'); setCurrentPage('progress') })}
+            onStartInterpreting={openInterpretingSetup}
+            onOpenInterpretingSession={(session) => void handleOpenInterpretingSession(session)}
             onOpenExamResult={(result) => void handleOpenExamResult(result)}
             onStartExam={() => navigateToPage('exam')}
           />

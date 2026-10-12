@@ -276,16 +276,25 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
         const evaluation = (async () => {
           const body = await buildCloudRequestBody(input, model, supportsAudio, controller.signal, preparedAudioPayloads)
           throwIfAborted(controller.signal)
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              Authorization: `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          })
+          let response: Response
+          try {
+            response = await fetch(endpoint, {
+              method: 'POST',
+              redirect: 'error',
+              headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(body),
+              signal: controller.signal,
+            })
+          } catch (error) {
+            if (!controller.signal.aborted) {
+              throw new Error('The cloud endpoint could not complete the request or attempted a redirect. Redirect targets are blocked so only the consented destination can receive learner content; configure the final HTTPS endpoint and try again.')
+            }
+            throw error
+          }
 
           if (!response.ok) {
             throw new Error(`Cloud evaluation failed with HTTP ${response.status}.`)

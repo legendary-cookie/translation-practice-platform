@@ -3,6 +3,7 @@ import { getLanguage } from '../../domain/languages'
 import type { LocalModelProgress } from '../../ai/local-provider'
 import type { ActiveExamRun, ConsolidatedExamResult, SessionRecord } from '../../domain/types'
 import { formatSeconds } from '../../domain/exam'
+import { useRecoveryCountdown } from '../exam/use-recovery-countdown'
 
 export type DashboardPage = 'home' | 'practice' | 'exam' | 'progress' | 'settings'
 
@@ -23,6 +24,7 @@ export function Dashboard({
   onStartInterpreting?: () => void
   onStartNews?: () => void
 }) {
+  const activeExamRemainingSeconds = useRecoveryCountdown(activeExamRun)
   const localStatusLabel = localProgress.status === 'ready'
     ? 'Ready on this device'
     : localProgress.status === 'preparing'
@@ -46,7 +48,7 @@ export function Dashboard({
           </div>
           <h3>You have an unfinished examination attempt</h3>
           <p>
-            Remaining time: <strong>{formatSeconds(activeExamRun.overallRemainingSeconds)}</strong>.
+            Remaining time: <strong>{formatSeconds(activeExamRemainingSeconds ?? activeExamRun.overallRemainingSeconds)}</strong>.
             All your drafted answers were saved safely on this device.
           </p>
           <button
@@ -55,7 +57,7 @@ export function Dashboard({
             style={{ marginTop: '0.75rem' }}
             onClick={() => onNavigate('exam')}
           >
-            Resume Exam Simulation ({formatSeconds(activeExamRun.overallRemainingSeconds)}) →
+            Resume Exam Simulation ({formatSeconds(activeExamRemainingSeconds ?? activeExamRun.overallRemainingSeconds)}) →
           </button>
         </section>
       )}

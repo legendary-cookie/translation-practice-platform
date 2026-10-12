@@ -53,6 +53,7 @@ export type InterpretingExercise = {
   tags: ExerciseTag[]
   rightsRecordId: string
   sourceTranscriptStatus?: 'authored' | 'missing'
+  sourceAudioDisclosure?: string
 }
 
 export type InterpretingExerciseSnapshot = Omit<InterpretingExercise, 'audioUrl'>

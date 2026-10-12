@@ -8,6 +8,7 @@ import {
   PRACTICE_ESTIMATE_DISCLAIMER,
   PROVISIONAL_DRAFT_LABEL,
 } from '../../domain/exam'
+import { useRecoveryCountdown } from './use-recovery-countdown'
 
 export type ExamCatalogProps = {
   profiles: ExamProfile[]
@@ -28,6 +29,7 @@ export function ExamCatalog({
 }: ExamCatalogProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<'all' | LanguageCode>('all')
   const [selectedType, setSelectedType] = useState<'all' | ExamType>('all')
+  const activeRemainingSeconds = useRecoveryCountdown(activeRun)
 
   const activeRunProfile = activeRun
     ? profiles.find((p) => p.id === activeRun.profileId)
@@ -63,7 +65,7 @@ export function ExamCatalog({
           <p>
             You have an unfinished attempt for{' '}
             <strong>{activeRunProfile ? activeRunProfile.title : activeRun.profileId}</strong>.
-            Remaining time: <strong>{formatSeconds(activeRun.overallRemainingSeconds)}</strong>.
+            Remaining time: <strong>{formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}</strong>.
             Last saved: {new Date(activeRun.lastSavedAt).toLocaleTimeString()}.
           </p>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
@@ -72,7 +74,7 @@ export function ExamCatalog({
               type="button"
               onClick={() => onResumeRun(activeRun)}
             >
-              Resume Exam ({formatSeconds(activeRun.overallRemainingSeconds)}) →
+              Resume Exam ({formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}) →
             </button>
             <button
               className="button button--quiet"

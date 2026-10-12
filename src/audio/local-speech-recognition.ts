@@ -12,6 +12,7 @@ type SpeechRecognitionResultLike = {
 }
 
 type SpeechRecognitionEventLike = Event & {
+  resultIndex: number
   results: { length: number; [index: number]: SpeechRecognitionResultLike }
 }
 
@@ -119,7 +120,7 @@ export async function recognizeLocal(track: MediaStreamTrack, languageTag: strin
     let bestConfidence: number | undefined
     const alternatives: string[] = []
     recognition.onresult = (event) => {
-      for (let index = 0; index < event.results.length; index += 1) {
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index]
         for (let alternativeIndex = 0; alternativeIndex < result.length; alternativeIndex += 1) {
           const alternative = result[alternativeIndex]

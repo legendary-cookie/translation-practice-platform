@@ -33,6 +33,81 @@ async function precacheAppShell() {
   await cache.addAll([...new Set([...APP_SHELL, ...AUDIO_ASSETS, PRECACHE_MANIFEST, ...generatedAssets])])
 }
 
+function parseByteRange(rangeHeader, size) {
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim())
+  if (!match) {
+    return undefined
+  }
+  if (size <= 0 || (!match[1] && !match[2])) {
+    return { unsatisfiable: true }
+  }
+
+  let start
+  let end
+  if (!match[1]) {
+    const suffixLength = Number(match[2])
+    if (!Number.isInteger(suffixLength) || suffixLength <= 0) {
+      return { unsatisfiable: true }
+    }
+    start = Math.max(size - suffixLength, 0)
+    end = size - 1
+  } else {
+    start = Number(match[1])
+    end = match[2] ? Number(match[2]) : size - 1
+  }
+
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= size || end < start) {
+    return { unsatisfiable: true }
+  }
+  return { start, end: Math.min(end, size - 1) }
+}
+
+async function respondWithCachedAudioRange(request, cachedResponse) {
+  const withByteRangeSupport = (response) => {
+    const headers = new Headers(response.headers)
+    headers.set('Accept-Ranges', 'bytes')
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
+  const rangeHeader = request.headers.get('range')
+  if (!rangeHeader) {
+    return withByteRangeSupport(cachedResponse)
+  }
+  if (!/^bytes=\d*-\d*$/i.test(rangeHeader.trim())) {
+    return withByteRangeSupport(cachedResponse)
+  }
+
+  const body = await cachedResponse.arrayBuffer()
+  const range = parseByteRange(rangeHeader, body.byteLength)
+  if (!range) {
+    return cachedResponse
+  }
+  if (range.unsatisfiable) {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        'Accept-Ranges': 'bytes',
+        'Content-Range': `bytes */${body.byteLength}`,
+        'Content-Length': '0',
+      },
+    })
+  }
+
+  const headers = new Headers(cachedResponse.headers)
+  headers.delete('Content-Encoding')
+  headers.set('Accept-Ranges', 'bytes')
+  headers.set('Content-Range', `bytes ${range.start}-${range.end}/${body.byteLength}`)
+  headers.set('Content-Length', String(range.end - range.start + 1))
+  return new Response(body.slice(range.start, range.end + 1), {
+    status: 206,
+    statusText: 'Partial Content',
+    headers,
+  })
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(precacheAppShell())
 })
@@ -58,13 +133,23 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => cachedResponse ?? fetch(request).then((networkResponse) => {
-      if (networkResponse.ok) {
+  event.respondWith((async () => {
+    try {
+      const cachedResponse = await caches.match(requestUrl.href)
+      if (cachedResponse) {
+        return isPackagedAudioRequest
+          ? respondWithCachedAudioRange(request, cachedResponse)
+          : cachedResponse
+      }
+
+      const networkResponse = await fetch(request)
+      if (networkResponse.ok && !request.headers.has('range')) {
         const responseCopy = networkResponse.clone()
         void caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy))
       }
       return networkResponse
-    })).catch(() => request.mode === 'navigate' ? caches.match('/index.html') : Response.error()),
-  )
+    } catch {
+      return request.mode === 'navigate' ? caches.match('/index.html') : Response.error()
+    }
+  })())
 })

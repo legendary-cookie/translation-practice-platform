@@ -68,6 +68,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   const [recognitionStatuses, setRecognitionStatuses] = useState<Record<string, RecognitionStatus>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).map((segment) => [segment.sourceSegmentId, segment.transcriptSource === 'on-device' ? 'uncertain' : segment.recognitionStatus])))
   const [recognitionConfidences, setRecognitionConfidences] = useState<Record<string, number>>(() => Object.fromEntries((initialInput?.responseSegments ?? []).flatMap((segment) => segment.recognitionConfidence === undefined ? [] : [[segment.sourceSegmentId, segment.recognitionConfidence]])))
   const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(() => new Set())
+  const [pendingRecognitionSegmentId, setPendingRecognitionSegmentId] = useState<string>()
   const [deliveryByTake, setDeliveryByTake] = useState<Record<string, DeliveryAnalysis>>(() => Object.fromEntries((initialInput?.deliveryAnalysis ?? []).map((analysis) => {
     const response = initialInput?.responseSegments.find((segment) => segment.recordingId === analysis.recordingId)
     return [interpretingMode === 'simultaneous' ? 'continuous' : response?.sourceSegmentId ?? analysis.recordingId ?? 'restored', analysis]
@@ -82,6 +83,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   const listenTargetSegmentRef = useRef<string | undefined>(undefined)
   const recordingTakeKeyRef = useRef<string | undefined>(undefined)
   const pendingAnalysisRef = useRef(new Set<string>())
+  const pendingRecognitionRef = useRef<string | undefined>(undefined)
   const currentSegment = exercise.segments[segmentIndex]
   const currentTakeKey = interpretingMode === 'simultaneous' ? 'continuous' : currentSegment.id
   const currentTake = takes[currentTakeKey]
@@ -110,9 +112,9 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
       return
     }
     host.appendChild(audio)
-    audio.controls = !recorderBusy
+    audio.controls = !recorderBusy && interpretingMode === 'simultaneous'
     audio.removeAttribute('aria-hidden')
-    audio.tabIndex = 0
+    audio.tabIndex = audio.controls ? 0 : -1
     audio.style.position = 'static'
     audio.style.width = '100%'
     audio.style.height = 'auto'
@@ -122,7 +124,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     return () => {
       audio.controls = false
     }
-  }, [player, recorderBusy])
+  }, [player, recorderBusy, interpretingMode])
 
   useEffect(() => {
     if (!player) {
@@ -130,7 +132,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
     }
     const unsubscribe = player.subscribe((state) => {
       setPlayerState(state)
-      const listeningFor = listenTargetSegmentRef.current
+      const listeningFor = listenTargetSegmentRef.current ?? state.segmentId
       const listened = listeningFor ? exercise.segments.find((segment) => segment.id === listeningFor) : undefined
       if (listened && state.segmentId === listened.id && !state.isPlaying && state.currentTimeSeconds * 1000 >= listened.endMs - 50) {
         setListenedSegments((segments) => new Set(segments).add(listened.id))
@@ -340,14 +342,19 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
   }
 
   async function captureLocalTranscript() {
+    if (pendingRecognitionRef.current) {
+      return
+    }
     const track = recorder?.getActiveTrack()
     if (!track) {
       setError('Start recording before requesting the optional on-device transcript.')
       return
     }
     setError(undefined)
+    const targetSegmentId = recordingTakeKeyRef.current && recordingTakeKeyRef.current !== 'continuous' ? recordingTakeKeyRef.current : currentSegment.id
+    pendingRecognitionRef.current = targetSegmentId
+    setPendingRecognitionSegmentId(targetSegmentId)
     try {
-      const targetSegmentId = recordingTakeKeyRef.current && recordingTakeKeyRef.current !== 'continuous' ? recordingTakeKeyRef.current : currentSegment.id
       const result = await recognizeLocal(track, targetLanguage.speechTag, targetSegmentId)
       setTranscripts((current) => ({ ...current, [targetSegmentId]: result.transcript }))
       setTranscriptSources((current) => ({ ...current, [targetSegmentId]: 'on-device' }))
@@ -358,6 +365,11 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
       ]))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'On-device recognition was unavailable. Use the manual transcript.')
+    } finally {
+      if (pendingRecognitionRef.current === targetSegmentId) {
+        pendingRecognitionRef.current = undefined
+        setPendingRecognitionSegmentId(undefined)
+      }
     }
   }
 
@@ -423,6 +435,10 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
       setError('Wait for the take analysis to finish before submitting. If analysis is unavailable, a limited-confidence fallback is saved first.')
       return
     }
+    if (pendingRecognitionRef.current) {
+      setError('Wait for on-device recognition to finish or fail before submitting.')
+      return
+    }
     const input = buildInput()
     if (input) {
       onSubmit(input)
@@ -431,20 +447,20 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
 
   const progress = currentSegment ? ((playerState.currentTimeSeconds - currentSegment.startMs / 1000) / Math.max(0.1, (currentSegment.endMs - currentSegment.startMs) / 1000)) * 100 : 0
   const canRecord = interpretingMode === 'simultaneous' || listenedSegments.has(currentSegment.id)
-  const allSegmentsReady = !recorderBusy && pendingAnalysisKeys.size === 0 && exercise.segments.every((segment) => (interpretingMode === 'simultaneous' ? takes.continuous : takes[segment.id]) || skippedSegments.has(segment.id))
+  const allSegmentsReady = !recorderBusy && pendingAnalysisKeys.size === 0 && pendingRecognitionSegmentId === undefined && exercise.segments.every((segment) => (interpretingMode === 'simultaneous' ? takes.continuous : takes[segment.id]) || skippedSegments.has(segment.id))
 
   return (
     <div className="interpreting-workspace" aria-label="Interpreting practice workspace" aria-busy={isSubmitting}>
-      <header className="interpreting-workspace__header"><div><p className="eyebrow">{interpretingMode === 'consecutive' ? 'Consecutive interpreting' : 'Simultaneous interpreting'}</p><h2>{exercise.title}</h2><p>{sourceLanguage.nativeLabel} → {targetLanguage.nativeLabel} · {exercise.segments.length} authored segments · {isImportedSource ? 'source audio stays local to this browser' : 'source audio stays same-origin'}</p></div><button className="text-button interpreting-text-action" type="button" onClick={onCancel} disabled={isSubmitting} aria-disabled={isSubmitting}>Leave desk</button></header>
+      <header className="interpreting-workspace__header"><div><p className="eyebrow">{interpretingMode === 'consecutive' ? 'Consecutive interpreting' : 'Simultaneous interpreting'}</p><h2>{exercise.title}</h2><p>{sourceLanguage.nativeLabel} → {targetLanguage.nativeLabel} · {exercise.segments.length} authored segments · {isImportedSource ? 'source audio stays local to this browser' : 'source audio stays same-origin'}</p>{exercise.sourceAudioDisclosure && <p className="interpreting-helper" role="note">Source-audio limitation: {exercise.sourceAudioDisclosure}</p>}</div><button className="text-button interpreting-text-action" type="button" onClick={onCancel} disabled={isSubmitting} aria-disabled={isSubmitting}>Leave desk</button></header>
       {(notice || error || recorderState.error) && <p className="interpreting-notice" role="alert">{notice ?? error ?? recorderState.error}</p>}
       <div className="interpreting-columns">
-        <aside className="interpreting-segment-rail" aria-label="Source segments"><p className="eyebrow">Segments</p>{exercise.segments.map((segment, index) => <button className={`interpreting-segment-button ${index === segmentIndex ? 'interpreting-segment-button--active' : ''}`} type="button" key={segment.id} disabled={isSubmitting || recorderBusy} onClick={() => { listenTargetSegmentRef.current = undefined; setSegmentIndex(index); player?.pause() }}><span>{index + 1}</span><span>{formatSeconds((segment.endMs - segment.startMs) / 1000)}</span><small>{takes[segment.id] || takes.continuous ? 'Take saved' : skippedSegments.has(segment.id) ? 'Skipped' : 'Not recorded'}</small></button>)}</aside>
+        <aside className="interpreting-segment-rail" aria-label="Source segments"><p className="eyebrow">Segments</p>{exercise.segments.map((segment, index) => <button className={`interpreting-segment-button ${index === segmentIndex ? 'interpreting-segment-button--active' : ''}`} type="button" key={segment.id} disabled={isSubmitting || recorderBusy || pendingRecognitionSegmentId !== undefined} onClick={() => { listenTargetSegmentRef.current = undefined; setSegmentIndex(index); player?.pause() }}><span>{index + 1}</span><span>{formatSeconds((segment.endMs - segment.startMs) / 1000)}</span><small>{takes[segment.id] || takes.continuous ? 'Take saved' : skippedSegments.has(segment.id) ? 'Skipped' : 'Not recorded'}</small></button>)}</aside>
         <section className="interpreting-source-card" aria-labelledby="source-heading">
           <div className="interpreting-card-heading"><div><p className="eyebrow">Source audio</p><h3 id="source-heading">{currentSegment.id}</h3></div><span className="pill">{formatSeconds(currentSegment.startMs / 1000)}–{formatSeconds(currentSegment.endMs / 1000)}</span></div>
           <p className="interpreting-source-transcript" dir={sourceLanguage.direction} lang={sourceLanguage.code}>{currentSegment.transcript || 'No source transcript supplied; delivery-only feedback remains available.'}</p>
           <div className="interpreting-progress" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} /></div>
           <p className="interpreting-time" aria-live="polite">{formatSeconds(playerState.currentTimeSeconds)} / {formatSeconds(currentSegment.endMs / 1000)}</p>
-          <div className="interpreting-native-source-player" ref={sourceAudioHost} aria-label="Native source audio controls" />
+          <div className="interpreting-native-source-player" ref={sourceAudioHost} aria-label="Native source audio controls" hidden={interpretingMode === 'consecutive'} />
           <div className="interpreting-control-row"><button className="button button--primary interpreting-action" type="button" onClick={() => void playCurrentSegment()} disabled={!player || recorderBusy}>{playerState.isPlaying ? 'Playing…' : 'Play segment'} <span aria-hidden="true">▶</span></button><button className="button button--quiet interpreting-action" type="button" onClick={() => player?.pause()} disabled={recorderBusy}>Pause</button><button className="button button--quiet interpreting-action" type="button" onClick={() => player?.seek(Math.max(currentSegment.startMs / 1000, playerState.currentTimeSeconds - 2))} disabled={recorderBusy}>−2s</button><button className="button button--quiet interpreting-action" type="button" onClick={() => player?.seek(Math.min(currentSegment.endMs / 1000, playerState.currentTimeSeconds + 2))} disabled={recorderBusy}>+2s</button></div>
           <label className="interpreting-toggle"><input type="checkbox" checked={repeatSegment} disabled={recorderBusy} onChange={(event) => { setRepeatSegment(event.target.checked); player?.setRepeat(event.target.checked) }} /> Repeat this segment</label>
           <p className="interpreting-helper">Listen before recording in consecutive mode. The source audio is not uploaded by this workspace.</p>
@@ -455,7 +471,7 @@ export function InterpretingWorkspace({ exercise, initialInput, interpretingMode
           <p className="interpreting-time">{formatSeconds(recorderState.elapsedMs / 1000)} · local microphone only</p>
           <div className="interpreting-control-row"><button className="button button--primary interpreting-action" type="button" onClick={() => void startRecording()} disabled={!recorder || isSubmitting || pendingAnalysisKeys.size > 0 || ['requesting', 'recording', 'paused', 'stopping'].includes(recorderState.status) || !canRecord}>{recorderState.status === 'requesting' ? 'Waiting for microphone…' : interpretingMode === 'consecutive' && !canRecord ? 'Listen first' : 'Start recording'} <span aria-hidden="true">●</span></button><button className="button button--quiet interpreting-action" type="button" onClick={() => void stopRecording()} disabled={!recorder || (recorderState.status !== 'recording' && recorderState.status !== 'paused')}>Stop and save</button><button className="button button--quiet interpreting-action" type="button" onClick={pauseRecording} disabled={!recorder || recorderState.status !== 'recording'}>{interpretingMode === 'simultaneous' ? 'Pause source and response' : 'Pause'}</button><button className="button button--quiet interpreting-action" type="button" onClick={() => void resumeRecording()} disabled={!recorder || recorderState.status !== 'paused'}>{interpretingMode === 'simultaneous' ? 'Resume source and response' : 'Resume'}</button></div>
           {currentReplayUrl && <div className="interpreting-replay"><strong>Replay this take</strong><audio controls preload="metadata" src={currentReplayUrl}>Your browser cannot replay this local take.</audio><button className="text-button interpreting-text-action" type="button" onClick={discardCurrentTake} disabled={pendingAnalysisKeys.has(currentTakeKey)}>Discard and rerecord</button></div>}
-          <div className="interpreting-transcript-block"><div className="interpreting-card-heading"><strong>Editable response transcript</strong><span className="pill">{recognition?.status === 'available' ? 'Optional on-device recognition' : 'Manual path'}</span></div><textarea dir={targetLanguage.direction} lang={targetLanguage.code} value={transcripts[currentSegment.id] ?? ''} onChange={(event) => updateManualTranscript(currentSegment.id, event.target.value)} placeholder="Type or confirm what you delivered…" aria-label={`Transcript for ${currentSegment.id}`} disabled={isSubmitting} /><div className="interpreting-control-row"><button className="button button--quiet interpreting-action" type="button" onClick={() => void captureLocalTranscript()} disabled={isSubmitting || recorderState.status !== 'recording' || recognition?.status !== 'available'}>Capture on-device transcript</button>{transcriptSources[currentSegment.id] === 'on-device' && recognitionStatuses[currentSegment.id] !== 'verified' && <button className="button button--quiet interpreting-action" type="button" onClick={() => confirmTranscript(currentSegment.id)} disabled={isSubmitting || !transcripts[currentSegment.id]?.trim()}>Confirm transcript</button>}<span className="interpreting-confidence">{transcriptSources[currentSegment.id] === 'on-device' && recognitionStatuses[currentSegment.id] !== 'verified' ? `Unconfirmed on-device transcript${recognitionConfidences[currentSegment.id] === undefined ? '' : ` · confidence estimate ${Math.round(recognitionConfidences[currentSegment.id] * 100)}%`}. Confirm or edit before it counts as content evidence.` : recognitionStatuses[currentSegment.id] === 'uncertain' ? 'Recognition may be wrong — check it.' : transcriptSources[currentSegment.id] === 'on-device' ? 'You confirmed this on-device transcript; its confidence remains an estimate.' : 'Manual text is treated as learner-confirmed evidence.'}</span></div></div>
+          <div className="interpreting-transcript-block"><div className="interpreting-card-heading"><strong>Editable response transcript</strong><span className="pill">{recognition?.status === 'available' ? 'Optional on-device recognition' : 'Manual path'}</span></div><textarea dir={targetLanguage.direction} lang={targetLanguage.code} value={transcripts[currentSegment.id] ?? ''} onChange={(event) => updateManualTranscript(currentSegment.id, event.target.value)} placeholder="Type or confirm what you delivered…" aria-label={`Transcript for ${currentSegment.id}`} disabled={isSubmitting || pendingRecognitionSegmentId === currentSegment.id} /><div className="interpreting-control-row"><button className="button button--quiet interpreting-action" type="button" onClick={() => void captureLocalTranscript()} disabled={isSubmitting || recorderState.status !== 'recording' || recognition?.status !== 'available' || pendingRecognitionSegmentId !== undefined}>{pendingRecognitionSegmentId === currentSegment.id ? 'Recognizing on this device…' : 'Capture on-device transcript'}</button>{transcriptSources[currentSegment.id] === 'on-device' && recognitionStatuses[currentSegment.id] !== 'verified' && <button className="button button--quiet interpreting-action" type="button" onClick={() => confirmTranscript(currentSegment.id)} disabled={isSubmitting || !transcripts[currentSegment.id]?.trim()}>Confirm transcript</button>}<span className="interpreting-confidence">{transcriptSources[currentSegment.id] === 'on-device' && recognitionStatuses[currentSegment.id] !== 'verified' ? `Unconfirmed on-device transcript${recognitionConfidences[currentSegment.id] === undefined ? '' : ` · confidence estimate ${Math.round(recognitionConfidences[currentSegment.id] * 100)}%`}. Confirm or edit before it counts as content evidence.` : recognitionStatuses[currentSegment.id] === 'uncertain' ? 'Recognition may be wrong — check it.' : transcriptSources[currentSegment.id] === 'on-device' ? 'You confirmed this on-device transcript; its confidence remains an estimate.' : 'Manual text is treated as learner-confirmed evidence.'}</span></div></div>
           <label className="interpreting-toggle"><input type="checkbox" checked={skippedSegments.has(currentSegment.id)} disabled={isSubmitting || recorderBusy || Boolean(currentTake)} onChange={(event) => setSkippedSegments((current) => { const next = new Set(current); if (event.target.checked) next.add(currentSegment.id); else next.delete(currentSegment.id); return next })} /> I am skipping this segment</label>
         </section>
       </div>

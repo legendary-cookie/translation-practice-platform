@@ -16,6 +16,43 @@ type ImportedSource = {
   objectUrl: string
 }
 
+async function hasCachedAudioAsset(audioUrl: string): Promise<boolean> {
+  if (!('caches' in window)) {
+    return false
+  }
+  try {
+    return Boolean(await window.caches.match(new URL(audioUrl, window.location.href).href))
+  } catch {
+    return false
+  }
+}
+
+async function getPackagedAudioStatus(audioUrl: string): Promise<'ready' | 'available' | 'unavailable'> {
+  if (await hasCachedAudioAsset(audioUrl)) {
+    return 'ready'
+  }
+
+  if ('serviceWorker' in navigator) {
+    await Promise.race([
+      navigator.serviceWorker.ready.then(() => undefined, () => undefined),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
+    ])
+    if (await hasCachedAudioAsset(audioUrl)) {
+      return 'ready'
+    }
+  }
+
+  try {
+    const response = await fetch(audioUrl, { cache: 'default' })
+    if (!response.ok) {
+      return 'unavailable'
+    }
+    return await hasCachedAudioAsset(audioUrl) ? 'ready' : 'available'
+  } catch {
+    return 'unavailable'
+  }
+}
+
 function createLocalId(prefix: string): string {
   return typeof crypto.randomUUID === 'function' ? `${prefix}-${crypto.randomUUID()}` : `${prefix}-${Date.now()}`
 }
@@ -32,7 +69,7 @@ export function InterpretingSetup({
   const [directionId, setDirectionId] = useState(CHINESE_DIRECTIONS[0].id)
   const [difficulty, setDifficulty] = useState<'all' | Difficulty>('all')
   const [interpretingMode, setInterpretingMode] = useState<InterpretingMode>('consecutive')
-  const [assetStatus, setAssetStatus] = useState<'checking' | 'ready' | 'unavailable'>('checking')
+  const [assetStatus, setAssetStatus] = useState<'checking' | 'ready' | 'available' | 'unavailable'>('checking')
   const [recognition, setRecognition] = useState<LocalRecognitionCapability>()
   const [importedSource, setImportedSource] = useState<ImportedSource>()
   const [importedTranscript, setImportedTranscript] = useState('')
@@ -163,11 +200,11 @@ export function InterpretingSetup({
       }
     }
     void Promise.all([
-      fetch(exercise.audioUrl, { cache: 'default' }).then((response) => response.ok),
+      getPackagedAudioStatus(exercise.audioUrl),
       capabilityPromise,
-    ]).then(([assetReady, capability]) => {
+    ]).then(([assetAvailability, capability]) => {
       if (!cancelled) {
-        setAssetStatus(assetReady ? 'ready' : 'unavailable')
+        setAssetStatus(assetAvailability)
         setRecognition(capability)
       }
     }).catch(() => {
@@ -208,11 +245,12 @@ export function InterpretingSetup({
         {exercise ? (
           <div className="selected-exercise interpreting-selected-exercise">
             <div><span className="eyebrow">Selected source clip</span><h3>{exercise.title}</h3><p>{getLanguage(exercise.sourceLanguage).nativeLabel} → {getLanguage(exercise.targetLanguage).nativeLabel} · {exercise.difficulty} · {exercise.segments.length} segments · {(exercise.durationMs / 1000).toFixed(1)} seconds</p></div>
-            <span className={`interpreting-asset-status interpreting-asset-status--${assetStatus}`} role="status">{assetStatus === 'ready' ? importedSource ? 'Loaded on this device' : 'Offline-ready' : assetStatus === 'checking' ? 'Checking asset…' : 'Asset unavailable'}</span>
+            <span className={`interpreting-asset-status interpreting-asset-status--${assetStatus}`} role="status">{assetStatus === 'ready' ? importedSource ? 'Loaded on this device' : 'Offline-ready' : assetStatus === 'available' ? 'Available now · offline copy not confirmed' : assetStatus === 'checking' ? 'Checking asset…' : 'Asset unavailable'}</span>
           </div>
         ) : <p className="form-message" role="status">No audio exercise matches this direction.</p>}
+        {exercise?.sourceAudioDisclosure && <p className="interpreting-helper" role="note">Source-audio limitation: {exercise.sourceAudioDisclosure}</p>}
         <div className="interpreting-capability" role="status"><strong>Target recognition</strong><span>{recognition?.status === 'available' ? 'On-device option available' : recognition?.status === 'downloadable' ? 'Language pack may be downloadable' : recognition?.status === 'downloading' ? 'Language pack downloading' : 'Manual transcript path'}</span><small>{recognition?.reason ?? 'Checking the browser capability…'}</small></div>
-        <button className="button button--primary setup-card__start" type="button" disabled={!exercise || assetStatus !== 'ready'} onClick={() => { if (!exercise) return; if (importedSource) transferredObjectUrl.current = importedSource.objectUrl; onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }) }}>Open interpreting desk <span aria-hidden="true">→</span></button>
+        <button className="button button--primary setup-card__start" type="button" disabled={!exercise || !['ready', 'available'].includes(assetStatus)} onClick={() => { if (!exercise) return; if (importedSource) transferredObjectUrl.current = importedSource.objectUrl; onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }) }}>Open interpreting desk <span aria-hidden="true">→</span></button>
         <p className="setup-card__note">Content and delivery feedback are separate practice estimates. Recognition is never treated as official evidence, and unsupported languages remain usable through manual transcript entry. Imported source audio is never sent automatically.</p>
       </section>
     </div>

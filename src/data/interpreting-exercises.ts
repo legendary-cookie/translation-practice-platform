@@ -10,6 +10,7 @@ type SourceClip = {
   audioUrl: string
   durationMs: number
   rightsRecordId: string
+  sourceAudioDisclosure?: string
   segments: AudioSegment[]
 }
 
@@ -65,6 +66,7 @@ const sourceClips: SourceClip[] = [
     audioUrl: '/audio/interpreting/fr-rooftop.wav',
     durationMs: 8442,
     rightsRecordId: 'audio.fr.rooftop.v1',
+    sourceAudioDisclosure: 'This French script uses a fallback desktop voice, not a verified French voice. Treat its pronunciation as a demonstration only.',
     segments: [
       { id: 'fr-rooftop-1', startMs: 0, endMs: 4200, transcript: 'Les habitants récupèrent l’eau de pluie sur les toits.' },
       { id: 'fr-rooftop-2', startMs: 4200, endMs: 8442, transcript: 'Cette eau suffit pour arroser les plantations.' },
@@ -79,6 +81,7 @@ const sourceClips: SourceClip[] = [
     audioUrl: '/audio/interpreting/hi-seeds.wav',
     durationMs: 10871,
     rightsRecordId: 'audio.hi.seeds.v1',
+    sourceAudioDisclosure: 'This Hindi script was romanized for synthesis with a fallback desktop voice. It is not native Hindi speech; use it for timing and transcript workflow practice, not pronunciation benchmarking.',
     segments: [
       { id: 'hi-seeds-1', startMs: 0, endMs: 5200, transcript: 'किसानों ने स्थानीय बीजों की एक छोटी लाइब्रेरी शुरू की है।' },
       { id: 'hi-seeds-2', startMs: 5200, endMs: 10871, transcript: 'लोग अगले मौसम में बीजों को उधार ले जाते हैं।' },
@@ -107,6 +110,7 @@ const sourceClips: SourceClip[] = [
     audioUrl: '/audio/interpreting/ar-map.wav',
     durationMs: 11197,
     rightsRecordId: 'audio.ar.map.v1',
+    sourceAudioDisclosure: 'This Arabic script was romanized for synthesis with a fallback desktop voice. It is not native Arabic speech; use it for timing and transcript workflow practice, not pronunciation benchmarking.',
     segments: [
       { id: 'ar-map-1', startMs: 0, endMs: 5500, transcript: 'عثر الطلاب على خريطة قديمة في المركز الثقافي.' },
       { id: 'ar-map-2', startMs: 5500, endMs: 11197, transcript: 'قرروا تصويرها ومقارنتها بذاكرة الكبار.' },
@@ -150,6 +154,7 @@ function toExercise(clip: SourceClip, targetLanguage: LanguageCode): Interpretin
     glossary: [],
     tags: ['general'],
     rightsRecordId: clip.rightsRecordId,
+    sourceAudioDisclosure: clip.sourceAudioDisclosure,
   }
 }
 

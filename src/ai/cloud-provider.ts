@@ -1,7 +1,8 @@
 import { validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
-import type { EvaluationFeedback, EvaluationRequest, InterpretingEvaluationInput } from '../domain/types'
+import type { ConsentedCloudAudioEvidence, EvaluationFeedback, EvaluationRequest, InterpretingEvaluationInput } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
-import { parseJsonResponse, type CloudProviderLike } from './provider'
+import { parseJsonResponse } from './response-parsing'
+import type { CloudProviderLike } from './provider'
 
 export type CloudProviderConfig = {
   baseUrl: string
@@ -182,47 +183,69 @@ async function blobToMonoWav(blob: Blob, signal: AbortSignal): Promise<Blob> {
 async function buildCloudRequestBody(
   input: EvaluationRequest,
   model: string,
+  providerUrl: string,
   supportsAudio: boolean,
   signal: AbortSignal,
   preparedAudioPayloads?: ReadonlyMap<string, Blob>,
-): Promise<Record<string, unknown>> {
+  taskConsentGranted = false,
+): Promise<{ body: Record<string, unknown>; cloudAudioEvidence?: ConsentedCloudAudioEvidence }> {
   throwIfAborted(signal)
   if ('learnerAnswer' in input) {
     return {
-      model,
-      messages: [
-        { role: 'system', content: evaluationSystemPrompt },
-        { role: 'user', content: buildEvaluationPrompt(input) },
-      ],
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
+      body: {
+        model,
+        messages: [
+          { role: 'system', content: evaluationSystemPrompt },
+          { role: 'user', content: buildEvaluationPrompt(input) },
+        ],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      },
     }
   }
 
-  const audioParts = await Promise.all(input.recordings.map(async (recording) => {
+  if (!taskConsentGranted) {
+    throw new Error('A task-specific consent decision is required before learner audio can be sent to a cloud evaluator.')
+  }
+  if (!supportsAudio) {
+    throw new Error('The configured cloud endpoint has not been verified for audio input. Keep the recording local or configure an audio-capable endpoint explicitly.')
+  }
+
+  const attachedParts = await Promise.all(input.recordings.map(async (recording) => {
     const outgoingBlob = preparedAudioPayloads?.get(recording.id) ?? await blobToMonoWav(recording.blob, signal)
     return {
-      type: 'input_audio',
-      input_audio: {
-        data: await blobToBase64(outgoingBlob, signal),
-        format: 'wav',
+      recordingId: recording.id,
+      part: {
+        type: 'input_audio',
+        input_audio: {
+          data: await blobToBase64(outgoingBlob, signal),
+          format: 'wav',
+        },
       },
     }
   }))
+  const attachedRecordingIds = attachedParts.map((item) => item.recordingId)
+  const cloudAudioEvidence: ConsentedCloudAudioEvidence | undefined = input.recordings.length > 0
+    && attachedRecordingIds.length === input.recordings.length
+    ? { providerUrl, model, taskConsentGranted: true, attachedRecordingIds }
+    : undefined
   return {
-    model,
-    messages: [
-      { role: 'system', content: evaluationSystemPrompt },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: buildEvaluationPrompt(input, { attachedAudioAvailable: supportsAudio && input.recordings.length > 0 }) },
-          ...audioParts,
-        ],
-      },
-    ],
-    temperature: 0.2,
-    response_format: { type: 'json_object' },
+    body: {
+      model,
+      messages: [
+        { role: 'system', content: evaluationSystemPrompt },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: buildEvaluationPrompt(input, { cloudAudioEvidence }) },
+            ...attachedParts.map((item) => item.part),
+          ],
+        },
+      ],
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+    },
+    cloudAudioEvidence,
   }
 }
 
@@ -261,7 +284,7 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
       }
     },
 
-    async evaluate(input: EvaluationRequest, preparedAudioPayloads?: ReadonlyMap<string, Blob>): Promise<EvaluationFeedback> {
+    async evaluate(input: EvaluationRequest, preparedAudioPayloads?: ReadonlyMap<string, Blob>, authorization?: { taskConsentGranted: true }): Promise<EvaluationFeedback> {
       if (!('learnerAnswer' in input) && !supportsAudio) {
         throw new Error('The configured cloud endpoint has not been verified for audio input. Keep the recording local or configure an audio-capable endpoint explicitly.')
       }
@@ -279,7 +302,7 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
       let completed = false
       try {
         const evaluation = (async () => {
-          const body = await buildCloudRequestBody(input, model, supportsAudio, controller.signal, preparedAudioPayloads)
+          const { body, cloudAudioEvidence } = await buildCloudRequestBody(input, model, endpoint, supportsAudio, controller.signal, preparedAudioPayloads, authorization?.taskConsentGranted === true)
           throwIfAborted(controller.signal)
           let response: Response
           try {
@@ -308,7 +331,7 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
           const raw = parseJsonResponse(getContent(await response.json() as unknown))
           return 'learnerAnswer' in input
             ? validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
-            : validateInterpretingFeedback(raw, input)
+            : validateInterpretingFeedback(raw, input, cloudAudioEvidence)
         })()
         const feedback = await Promise.race([evaluation, timeout])
         completed = true

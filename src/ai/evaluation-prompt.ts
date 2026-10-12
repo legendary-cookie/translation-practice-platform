@@ -1,6 +1,6 @@
 import { getLanguage } from '../domain/languages'
-import { hasCompleteInterpretingDeliveryEvidence } from '../domain/scoring'
-import type { EvaluationInput, EvaluationRequest, InterpretingEvaluationInput, ScoreDimension } from '../domain/types'
+import type { ConsentedCloudAudioEvidence, EvaluationInput, EvaluationRequest, InterpretingEvaluationInput, ScoreDimension } from '../domain/types'
+import { hasConsentedCloudAudioDeliveryEvidence, hasCompleteInterpretingDeliveryEvidence } from '../domain/scoring'
 
 const dimensions: ScoreDimension[] = ['accuracy', 'terminology', 'grammar', 'fluency', 'taskStyle']
 
@@ -38,7 +38,7 @@ ${input.learnerAnswer}
 `
 }
 
-function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, attachedAudioAvailable: boolean): string {
+function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, cloudAudioEvidence?: ConsentedCloudAudioEvidence): string {
   const sourceLanguage = getLanguage(input.exercise.sourceLanguage)
   const targetLanguage = getLanguage(input.exercise.targetLanguage)
   const sourceSegments = input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n')
@@ -55,7 +55,8 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, a
     }
     return JSON.stringify(analysis)
   }).join('\n')
-  const deliveryCanBeScored = hasCompleteInterpretingDeliveryEvidence(input)
+  const attachedCloudAudioCanBeScored = hasConsentedCloudAudioDeliveryEvidence(input, cloudAudioEvidence)
+  const deliveryCanBeScored = hasCompleteInterpretingDeliveryEvidence(input) || attachedCloudAudioCanBeScored
   const deliveryScoreField = deliveryCanBeScored
     ? '  "deliveryScores": {"fluency": 0, "pacing": 0, "hesitation": 0},\n'
     : ''
@@ -65,7 +66,7 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, a
       : 'The imported source has no supplied transcript, and there is no sufficiently confident delivery analysis. Do not fabricate content or delivery scores or source evidence; explain the limitation.'
     : 'Source transcript evidence is available for literal evidence checks.'
 
-  const audioInstruction = attachedAudioAvailable
+  const audioInstruction = attachedCloudAudioCanBeScored
     ? 'The learner explicitly consented to send the attached response audio to this cloud evaluator. You may use the audio only to assess delivery (fluency, pacing, hesitation); do not infer transcript content from it or override the supplied transcript evidence.'
     : 'Use only the transcripts and derived delivery metrics below; response audio stays on the learner\'s device and is not attached to this evaluation.'
   const deliveryInstruction = deliveryCanBeScored
@@ -107,8 +108,8 @@ ${delivery}
 `
 }
 
-export function buildEvaluationPrompt(input: EvaluationRequest, options?: { attachedAudioAvailable?: boolean }): string {
+export function buildEvaluationPrompt(input: EvaluationRequest, options?: { cloudAudioEvidence?: ConsentedCloudAudioEvidence }): string {
   return 'learnerAnswer' in input
     ? buildWrittenEvaluationPrompt(input)
-    : buildInterpretingEvaluationPrompt(input, options?.attachedAudioAvailable === true)
+    : buildInterpretingEvaluationPrompt(input, options?.cloudAudioEvidence)
 }

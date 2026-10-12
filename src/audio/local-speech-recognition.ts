@@ -41,6 +41,7 @@ type RecognitionWindow = Window & {
 }
 
 const LOCAL_RECOGNITION_TIMEOUT_MS = 30_000
+export const LOCAL_RECOGNITION_CAPABILITY_TIMEOUT_MS = 4_000
 
 export type LocalRecognitionCapability = {
   status: 'available' | 'downloadable' | 'downloading' | 'unavailable'
@@ -86,6 +87,25 @@ export async function getLocalRecognitionCapability(languageTag: string): Promis
     return { status: 'unavailable', languageTag, reason: 'This language pack is unavailable for on-device recognition. Enter a transcript manually; no remote recognition will be used.' }
   } catch {
     return { status: 'unavailable', languageTag, reason: 'The browser could not verify an on-device language pack. Enter a transcript manually.' }
+  }
+}
+
+export async function getLocalRecognitionCapabilityWithTimeout(
+  languageTag: string,
+  timeoutMs = LOCAL_RECOGNITION_CAPABILITY_TIMEOUT_MS,
+): Promise<LocalRecognitionCapability> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutFallback = new Promise<LocalRecognitionCapability>((resolve) => {
+    timeoutId = setTimeout(() => resolve({
+      status: 'unavailable',
+      languageTag,
+      reason: 'The optional on-device recognition check timed out. Continue with manual transcript entry; no remote recognition will be used.',
+    }), timeoutMs)
+  })
+  try {
+    return await Promise.race([getLocalRecognitionCapability(languageTag), timeoutFallback])
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
   }
 }
 

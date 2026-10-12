@@ -63,23 +63,13 @@ export type EvaluationRouterDependencies = {
 export type CloudProviderLike = EvaluationProvider & {
   getConsentDetails(): { providerUrl: string; model: string; supportsAudio: boolean }
   prepareAudioPayloads(input: InterpretingEvaluationInput): Promise<ReadonlyMap<string, Blob>>
-  evaluate(input: EvaluationRequest, preparedAudioPayloads?: ReadonlyMap<string, Blob>): Promise<EvaluationFeedback>
+  evaluate(input: EvaluationRequest, preparedAudioPayloads?: ReadonlyMap<string, Blob>, authorization?: { taskConsentGranted: true }): Promise<EvaluationFeedback>
 }
 
 export class ProviderUnavailableError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'ProviderUnavailableError'
-  }
-}
-
-export function parseJsonResponse(content: string): unknown {
-  const withoutThinking = content.trim().replace(/^<think>[\s\S]*?<\/think>\s*/i, '')
-  const withoutFence = withoutThinking.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
-  try {
-    return JSON.parse(withoutFence) as unknown
-  } catch {
-    throw new Error('The evaluator returned malformed JSON.')
   }
 }
 
@@ -163,7 +153,7 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
           learnerAnswer: 'learnerAnswer' in input ? input.learnerAnswer : undefined,
           payloadPreview: { providerUrl: cloudDetails.providerUrl, model: cloudDetails.model, parts },
           revokePreview: previewUrls.length > 0 ? () => previewUrls.forEach((url) => URL.revokeObjectURL(url)) : undefined,
-          confirm: () => cloudProvider.evaluate(input, preparedAudioPayloads),
+          confirm: () => cloudProvider.evaluate(input, preparedAudioPayloads, { taskConsentGranted: true }),
         },
       }
     },

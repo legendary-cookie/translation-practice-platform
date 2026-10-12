@@ -6,6 +6,7 @@ import type {
   InterpretingAnnotation,
   InterpretingAnnotationCategory,
   InterpretingEvaluationInput,
+  ConsentedCloudAudioEvidence,
   InterpretingFeedback,
   InterpretingContentScores,
   InterpretingDeliveryScores,
@@ -36,6 +37,42 @@ export function hasCompleteInterpretingDeliveryEvidence(
       && analysis.analysisConfidence >= 0.5
       && !analysis.method.startsWith('local-web-audio-energy-')
       && analysis.method !== 'local-analysis-unavailable-v1')
+  })
+}
+
+export function hasConsentedCloudAudioDeliveryEvidence(
+  input: Pick<InterpretingEvaluationInput, 'responseSegments' | 'recordings'>,
+  evidence?: ConsentedCloudAudioEvidence,
+): boolean {
+  if (evidence?.taskConsentGranted !== true
+    || typeof evidence.providerUrl !== 'string'
+    || typeof evidence.model !== 'string'
+    || !evidence.providerUrl.trim()
+    || !evidence.model.trim()) return false
+  if (input.recordings.length === 0 || input.responseSegments.length === 0) return false
+
+  const recordingIds = input.recordings.map((recording) => recording.id)
+  const uniqueRecordingIds = new Set(recordingIds)
+  const attachedIds = new Set(evidence.attachedRecordingIds)
+  if (uniqueRecordingIds.size !== recordingIds.length
+    || attachedIds.size !== evidence.attachedRecordingIds.length
+    || attachedIds.size !== recordingIds.length
+    || recordingIds.some((id) => !attachedIds.has(id))) {
+    return false
+  }
+
+  const recordingsById = new Map(input.recordings.map((recording) => [recording.id, recording]))
+  return input.responseSegments.every((segment) => {
+    if (!segment.recordingId || !Number.isFinite(segment.responseStartMs) || !Number.isFinite(segment.responseEndMs)) {
+      return false
+    }
+    const recording = recordingsById.get(segment.recordingId)
+    return Boolean(recording
+      && recording.durationMs > 0
+      && segment.responseStartMs >= 0
+      && segment.responseEndMs > segment.responseStartMs
+      && segment.responseEndMs <= recording.durationMs
+      && attachedIds.has(segment.recordingId))
   })
 }
 import { getEstimatedStatus } from './exam'
@@ -347,6 +384,7 @@ function normalizeInterpretingScores(raw: unknown, fieldName: string, fields: st
 export function validateInterpretingFeedback(
   raw: unknown,
   context: InterpretingFeedbackValidationContext,
+  cloudAudioEvidence?: ConsentedCloudAudioEvidence,
 ): InterpretingFeedback {
   if (!isRecord(raw)) {
     throw new FeedbackValidationError('Interpreting feedback must be a JSON object.')
@@ -365,6 +403,7 @@ export function validateInterpretingFeedback(
     : undefined
   const contentScoreStatus: InterpretingFeedback['contentScoreStatus'] = allResponsesVerified && contentScoreValues ? 'complete' : 'incomplete'
   const hasReliableDeliveryEvidence = hasCompleteInterpretingDeliveryEvidence(context)
+    || hasConsentedCloudAudioDeliveryEvidence(context, cloudAudioEvidence)
   const deliveryScores = hasReliableDeliveryEvidence
     ? normalizeInterpretingScores(raw.deliveryScores ?? raw.delivery, 'deliveryScores', ['fluency', 'pacing', 'hesitation']) as InterpretingDeliveryScores
     : undefined

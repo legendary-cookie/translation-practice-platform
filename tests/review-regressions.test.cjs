@@ -4,9 +4,13 @@ const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 
 const writtenGuardModule = require('../src/features/practice/written-evaluation-guard.ts')
+const sessionHistoryModule = require('../src/features/practice/session-history.ts')
 const responseRangeModule = require('../src/features/interpreting/response-range.ts')
 const { buildEvaluationPrompt } = require('../src/ai/evaluation-prompt.ts')
-const { hasCompleteInterpretingDeliveryEvidence } = require('../src/domain/scoring.ts')
+const { hasCompleteInterpretingDeliveryEvidence, validateInterpretingFeedback } = require('../src/domain/scoring.ts')
+const { createCloudProvider } = require('../src/ai/cloud-provider.ts')
+const recognitionModule = require('../src/audio/local-speech-recognition.ts')
+const { SessionHistoryNotice } = require('../src/features/progress/SessionHistoryNotice.tsx')
 const { createAudioPlayer } = require('../src/audio/audio-player.ts')
 const { analyzeRecording } = require('../src/audio/audio-analysis.ts')
 const { InterpretingWorkspace } = require('../src/features/interpreting/InterpretingWorkspace.tsx')
@@ -225,6 +229,200 @@ test('both evaluator prompts define every score as higher-is-better, including o
   assert.match(interpreting, /omissions.{0,80}100.{0,100}no consequential omissions/i)
   assert.match(interpreting, /additionsMistranslations=100 means no consequential unsupported additions or mistranslations/i)
   assert.match(interpreting, /hesitation=100 means no consequential delivery disruption from hesitation/i)
+})
+
+test('consented attached cloud audio is distinct from unqualified local energy evidence', () => {
+  const input = createInterpretingInput({ analysis: {
+    durationMs: 2000,
+    activeSpeechRatio: 1,
+    pauseCount: 0,
+    longestPauseMs: 0,
+    analysisConfidence: 0.99,
+    method: 'local-web-audio-energy-v1',
+  } })
+  const audioEvidence = {
+    providerUrl: 'http://127.0.0.1:5199/v1/chat/completions',
+    model: 'loopback-mock',
+    taskConsentGranted: true,
+    attachedRecordingIds: ['recording-a'],
+  }
+  const feedback = {
+    summary: 'Synthetic validated response.',
+    contentScores: { meaningTransfer: 80, omissions: 90, additionsMistranslations: 90, terminology: 80 },
+    deliveryScores: { fluency: 70, pacing: 75, hesitation: 80 },
+    overallScore: 85,
+    strengths: ['Clear synthetic fixture.'],
+    issues: [],
+    uncertainEvidence: [],
+    alternatives: [],
+    uncertainty: 'Loopback fixture only.',
+  }
+
+  assert.equal(hasCompleteInterpretingDeliveryEvidence(input), false)
+  assert.equal(validateInterpretingFeedback(feedback, input).deliveryScoreStatus, 'incomplete')
+  assert.equal(validateInterpretingFeedback(feedback, input, audioEvidence).deliveryScoreStatus, 'complete')
+  assert.equal(validateInterpretingFeedback(feedback, input, { ...audioEvidence, taskConsentGranted: false }).deliveryScoreStatus, 'incomplete')
+  assert.equal(validateInterpretingFeedback(feedback, input, { ...audioEvidence, attachedRecordingIds: [] }).deliveryScoreStatus, 'incomplete')
+  assert.equal(validateInterpretingFeedback(feedback, input, { ...audioEvidence, attachedRecordingIds: ['recording-a', 'not-attached'] }).deliveryScoreStatus, 'incomplete')
+
+  const localPrompt = buildEvaluationPrompt(input)
+  const cloudPrompt = buildEvaluationPrompt(input, { cloudAudioEvidence: audioEvidence })
+  assert.doesNotMatch(localPrompt, /"deliveryScores"/)
+  assert.match(cloudPrompt, /"deliveryScores"/)
+  assert.match(cloudPrompt, /explicitly consented to send the attached response audio/i)
+})
+
+test('the router keeps energy evidence scoreless locally and scores attached audio only after explicit cloud consent', async () => {
+  const originalFetch = global.fetch
+  const capabilityModulePath = require.resolve('../src/ai/capability.ts')
+  const previousCapabilityModule = require.cache[capabilityModulePath]
+  const capabilityStub = new (require('node:module'))(capabilityModulePath)
+  capabilityStub.filename = capabilityModulePath
+  capabilityStub.loaded = true
+  capabilityStub.exports = { getLocalEvaluationDecision: () => ({ allowed: false, reason: 'Synthetic local evaluator unavailable.' }) }
+  require.cache[capabilityModulePath] = capabilityStub
+  let createEvaluationRouter
+  try {
+    createEvaluationRouter = require('../src/ai/provider.ts').createEvaluationRouter
+  } finally {
+    if (previousCapabilityModule) require.cache[capabilityModulePath] = previousCapabilityModule
+    else delete require.cache[capabilityModulePath]
+  }
+  const input = createInterpretingInput({ analysis: {
+    durationMs: 2000,
+    activeSpeechRatio: 1,
+    pauseCount: 0,
+    longestPauseMs: 0,
+    analysisConfidence: 0.99,
+    method: 'local-web-audio-energy-v1',
+  } })
+  const audio = new Blob(['synthetic wav bytes'], { type: 'audio/wav' })
+  const audioPayloads = new Map([['recording-a', audio]])
+  const feedbackPayload = {
+    summary: 'Synthetic loopback response.',
+    contentScores: { meaningTransfer: 80, omissions: 90, additionsMistranslations: 90, terminology: 80 },
+    deliveryScores: { fluency: 70, pacing: 75, hesitation: 80 },
+    overallScore: 85,
+    strengths: ['Synthetic fixture.'],
+    issues: [],
+    uncertainEvidence: [],
+    alternatives: [],
+    uncertainty: 'Mocked loopback only.',
+  }
+  const requests = []
+  global.fetch = async (url, init) => {
+    requests.push({ url: String(url), body: JSON.parse(init.body) })
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(feedbackPayload) } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  try {
+    const cloudProvider = createCloudProvider({
+      baseUrl: 'http://127.0.0.1:5199/v1',
+      model: 'loopback-mock',
+      apiKey: 'synthetic-only',
+      supportsAudio: true,
+    })
+    const consentTestProvider = {
+      ...cloudProvider,
+      prepareAudioPayloads: async () => audioPayloads,
+    }
+    const localProvider = {
+      evaluate: async () => { throw new Error('Local model is not prepared in this synthetic fixture.') },
+      isReady: () => false,
+      getStatus: () => 'not-prepared',
+      getErrorMessage: () => undefined,
+    }
+    const makeRouter = (mode) => createEvaluationRouter({
+      getMode: () => mode,
+      getLocalProvider: () => localProvider,
+      getCloudProvider: () => consentTestProvider,
+      getCapability: () => ({}),
+    })
+
+    const localOnly = await makeRouter('local-only').evaluate(input)
+    assert.equal(localOnly.status, 'unavailable')
+    assert.match(localOnly.reason, /will not send practice content/i)
+    assert.equal(requests.length, 0)
+
+    const cloudRequest = await makeRouter('local-first-cloud-fallback').evaluate(input)
+    assert.equal(cloudRequest.status, 'needs-consent')
+    assert.equal(cloudRequest.request.payloadPreview.parts.filter((part) => part.kind === 'learner-audio').length, 1)
+    assert.equal(requests.length, 0)
+
+    const result = await cloudRequest.request.confirm()
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].url, 'http://127.0.0.1:5199/v1/chat/completions')
+    const parts = requests[0].body.messages[1].content
+    assert.equal(parts.filter((part) => part.type === 'input_audio').length, 1)
+    assert.match(parts[0].text, /"deliveryScores"/)
+    assert.equal(result.deliveryScoreStatus, 'complete')
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
+test('a hung optional local-recognition probe falls back to manual entry within its bound', async () => {
+  const originalWindow = global.window
+  class HangingRecognition {
+    static available() { return new Promise(() => {}) }
+  }
+  global.window = { SpeechRecognition: HangingRecognition }
+  try {
+    const capability = await recognitionModule.getLocalRecognitionCapabilityWithTimeout('en-US', 5)
+    assert.equal(capability.status, 'unavailable')
+    assert.match(capability.reason, /timed out/i)
+    assert.match(capability.reason, /manual transcript/i)
+  } finally {
+    global.window = originalWindow
+  }
+})
+
+test('a failed written-history read is rendered as unavailable with an explicit retry', () => {
+  const markup = renderToStaticMarkup(React.createElement(SessionHistoryNotice, {
+    onRetry() {},
+  }))
+  assert.match(markup, /role="alert"/)
+  assert.match(markup, /could not be loaded/i)
+  assert.match(markup, /not been deleted/i)
+  assert.match(markup, /Retry local history/)
+})
+
+test('a completed written save publishes global history after navigation but keeps workspace feedback attempt-scoped', async () => {
+  const session = { id: 'written-session-a', createdAt: '2026-10-13T00:00:00.000Z' }
+  const events = []
+  let attemptIsCurrent = true
+  let finishSave
+  const saved = sessionHistoryModule.persistWrittenPracticeSession({
+    session,
+    save: () => new Promise((resolve) => { finishSave = resolve }),
+    isDataGenerationCurrent: () => true,
+    isAttemptCurrent: () => attemptIsCurrent,
+    onPublishHistory: () => events.push('history'),
+    onSaveForCurrentAttempt: () => events.push('saved-notice'),
+    onSaveFailure: () => events.push('save-error'),
+  })
+
+  assert.deepEqual(events, [])
+  attemptIsCurrent = false
+  finishSave()
+  await saved
+  assert.deepEqual(events, ['history'])
+})
+
+test('a written evaluation is not announced as saved when local persistence fails', async () => {
+  const events = []
+  await sessionHistoryModule.persistWrittenPracticeSession({
+    session: { id: 'written-session-fail', createdAt: '2026-10-13T00:00:00.000Z' },
+    save: async () => { throw new Error('synthetic IDB write failure') },
+    isDataGenerationCurrent: () => true,
+    isAttemptCurrent: () => true,
+    onPublishHistory: () => events.push('history'),
+    onSaveForCurrentAttempt: () => events.push('saved-notice'),
+    onSaveFailure: () => events.push('save-error'),
+  })
+  assert.deepEqual(events, ['save-error'])
 })
 
 test('seeking to a segment end does not count as listening, but playing through it does', async () => {

@@ -7,7 +7,8 @@ import {
 import { FeedbackValidationError, validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
 import { DEFAULT_LOCAL_MODEL_ID, type EvaluationFeedback, type EvaluationRequest } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
-import { parseJsonResponse, ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
+import { ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
+import { parseJsonResponse } from './response-parsing'
 
 export type LocalModelProgress = {
   status: 'not-prepared' | 'preparing' | 'ready' | 'unavailable'

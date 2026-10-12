@@ -4,12 +4,14 @@ import type { LocalModelProgress } from '../../ai/local-provider'
 import type { ActiveExamRun, ConsolidatedExamResult, SessionRecord } from '../../domain/types'
 import { formatSeconds } from '../../domain/exam'
 import { useRecoveryCountdown } from '../exam/use-recovery-countdown'
+import type { SessionHistoryStatus } from '../practice/session-history'
 
 export type DashboardPage = 'home' | 'practice' | 'exam' | 'progress' | 'settings'
 
 export function Dashboard({
   localProgress,
   recentSessions,
+  sessionHistoryStatus = 'ready',
   activeExamRun,
   recentExamResults = [],
   onNavigate,
@@ -18,6 +20,7 @@ export function Dashboard({
 }: {
   localProgress: LocalModelProgress
   recentSessions: SessionRecord[]
+  sessionHistoryStatus?: SessionHistoryStatus
   activeExamRun?: ActiveExamRun
   recentExamResults?: ConsolidatedExamResult[]
   onNavigate: (page: DashboardPage) => void
@@ -130,8 +133,8 @@ export function Dashboard({
           <button className="text-button" type="button" onClick={() => onNavigate('settings')}>Review privacy settings <span aria-hidden="true">→</span></button>
         </article>
         <article className="info-card">
-          <div className="info-card__topline"><span className="eyebrow">Your activity</span><span className="muted-label">{recentSessions.length ? `${recentSessions.length} saved session${recentSessions.length === 1 ? '' : 's'}` : 'No sessions yet'}</span></div>
-          <h3>{recentSessions.length ? 'Keep your translation habit moving.' : 'Your first session starts here.'}</h3>
+          <div className="info-card__topline"><span className="eyebrow">Your activity</span><span className="muted-label">{recentSessions.length ? `${recentSessions.length} saved session${recentSessions.length === 1 ? '' : 's'}` : sessionHistoryStatus === 'loading' ? 'Checking local history' : sessionHistoryStatus === 'failed' ? 'History unavailable' : 'No sessions yet'}</span></div>
+          <h3>{recentSessions.length ? 'Keep your translation habit moving.' : sessionHistoryStatus === 'failed' ? 'Saved activity could not be loaded.' : sessionHistoryStatus === 'loading' ? 'Checking your saved activity.' : 'Your first session starts here.'}</h3>
           {recentSessions.length ? (
             <div className="activity-list">
               {recentSessions.slice(0, 3).map((session) => (
@@ -144,8 +147,8 @@ export function Dashboard({
                 </div>
               ))}
             </div>
-          ) : <p>Completed work, practice estimates, and dimension trends will appear in Progress.</p>}
-          <button className="text-button" type="button" onClick={() => onNavigate(recentSessions.length ? 'progress' : 'practice')}>{recentSessions.length ? 'Open progress' : 'Start practicing'} <span aria-hidden="true">→</span></button>
+          ) : <p>{sessionHistoryStatus === 'failed' ? 'Local history could not be read; saved work may still be present on this device.' : sessionHistoryStatus === 'loading' ? 'Saved sessions are being checked on this device.' : 'Completed work, practice estimates, and dimension trends will appear in Progress.'}</p>}
+          <button className="text-button" type="button" onClick={() => onNavigate(recentSessions.length || sessionHistoryStatus !== 'ready' ? 'progress' : 'practice')}>{recentSessions.length || sessionHistoryStatus !== 'ready' ? 'Open progress' : 'Start practicing'} <span aria-hidden="true">→</span></button>
         </article>
         {recentExamResults.length > 0 && (
           <article className="info-card">

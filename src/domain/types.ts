@@ -140,6 +140,14 @@ export type InterpretingEvaluationInput = {
   sourceRecording?: AudioRecordingRecord
 }
 
+/** Ephemeral trust metadata produced only when a consented cloud request actually attaches these recordings. */
+export type ConsentedCloudAudioEvidence = {
+  providerUrl: string
+  model: string
+  taskConsentGranted: true
+  attachedRecordingIds: readonly string[]
+}
+
 export type InterpretingContentScores = {
   meaningTransfer: number
   omissions: number

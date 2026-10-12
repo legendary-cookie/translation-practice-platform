@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CHINESE_DIRECTIONS, getLanguage } from '../../domain/languages'
 import type { AudioRecordingRecord, Difficulty, EvaluationMode, InterpretingExercise, InterpretingMode, LocalModelStatus } from '../../domain/types'
 import { getInterpretingExercisesForDirection } from '../../data/interpreting-exercises'
-import { getLocalRecognitionCapability, installLocalRecognitionLanguage, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
+import { getLocalRecognitionCapabilityWithTimeout, installLocalRecognitionLanguage, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 
 export type InterpretingStart = {
   exercise: InterpretingExercise
@@ -216,46 +216,57 @@ export function InterpretingSetup({
 
   useEffect(() => {
     let cancelled = false
-    const requestGeneration = ++recognitionCheckGeneration.current
-    setIsInstallingRecognition(false)
     setAssetStatus('checking')
-    setRecognition(undefined)
-    if (!exerciseAudioUrl || !targetSpeechTag) {
+    if (!exerciseAudioUrl) {
       setAssetStatus('unavailable')
       return () => {
         cancelled = true
       }
     }
-    const capabilityPromise = getLocalRecognitionCapability(targetSpeechTag)
     if (isImportedAudio) {
-      void capabilityPromise.then((capability) => {
-        if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
-          setAssetStatus('ready')
-          setRecognition(capability)
-        }
-      })
+      setAssetStatus('ready')
       return () => {
         cancelled = true
       }
     }
-    void Promise.all([
-      getPackagedAudioStatus(exerciseAudioUrl),
-      capabilityPromise,
-    ]).then(([assetAvailability, capability]) => {
-      if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
+    void getPackagedAudioStatus(exerciseAudioUrl).then((assetAvailability) => {
+      if (!cancelled) {
         setAssetStatus(assetAvailability)
-        setRecognition(capability)
       }
     }).catch(() => {
-      if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
+      if (!cancelled) {
         setAssetStatus('unavailable')
-        setRecognition({ status: 'unavailable', languageTag: getLanguage(exercise.targetLanguage).speechTag, reason: 'The local capability check could not complete. Manual transcript entry remains available.' })
       }
     })
     return () => {
       cancelled = true
     }
-  }, [exerciseAudioUrl, isImportedAudio, targetSpeechTag])
+  }, [exerciseAudioUrl, isImportedAudio])
+
+  useEffect(() => {
+    let cancelled = false
+    const requestGeneration = ++recognitionCheckGeneration.current
+    setIsInstallingRecognition(false)
+    setRecognition(undefined)
+    if (!targetSpeechTag) {
+      setRecognition({ status: 'unavailable', languageTag: '', reason: 'On-device recognition is unavailable for this direction. Continue with manual transcript entry.' })
+      return () => {
+        cancelled = true
+      }
+    }
+    void getLocalRecognitionCapabilityWithTimeout(targetSpeechTag).then((capability) => {
+      if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
+        setRecognition(capability)
+      }
+    }).catch(() => {
+      if (!cancelled && requestGeneration === recognitionCheckGeneration.current) {
+        setRecognition({ status: 'unavailable', languageTag: targetSpeechTag, reason: 'The local capability check could not complete. Manual transcript entry remains available.' })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [targetSpeechTag])
 
   async function installRecognitionPack() {
     if (!recognition || recognition.status !== 'downloadable' || isInstallingRecognition) {

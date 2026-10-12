@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { SessionHistoryStatus } from '../practice/session-history'
 import { getLanguage } from '../../domain/languages'
 import type { ConsolidatedExamResult, InterpretingSessionRecord, ScoreDimension, SessionRecord } from '../../domain/types'
 import { PRACTICE_ESTIMATE_DISCLAIMER } from '../../domain/exam'
@@ -65,6 +66,7 @@ function average(values: number[]): number {
 
 export function ProgressPage({
   sessions,
+  sessionHistoryStatus = 'ready',
   interpretingSessions = [],
   examResults = [],
   onStartPractice,
@@ -75,6 +77,7 @@ export function ProgressPage({
   onStartExam,
 }: {
   sessions: SessionRecord[]
+  sessionHistoryStatus?: SessionHistoryStatus
   interpretingSessions?: InterpretingSessionRecord[]
   examResults?: ConsolidatedExamResult[]
   onStartPractice: () => void
@@ -94,9 +97,13 @@ export function ProgressPage({
         <section className="progress-empty">
           <span className="empty-state__icon" aria-hidden="true">↗</span>
           <p className="eyebrow">Local history</p>
-          <h2>Your progress starts with your first pass.</h2>
+          <h2>{sessionHistoryStatus === 'failed' ? 'Saved written history is unavailable.' : sessionHistoryStatus === 'loading' ? 'Checking local history.' : 'Your progress starts with your first pass.'}</h2>
           <p>
-            There are no saved sessions or mock exams on this browser yet. Complete a written translation, interpreting take, or exam simulation to see practice estimates and dimension trends here.
+            {sessionHistoryStatus === 'failed'
+              ? 'This browser could not read written practice history. Existing records have not been deleted; retry the history read before assuming there is no saved work.'
+              : sessionHistoryStatus === 'loading'
+                ? 'Checking this device for saved practice sessions. You can continue practicing while the local history check finishes.'
+                : 'There are no saved sessions or mock exams on this browser yet. Complete a written translation, interpreting take, or exam simulation to see practice estimates and dimension trends here.'}
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
             <button className="button button--primary" type="button" onClick={onStartPractice}>
@@ -167,7 +174,7 @@ export function ProgressPage({
         <>
           {sessions.length === 0 ? (
             <section className="progress-empty">
-              <p>No daily practice sessions recorded yet.</p>
+              <p>{sessionHistoryStatus === 'failed' ? 'Written practice history could not be read; saved sessions may still exist on this device.' : sessionHistoryStatus === 'loading' ? 'Checking this device for saved written sessions…' : 'No daily practice sessions recorded yet.'}</p>
               <button className="button button--primary" type="button" onClick={onStartPractice}>
                 Start a practice session <span aria-hidden="true">→</span>
               </button>

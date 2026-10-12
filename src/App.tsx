@@ -13,8 +13,10 @@ import { createWrittenEvaluationGuard, runWrittenEvaluationAttempt, type Written
 import { InterpretingSetup, type InterpretingStart } from './features/interpreting/InterpretingSetup'
 import { InterpretingWorkspace } from './features/interpreting/InterpretingWorkspace'
 import { InterpretingFeedbackPanel } from './features/interpreting/InterpretingFeedbackPanel'
+import { SessionHistoryNotice } from './features/progress/SessionHistoryNotice'
 import { ProgressPage } from './features/progress/ProgressPage'
 import { SettingsPage } from './features/settings/SettingsPage'
+import { mergeRecentSessions, persistWrittenPracticeSession, type SessionHistoryStatus } from './features/practice/session-history'
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
@@ -198,6 +200,7 @@ export default function App() {
   const [localProgress, setLocalProgress] = useState<LocalModelProgress>({ status: 'not-prepared', text: 'Local model has not been prepared.' })
   const [capability, setCapability] = useState<CapabilityAssessment>(createInitialCapability)
   const [recentSessions, setRecentSessions] = useState<SessionRecord[]>([])
+  const [sessionHistoryStatus, setSessionHistoryStatus] = useState<SessionHistoryStatus>('loading')
   const [activeExercise, setActiveExercise] = useState<Exercise | undefined>()
   const [practiceSetupMode, setPracticeSetupMode] = useState<'written' | 'interpreting'>('written')
   const [activeInterpretingExercise, setActiveInterpretingExercise] = useState<InterpretingExercise | undefined>()
@@ -236,6 +239,7 @@ export default function App() {
   const settingsHydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | undefined>(undefined)
   const cloudDraftRevisionRef = useRef(0)
   const dataLoadGeneration = useRef(0)
+  const sessionHistoryLoadRequestRef = useRef(0)
   const localProviderEpochRef = useRef(0)
   const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number) => void>(() => undefined)
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
@@ -287,6 +291,22 @@ export default function App() {
     tracked = operation.finally(() => pendingPersistenceRef.current.delete(tracked))
     pendingPersistenceRef.current.add(tracked)
     return tracked
+  }
+
+  async function loadWrittenSessionHistory() {
+    const dataGeneration = dataLoadGeneration.current
+    const request = ++sessionHistoryLoadRequestRef.current
+    setSessionHistoryStatus('loading')
+    try {
+      const sessions = await database.listSessions()
+      if (dataLoadGeneration.current !== dataGeneration || sessionHistoryLoadRequestRef.current !== request) return
+      setRecentSessions((current) => mergeRecentSessions(sessions, current))
+      setSessionHistoryStatus('ready')
+    } catch {
+      if (dataLoadGeneration.current === dataGeneration && sessionHistoryLoadRequestRef.current === request) {
+        setSessionHistoryStatus('failed')
+      }
+    }
   }
 
   useEffect(() => () => localProvider.dispose(), [localProvider])
@@ -342,11 +362,7 @@ export default function App() {
         setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
       }
     }).catch(() => undefined).finally(() => settingsHydrationRef.current?.resolve())
-    void database.listSessions().then((sessions) => {
-      if (dataLoadGeneration.current === loadGeneration) {
-        setRecentSessions(sessions)
-      }
-    }).catch(() => undefined)
+    void loadWrittenSessionHistory()
     void database.listInterpretingSessions().then((sessions) => {
       if (dataLoadGeneration.current === loadGeneration) {
         setRecentInterpretingSessions(sessions)
@@ -457,6 +473,8 @@ export default function App() {
     setCloudDraft({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
     setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
     setRecentSessions([])
+    sessionHistoryLoadRequestRef.current += 1
+    setSessionHistoryStatus('ready')
     setRecentInterpretingSessions([])
     setPendingInterpretingSaves([])
     setActiveExamRun(undefined)
@@ -886,19 +904,23 @@ export default function App() {
       feedback: nextFeedback,
       elapsedSeconds,
     }
-    setFeedback(nextFeedback)
-    setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
-    try {
-      await trackPersistence(database.saveSession(session))
-      if (!attemptIsCurrent() || dataLoadGeneration.current !== generation) {
-        return
-      }
-      setRecentSessions((sessions) => [session, ...sessions.filter((item) => item.id !== session.id)])
-    } catch {
-      if (attemptIsCurrent() && dataLoadGeneration.current === generation) {
+    await persistWrittenPracticeSession({
+      session,
+      save: () => trackPersistence(database.saveSession(session)),
+      isDataGenerationCurrent: () => dataLoadGeneration.current === generation,
+      isAttemptCurrent: attemptIsCurrent,
+      onPublishHistory: (savedSession) => {
+        setRecentSessions((sessions) => mergeRecentSessions([savedSession], sessions))
+      },
+      onSaveForCurrentAttempt: () => {
+        setFeedback(nextFeedback)
+        setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
+      },
+      onSaveFailure: () => {
+        setFeedback(nextFeedback)
         setPracticeNotice('Feedback is ready, but this browser could not save the session locally.')
-      }
-    }
+      },
+    })
   }
 
   async function saveCompletedInterpretingSession(
@@ -1278,6 +1300,7 @@ export default function App() {
           </section>
         )}
         {databaseNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{databaseNotice}</section>}
+        {sessionHistoryStatus === 'failed' && <SessionHistoryNotice onRetry={() => void loadWrittenSessionHistory()} />}
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
             <div>
@@ -1294,6 +1317,7 @@ export default function App() {
           <Dashboard
             localProgress={localProgress}
             recentSessions={recentSessions}
+            sessionHistoryStatus={sessionHistoryStatus}
             activeExamRun={activeExamRun}
             recentExamResults={recentExamResults}
             onStartInterpreting={openInterpretingSetup}
@@ -1366,6 +1390,7 @@ export default function App() {
         {currentPage === 'progress' && (
           <ProgressPage
             sessions={recentSessions}
+            sessionHistoryStatus={sessionHistoryStatus}
             interpretingSessions={recentInterpretingSessions}
             examResults={recentExamResults}
             onStartPractice={() => navigateToPage('practice')}

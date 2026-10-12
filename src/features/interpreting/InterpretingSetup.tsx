@@ -5,6 +5,8 @@ import type { AudioRecordingRecord, Difficulty, EvaluationMode, InterpretingExer
 import { getInterpretingExercisesForDirection, INTERPRETING_EXERCISES } from '../../data/interpreting-exercises'
 import { validateInterpretingRightsManifest } from '../../data/interpreting-rights'
 import { getLocalRecognitionCapabilityWithTimeout, installLocalRecognitionLanguage, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
+import { requestWithDeadline } from './request-with-deadline'
+import { isPackagedAudioOfflineReady } from './offline-asset-status'
 
 export type InterpretingStart = {
   exercise: InterpretingExercise
@@ -30,17 +32,37 @@ async function hasCachedAudioAsset(audioUrl: string): Promise<boolean> {
 }
 
 async function getPackagedAudioStatus(audioUrl: string): Promise<'ready' | 'available' | 'unavailable'> {
+  const waitForControl = async () => {
+    if (!('serviceWorker' in navigator)) return false
+    if (navigator.serviceWorker.controller) return true
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      let timeout: number | undefined
+      const finish = (controlled: boolean) => {
+        if (settled) return
+        settled = true
+        if (timeout !== undefined) window.clearTimeout(timeout)
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
+        resolve(controlled)
+      }
+      const onControllerChange = () => {
+        if (navigator.serviceWorker.controller) finish(true)
+      }
+      timeout = window.setTimeout(() => finish(Boolean(navigator.serviceWorker.controller)), 1500)
+      navigator.serviceWorker.addEventListener('controllerchange', onControllerChange)
+      void navigator.serviceWorker.ready.then(() => onControllerChange(), () => undefined)
+    })
+  }
+
   if (await hasCachedAudioAsset(audioUrl)) {
-    return 'ready'
+    const controlled = await waitForControl()
+    return isPackagedAudioOfflineReady(true, controlled) ? 'ready' : 'available'
   }
 
   if ('serviceWorker' in navigator) {
-    await Promise.race([
-      navigator.serviceWorker.ready.then(() => undefined, () => undefined),
-      new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
-    ])
+    await waitForControl()
     if (await hasCachedAudioAsset(audioUrl)) {
-      return 'ready'
+      return isPackagedAudioOfflineReady(true, Boolean(navigator.serviceWorker.controller)) ? 'ready' : 'available'
     }
   }
 
@@ -49,7 +71,9 @@ async function getPackagedAudioStatus(audioUrl: string): Promise<'ready' | 'avai
     if (!response.ok) {
       return 'unavailable'
     }
-    return await hasCachedAudioAsset(audioUrl) ? 'ready' : 'available'
+    const cached = await hasCachedAudioAsset(audioUrl)
+    const controlled = 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller)
+    return isPackagedAudioOfflineReady(cached, controlled) ? 'ready' : 'available'
   } catch {
     return 'unavailable'
   }
@@ -245,9 +269,11 @@ export function InterpretingSetup({
 
   useEffect(() => {
     let cancelled = false
+    const requestController = new AbortController()
     setRightsStatus('checking')
     setRightsError(undefined)
-    void fetch('/audio/interpreting/rights.json', { cache: 'no-cache' }).then(async (response) => {
+    void requestWithDeadline(async (signal) => {
+      const response = await fetch('/audio/interpreting/rights.json', { cache: 'no-cache', signal })
       if (!response.ok) {
         throw new Error(`The packaged audio rights manifest returned HTTP ${response.status}.`)
       }
@@ -256,6 +282,12 @@ export function InterpretingSetup({
       if (issues.length > 0) {
         throw new Error(issues.slice(0, 3).join(' '))
       }
+      return true
+    },
+      12_000,
+      'The packaged audio rights check timed out. Retry the check.',
+      requestController.signal,
+    ).then(() => {
       if (!cancelled) setRightsStatus('verified')
     }).catch((caught: unknown) => {
       if (cancelled) return
@@ -264,6 +296,7 @@ export function InterpretingSetup({
     })
     return () => {
       cancelled = true
+      requestController.abort()
     }
   }, [rightsRetry])
 

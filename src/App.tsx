@@ -21,6 +21,7 @@ import { createLocalModelStatusSettingsUpdate, isLocalProgressGenerationCurrent 
 import { mergeRecentSessions, persistWrittenPracticeSession, readHistoryRecords, type SessionHistoryStatus } from './features/practice/session-history'
 import { createSettingsHydrationAttempt, runAfterSettingsHydrated, type SettingsHydrationAttempt } from './features/settings/settings-hydration'
 import { getSavedExamRunAfterExit } from './features/exam/exam-exit'
+import { isInterpretingOpenCurrent } from './features/interpreting/session-open-guard'
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
@@ -198,6 +199,8 @@ function ConsentDialog({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home')
+  const currentPageRef = useRef<Page>(currentPage)
+  currentPageRef.current = currentPage
   const [settings, setSettings] = useState<StoredSettings>(DEFAULT_SETTINGS)
   const [cloudDraft, setCloudDraft] = useState({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
   const [databaseNotice, setDatabaseNotice] = useState<string | undefined>()
@@ -257,6 +260,7 @@ export default function App() {
   const pendingPersistenceRef = useRef(new Set<Promise<unknown>>())
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
+  const examStartRequestRef = useRef(false)
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
   const writtenEvaluationGuardRef = useRef(createWrittenEvaluationGuard())
@@ -500,6 +504,7 @@ export default function App() {
   }
 
   function resetUiAfterLocalDataClear(nextProviderEpoch: number, notice?: string) {
+    interpretingSessionOpenGenerationRef.current += 1
     setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
     const readySettingsHydration = createSettingsHydrationAttempt()
@@ -597,23 +602,49 @@ export default function App() {
     resetUiAfterLocalDataClear(nextProviderEpoch)
   }
 
-  function handleSelectExamProfile(profile: ExamProfile) {
+  async function handleSelectExamProfile(profile: ExamProfile) {
     if (examRecoveryStatus !== 'ready') {
       setExamEvaluationNotice(examRecoveryStatus === 'loading'
         ? 'Checking for a saved exam attempt. Start will be available when recovery finishes.'
         : 'Saved exam recovery could not be checked. Reload this page before starting another exam.')
       return
     }
+    if (examStartRequestRef.current) return
     if (activeExamRun) {
       setExamEvaluationNotice('An unfinished exam is already saved. Resume it or discard it before starting a new simulation.')
       setExamView('catalog')
       setCurrentPage('exam')
       return
     }
-    setSelectedExamProfile(profile)
-    setExamEvaluationNotice(undefined)
-    setPendingExamConsent(undefined)
-    setExamView('runner')
+    examStartRequestRef.current = true
+    const generation = dataLoadGeneration.current
+    setExamEvaluationNotice('Claiming the local exam attempt…')
+    try {
+      const claim = await database.claimActiveExamRun(profile)
+      if (dataLoadGeneration.current !== generation) return
+      setActiveExamRun(claim.run)
+      setPendingExamConsent(undefined)
+      setCurrentPage('exam')
+      if (!claim.created) {
+        setSelectedExamProfile(undefined)
+        setExamView('catalog')
+        setExamEvaluationNotice('An unfinished exam was claimed in another tab. Resume that saved attempt or discard it before starting a different simulation.')
+        return
+      }
+      setSelectedExamProfile(profile)
+      setExamEvaluationNotice(undefined)
+      setExamView('runner')
+    } catch (error) {
+      if (dataLoadGeneration.current === generation) {
+        const reason = error instanceof Error && error.message ? ` (${error.message})` : ''
+        setSelectedExamProfile(undefined)
+        setExamView('catalog')
+        setCurrentPage('exam')
+        setExamEvaluationNotice(`The exam attempt could not be claimed locally${reason}. No new simulation was started.`)
+      }
+    } finally {
+      examStartRequestRef.current = false
+    }
   }
 
   function handleResumeExamRun(run: ActiveExamRun) {
@@ -1138,7 +1169,15 @@ export default function App() {
 
   async function handleOpenInterpretingSession(session: InterpretingSessionRecord) {
     const requestGeneration = ++interpretingSessionOpenGenerationRef.current
-    const requestIsCurrent = () => requestGeneration === interpretingSessionOpenGenerationRef.current && currentPage === 'progress'
+    const dataGeneration = dataLoadGeneration.current
+    const requestIsCurrent = () => isInterpretingOpenCurrent(
+      { openGeneration: requestGeneration, dataGeneration },
+      {
+        openGeneration: interpretingSessionOpenGenerationRef.current,
+        dataGeneration: dataLoadGeneration.current,
+        page: currentPageRef.current,
+      },
+    )
     const bundledExercise = getInterpretingExerciseById(session.exerciseId)
     if (!session.exerciseSnapshotVersion && !session.sourceExercise && !session.sourceRecordingId) {
       if (requestIsCurrent()) {

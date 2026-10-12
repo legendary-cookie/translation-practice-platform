@@ -9,19 +9,25 @@ import type {
   SessionRecord,
   StoredSettings,
 } from '../domain/types'
-import { isValidActiveRun } from '../domain/exam'
+import { createActiveExamRun, isValidActiveRun } from '../domain/exam'
 import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
 import { createDataWriteCoordinator, DATA_CLEARED_NOTICE } from './data-write-coordinator'
 import {
   assertExamRunNotDiscarded,
+  assertExamRunNotCompletedInTransaction,
+  assertExamRunSlotAvailableInTransaction,
+  claimExamRunSlot,
+  completeExamRunAtomically,
   discardExamRunWithTombstone,
   EXAM_RUN_RECOVERY_KEY_PREFIX,
   EXAM_RUN_TOMBSTONE_KEY_PREFIX,
   isExamRunDiscarded,
+  stageExamRunRecoveryAtomically,
+  type ExamRunLifecycleStore,
 } from './exam-run-lifecycle'
 
 const DATABASE_NAME = 'lingo-practice-local'
-const DATABASE_VERSION = 3
+const DATABASE_VERSION = 4
 const SETTINGS_KEY = 'default'
 const DATABASE_UPGRADE_BLOCKED_NOTICE = 'A local database upgrade is waiting for another Lingo Practice tab. Close older tabs to continue; saved records are not being deleted.'
 
@@ -179,7 +185,7 @@ export function subscribeToDataCleared(listener: (epoch: string) => void): () =>
 function mergeExamRunRecoverySnapshots(runs: ActiveExamRun[], completedRunIds: Set<string>): ActiveExamRun[] {
   const storage = getLocalStorage()
   const runsById = new Map(runs
-    .filter((run) => !storage || !isExamRunDiscarded(storage, run.id))
+    .filter((run) => !completedRunIds.has(run.id) && (!storage || !isExamRunDiscarded(storage, run.id)))
     .map((run) => [run.id, run]))
   for (const snapshot of readExamRunRecoverySnapshots()) {
     if (completedRunIds.has(snapshot.id) || (storage && isExamRunDiscarded(storage, snapshot.id))) {
@@ -234,6 +240,7 @@ interface TranslationDatabaseSchema extends DBSchema {
     indexes: {
       'by-completed-at': string
       'by-profile-id': string
+      'by-run-id': string
     }
   }
   recordings: {
@@ -260,6 +267,33 @@ function withDataWrite<T>(operation: () => Promise<T>): Promise<T> {
   return dataWriteCoordinator.runWrite(operation)
 }
 
+async function withExamRunLifecycleTransaction<T>(
+  operation: (store: ExamRunLifecycleStore) => Promise<T>,
+): Promise<T> {
+  const db = await getDatabase()
+  const transaction = db.transaction(['examRuns', 'examResults'], 'readwrite')
+  const runs = transaction.objectStore('examRuns')
+  const results = transaction.objectStore('examResults')
+  const store: ExamRunLifecycleStore = {
+    getInProgressRuns: () => runs.index('by-status').getAll('in-progress'),
+    getCompletedRunIds: async () => (await results.getAll()).map((result) => result.runId),
+    getCompletedResult: (runId) => results.index('by-run-id').get(runId),
+    putRun: (run) => runs.put(run),
+    putResult: (result) => results.put(result),
+    deleteRun: (runId) => runs.delete(runId),
+  }
+
+  try {
+    const value = await operation(store)
+    await transaction.done
+    return value
+  } catch (error) {
+    try { transaction.abort() } catch { /* The transaction may already be inactive. */ }
+    try { await transaction.done } catch { /* Preserve the original failure. */ }
+    throw error
+  }
+}
+
 function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
   if (!databasePromise) {
     const opening = openDB<TranslationDatabaseSchema>(DATABASE_NAME, DATABASE_VERSION, {
@@ -272,7 +306,7 @@ function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
         databasePromise = undefined
         void connection?.then((db) => db.close()).catch(() => undefined)
       },
-      upgrade(database) {
+      upgrade(database, _oldVersion, _newVersion, transaction) {
         if (!database.objectStoreNames.contains('settings')) {
           database.createObjectStore('settings')
         }
@@ -293,6 +327,10 @@ function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
           const results = database.createObjectStore('examResults', { keyPath: 'id' })
           results.createIndex('by-completed-at', 'completedAt')
           results.createIndex('by-profile-id', 'profileId')
+        }
+        const examResults = transaction.objectStore('examResults')
+        if (examResults && !examResults.indexNames.contains('by-run-id')) {
+          examResults.createIndex('by-run-id', 'runId')
         }
         if (!database.objectStoreNames.contains('recordings')) {
           const recordings = database.createObjectStore('recordings', { keyPath: 'id' })
@@ -457,6 +495,18 @@ export const database = {
   },
 
   // Active exam runs (crash recovery)
+  async claimActiveExamRun(profile: ExamProfile): Promise<{ run: ActiveExamRun; created: boolean }> {
+    return withDataWrite(async () => {
+      const storage = getLocalStorage()
+      const recoveryRuns = readExamRunRecoverySnapshots().filter((run) => !storage || !isExamRunDiscarded(storage, run.id))
+      return claimExamRunSlot(
+        createActiveExamRun(profile),
+        (operation) => withExamRunLifecycleTransaction(operation),
+        recoveryRuns,
+      )
+    })
+  },
+
   async getActiveExamRun(): Promise<ActiveExamRun | undefined> {
     const db = await getDatabase()
     const [inProgressRuns, results] = await Promise.all([
@@ -491,18 +541,27 @@ export const database = {
     await withDataWrite(async () => {
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable.')
-      await assertExamRunNotDiscarded(storage, run.id)
-      storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run))
+      await withExamRunLifecycleTransaction(async (store) => {
+        await assertExamRunNotDiscarded(storage, run.id)
+        await stageExamRunRecoveryAtomically(
+          run,
+          (operation) => operation(store),
+          () => storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run)),
+        )
+      })
     })
   },
 
   async saveExamRun(run: ActiveExamRun): Promise<void> {
     await withDataWrite(async () => {
-      const db = await getDatabase()
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable; this exam attempt was not saved.')
-      await assertExamRunNotDiscarded(storage, run.id)
-      await db.put('examRuns', run)
+      await withExamRunLifecycleTransaction(async (store) => {
+        await assertExamRunNotDiscarded(storage, run.id)
+        await assertExamRunNotCompletedInTransaction(store, run.id)
+        await assertExamRunSlotAvailableInTransaction(store, run.id)
+        await store.putRun(run)
+      })
       clearExamRunRecoverySnapshot(run.id, run)
     })
   },
@@ -528,18 +587,12 @@ export const database = {
 
   async completeExamRun(runId: string, result: ConsolidatedExamResult): Promise<ConsolidatedExamResult> {
     return withDataWrite(async () => {
-      const db = await getDatabase()
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable; the completed attempt could not be finalized safely.')
-      await assertExamRunNotDiscarded(storage, runId)
-      const transaction = db.transaction(['examResults', 'examRuns'], 'readwrite')
-      const existingResults = await transaction.objectStore('examResults').getAll()
-      const existingResult = existingResults.find((storedResult) => storedResult.runId === runId)
-      const completedResult = existingResult ?? result
-
-      if (!existingResult) await transaction.objectStore('examResults').put(result)
-      await transaction.objectStore('examRuns').delete(runId)
-      await transaction.done
+      const completedResult = await withExamRunLifecycleTransaction(async (store) => {
+        await assertExamRunNotDiscarded(storage, runId)
+        return completeExamRunAtomically(runId, result, (operation) => operation(store))
+      })
       clearExamRunRecoverySnapshot(runId)
       return completedResult
     })

@@ -227,6 +227,9 @@ function normalizeInterpretingAnnotation(
   if (responseSegmentId && !responseSegment) {
     throw new FeedbackValidationError(`Interpreting annotation references unknown response segment: ${responseSegmentId}.`)
   }
+  if (responseSegment && responseSegment.sourceSegmentId !== sourceSegmentId) {
+    throw new FeedbackValidationError('Interpreting annotation response evidence must belong to the referenced source segment.')
+  }
 
   const sourceQuote = value.sourceQuote === undefined ? undefined : requiredText(value.sourceQuote, 'sourceQuote')
   const learnerQuote = value.learnerQuote === undefined ? undefined : requiredText(value.learnerQuote, 'learnerQuote')
@@ -250,17 +253,33 @@ function normalizeInterpretingAnnotation(
 
   const matchingAnalysis = responseSegment?.recordingId
     ? context.deliveryAnalysis.find((analysis) => analysis.recordingId === responseSegment.recordingId)
-    : context.deliveryAnalysis.length === 1 ? context.deliveryAnalysis[0] : undefined
-  const analysisConfidence = matchingAnalysis?.analysisConfidence
-  const lowRecognitionConfidence = responseSegment !== undefined && (
-    responseSegment.recognitionStatus !== 'verified'
-    || (responseSegment.recognitionConfidence !== undefined && responseSegment.recognitionConfidence < 0.65)
-  )
-  const lowAnalysisConfidence = analysisConfidence !== undefined && analysisConfidence < 0.5
+    : undefined
+  const recognitionConfidence = responseSegment?.recognitionConfidence === undefined
+    ? undefined
+    : normalizeConfidence(responseSegment.recognitionConfidence, `responseSegments.${responseSegment.id}.recognitionConfidence`)
+  const analysisConfidence = matchingAnalysis?.analysisConfidence === undefined
+    ? undefined
+    : normalizeConfidence(matchingAnalysis.analysisConfidence, `deliveryAnalysis.${responseSegment?.recordingId}.analysisConfidence`)
+  // A low ASR estimate remains metadata, but explicit learner confirmation changes the evidence status.
+  const unconfirmedRecognition = responseSegment !== undefined && responseSegment.recognitionStatus !== 'verified'
   const contentCategory = category === 'meaning-transfer' || category === 'omission' || category === 'addition-mistranslation' || category === 'terminology'
-  const evidenceStatus = rawStatus === 'verified' && contentCategory && (lowRecognitionConfidence || lowAnalysisConfidence)
-    ? 'uncertain'
-    : rawStatus
+  const hasTranscriptEvidence = Boolean(responseSegment?.transcript.trim())
+  const hasRecordingEvidence = Boolean(responseSegment?.recordingId && context.recordings.some((recording) => recording.id === responseSegment.recordingId))
+  const hasRecordedDeliveryEvidence = Boolean(hasRecordingEvidence && matchingAnalysis)
+  let evidenceStatus: InterpretingAnnotation['evidenceStatus'] = rawStatus
+  if (rawStatus === 'verified' && contentCategory) {
+    if (!responseSegment || !hasTranscriptEvidence) {
+      evidenceStatus = 'insufficient'
+    } else if (unconfirmedRecognition) {
+      evidenceStatus = 'uncertain'
+    }
+  } else if (rawStatus === 'verified' && !contentCategory) {
+    if (!hasRecordedDeliveryEvidence) {
+      evidenceStatus = 'insufficient'
+    } else if (analysisConfidence === undefined || analysisConfidence < 0.5) {
+      evidenceStatus = 'uncertain'
+    }
+  }
 
   return {
     category,
@@ -271,7 +290,7 @@ function normalizeInterpretingAnnotation(
     explanation: requiredText(value.explanation, 'explanation'),
     suggestion: requiredText(value.suggestion ?? value.revision, 'suggestion'),
     evidenceStatus,
-    recognitionConfidence: responseSegment?.recognitionConfidence,
+    recognitionConfidence,
     analysisConfidence,
   }
 }
@@ -338,10 +357,10 @@ export function validateInterpretingFeedback(
   const overallScore = contentScoreStatus === 'complete' && suppliedOverall !== undefined
     ? normalizeScore(suppliedOverall, 'overallScore')
     : undefined
-  const recognitionValues = context.responseSegments
-    .map((segment) => segment.recognitionConfidence)
-    .filter((value): value is number => value !== undefined)
-  const analysisValues = context.deliveryAnalysis.map((analysis) => analysis.analysisConfidence)
+  const recognitionValues = context.responseSegments.flatMap((segment) => segment.recognitionConfidence === undefined
+    ? []
+    : [normalizeConfidence(segment.recognitionConfidence, `responseSegments.${segment.id}.recognitionConfidence`)])
+  const analysisValues = context.deliveryAnalysis.map((analysis) => normalizeConfidence(analysis.analysisConfidence, `deliveryAnalysis.${analysis.recordingId ?? 'unknown'}.analysisConfidence`))
 
   return {
     contentScores: contentScoreValues,

@@ -1,4 +1,4 @@
-import type { EvaluationFeedback, EvaluationMode, EvaluationRequest, InterpretingExercise, InterpretingFeedback, Exercise, LanguageCode, TranslationFeedback } from '../domain/types'
+import type { EvaluationFeedback, EvaluationMode, EvaluationRequest, InterpretingEvaluationInput, InterpretingExercise, InterpretingFeedback, Exercise, LanguageCode, TranslationFeedback } from '../domain/types'
 import { getLocalEvaluationDecision, type CapabilityAssessment } from './capability'
 
 export interface EvaluationProvider {
@@ -62,6 +62,8 @@ export type EvaluationRouterDependencies = {
 
 export type CloudProviderLike = EvaluationProvider & {
   getConsentDetails(): { providerUrl: string; model: string; supportsAudio: boolean }
+  prepareAudioPayloads(input: InterpretingEvaluationInput): Promise<ReadonlyMap<string, Blob>>
+  evaluate(input: EvaluationRequest, preparedAudioPayloads?: ReadonlyMap<string, Blob>): Promise<EvaluationFeedback>
 }
 
 export class ProviderUnavailableError extends Error {
@@ -117,6 +119,19 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
         return { status: 'unavailable', reason: `${localFailure} The configured cloud endpoint is not marked as audio-capable, so the learner audio remains local.` }
       }
 
+      let preparedAudioPayloads: ReadonlyMap<string, Blob> | undefined
+      if (!('learnerAnswer' in input)) {
+        try {
+          preparedAudioPayloads = await cloudProvider.prepareAudioPayloads(input)
+          if (input.recordings.some((recording) => !preparedAudioPayloads?.has(recording.id))) {
+            return { status: 'unavailable', reason: `${localFailure} The outgoing audio could not be represented exactly in the consent preview, so no cloud request was made.` }
+          }
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'Audio preview preparation failed.'
+          return { status: 'unavailable', reason: `${localFailure} ${reason} The original recordings remain local.` }
+        }
+      }
+
       const previewUrls: string[] = []
       const parts: CloudConsentRequest['payloadPreview']['parts'] = 'learnerAnswer' in input
         ? [
@@ -127,9 +142,14 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
             { kind: 'source-transcript', label: 'Exact source segment transcripts', language: input.exercise.sourceLanguage, text: input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n') },
             { kind: 'learner-transcript', label: 'Learner transcripts with recognition status', language: input.exercise.targetLanguage, text: input.responseSegments.map((segment) => `${segment.id} (${segment.recognitionStatus}): ${segment.transcript || '[empty]'}`).join('\n') },
             ...input.recordings.map((recording) => {
-              const previewUrl = URL.createObjectURL(recording.blob)
+              const outgoingBlob = preparedAudioPayloads?.get(recording.id)
+              if (!outgoingBlob) {
+                throw new Error(`No prepared audio payload exists for recording ${recording.id}.`)
+              }
+              const previewUrl = URL.createObjectURL(outgoingBlob)
               previewUrls.push(previewUrl)
-              return { kind: 'learner-audio' as const, label: `Learner audio · ${recording.id}`, mimeType: recording.mimeType, durationMs: recording.durationMs, byteLength: recording.byteLength, previewUrl }
+              const outgoingDurationMs = Math.round(Math.max(0, outgoingBlob.size - 44) / 32)
+              return { kind: 'learner-audio' as const, label: `Learner audio WAV · converted locally from ${recording.mimeType} · ${recording.id}`, mimeType: outgoingBlob.type, durationMs: outgoingDurationMs, byteLength: outgoingBlob.size, previewUrl }
             }),
             { kind: 'delivery-metrics', label: 'Local delivery metrics', text: JSON.stringify(input.deliveryAnalysis) },
           ]
@@ -143,7 +163,7 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
           learnerAnswer: 'learnerAnswer' in input ? input.learnerAnswer : undefined,
           payloadPreview: { providerUrl: cloudDetails.providerUrl, model: cloudDetails.model, parts },
           revokePreview: previewUrls.length > 0 ? () => previewUrls.forEach((url) => URL.revokeObjectURL(url)) : undefined,
-          confirm: () => cloudProvider.evaluate(input),
+          confirm: () => cloudProvider.evaluate(input, preparedAudioPayloads),
         },
       }
     },

@@ -148,6 +148,7 @@ function ConsentDialog({
         <p className="eyebrow">One task · explicit consent</p>
         <h2 id="consent-heading">Send this task to the cloud?</h2>
         <p>The local evaluator is not available for this task. Review the exact provider, model, text, audio metadata, and derived metrics below before making a one-time decision.</p>
+        {!isWritten && <p className="consent-warning">Source clip audio stays on this device. Only the text and learner-audio parts listed below are sent after you confirm.</p>}
         <p className="consent-warning">Provider: {request.payloadPreview.providerUrl} · Model: {request.payloadPreview.model}</p>
         <div className="consent-evidence">
           {isWritten ? (
@@ -964,7 +965,6 @@ export default function App() {
     setIsEvaluating(true)
     try {
       const nextFeedback = await pending.request.confirm()
-      pending.request.revokePreview?.()
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -972,10 +972,10 @@ export default function App() {
         setPracticeNotice('The cloud provider returned written feedback for an interpreting task. No practice estimate was saved; the submitted payload may have reached the configured endpoint.')
         return
       }
+      pending.request.revokePreview?.()
       setPendingInterpretingConsent(undefined)
       await saveCompletedInterpretingSession(pending.input, nextFeedback, 'cloud', submissionGeneration)
     } catch (error) {
-      pending.request.revokePreview?.()
       if (dataLoadGeneration.current === submissionGeneration) {
         const reason = error instanceof Error ? error.message : 'The provider returned an unexpected error.'
         setPracticeNotice(`Cloud interpreting evaluation could not be completed: ${reason} No feedback was saved; the attempted payload may have reached the configured endpoint.`)

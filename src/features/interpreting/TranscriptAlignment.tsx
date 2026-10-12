@@ -1,6 +1,30 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type SyntheticEvent } from 'react'
 import { getLanguage } from '../../domain/languages'
 import type { InterpretingExercise, InterpretingFeedback, InterpretingEvaluationInput } from '../../domain/types'
+
+function BoundedAudioReplay({ src, startMs, endMs, label }: { src: string; startMs: number; endMs: number; label: string }) {
+  const startSeconds = startMs / 1000
+  const endSeconds = endMs / 1000
+
+  function startWithinRange(event: SyntheticEvent<HTMLAudioElement>) {
+    const audio = event.currentTarget
+    if (audio.currentTime < startSeconds || audio.currentTime >= endSeconds) {
+      audio.currentTime = startSeconds
+    }
+  }
+
+  function keepWithinRange(event: SyntheticEvent<HTMLAudioElement>) {
+    const audio = event.currentTarget
+    if (audio.currentTime < startSeconds) {
+      audio.currentTime = startSeconds
+    } else if (audio.currentTime >= endSeconds) {
+      audio.pause()
+      audio.currentTime = endSeconds
+    }
+  }
+
+  return <audio controls preload="metadata" src={src} aria-label={label} onPlay={startWithinRange} onTimeUpdate={keepWithinRange} onSeeking={keepWithinRange}>Learner replay is unavailable.</audio>
+}
 
 export function TranscriptAlignment({
   exercise,
@@ -57,7 +81,7 @@ export function TranscriptAlignment({
           return (
             <article className="interpreting-alignment-row" key={segment.id}>
               <div className="interpreting-alignment-source"><div className="interpreting-card-heading"><strong>{segment.id}</strong><button className="button button--quiet interpreting-action" type="button" onClick={() => seekSource(segment.startMs, segment.endMs)}>Play source range</button></div><p dir={sourceLanguage.direction} lang={sourceLanguage.code}>{segment.transcript}</p><small>{(segment.startMs / 1000).toFixed(1)}–{(segment.endMs / 1000).toFixed(1)}s authored source range</small></div>
-              <div className="interpreting-alignment-response"><div className="interpreting-card-heading"><strong>Learner response</strong><span className={`pill ${response?.recognitionStatus === 'uncertain' ? 'pill--warning' : ''}`}>{response?.recognitionStatus ?? 'not recorded'}</span></div><p dir={targetLanguage.direction} lang={targetLanguage.code}>{response?.transcript || 'No verified transcript for this response.'}</p>{recordingUrl && <audio controls preload="metadata" src={recordingUrl} aria-label={`Replay learner response for ${segment.id}`}>Learner replay is unavailable.</audio>}<small>{response?.responseStartMs !== undefined && response?.responseEndMs !== undefined ? `${(response.responseStartMs / 1000).toFixed(1)}–${(response.responseEndMs / 1000).toFixed(1)}s response range` : 'No response timing saved.'}{input.interpretingMode === 'simultaneous' && ' · approximate continuous-take boundary'}</small></div>
+              <div className="interpreting-alignment-response"><div className="interpreting-card-heading"><strong>Learner response</strong><span className={`pill ${response?.recognitionStatus === 'uncertain' ? 'pill--warning' : ''}`}>{response?.recognitionStatus ?? 'not recorded'}</span></div><p dir={targetLanguage.direction} lang={targetLanguage.code}>{response?.transcript || 'No verified transcript for this response.'}</p>{recordingUrl && response && response.responseEndMs > response.responseStartMs && <BoundedAudioReplay src={recordingUrl} startMs={response.responseStartMs} endMs={response.responseEndMs} label={`Replay learner response for ${segment.id}`} />}{recordingUrl && response && response.responseEndMs <= response.responseStartMs && <small>No recorded audio falls within this response range.</small>}<small>{response?.responseStartMs !== undefined && response?.responseEndMs !== undefined ? `${(response.responseStartMs / 1000).toFixed(1)}–${(response.responseEndMs / 1000).toFixed(1)}s response range` : 'No response timing saved.'}{input.interpretingMode === 'simultaneous' && ' · approximate continuous-take boundary'}</small></div>
               {segmentAnnotations.length > 0 && <ul className="interpreting-alignment-annotations">{segmentAnnotations.map((annotation, index) => <li key={`${segment.id}-${annotation.category}-${index}`}><strong>{annotation.evidenceStatus === 'verified' ? annotation.category : 'Check the transcript'}</strong><span>{annotation.explanation}</span></li>)}</ul>}
             </article>
           )

@@ -1,5 +1,5 @@
 import { validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
-import type { EvaluationFeedback, EvaluationRequest } from '../domain/types'
+import type { EvaluationFeedback, EvaluationRequest, InterpretingEvaluationInput } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { parseJsonResponse, type CloudProviderLike } from './provider'
 
@@ -99,7 +99,7 @@ async function blobToBase64(blob: Blob, signal: AbortSignal): Promise<string> {
   return btoa(binary)
 }
 
-async function blobToMonoWavBase64(blob: Blob, signal: AbortSignal): Promise<string> {
+async function blobToMonoWav(blob: Blob, signal: AbortSignal): Promise<Blob> {
   if (typeof AudioContext === 'undefined') {
     throw new Error('This browser cannot transcode the recording to WAV. Keep it local or use a compatible audio browser.')
   }
@@ -157,7 +157,7 @@ async function blobToMonoWavBase64(blob: Blob, signal: AbortSignal): Promise<str
       const clipped = Math.max(-1, Math.min(1, sample))
       view.setInt16(44 + index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true)
     }
-    return await blobToBase64(new Blob([wav], { type: 'audio/wav' }), signal)
+    return new Blob([wav], { type: 'audio/wav' })
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw error
@@ -177,6 +177,7 @@ async function buildCloudRequestBody(
   model: string,
   supportsAudio: boolean,
   signal: AbortSignal,
+  preparedAudioPayloads?: ReadonlyMap<string, Blob>,
 ): Promise<Record<string, unknown>> {
   throwIfAborted(signal)
   if ('learnerAnswer' in input) {
@@ -191,13 +192,16 @@ async function buildCloudRequestBody(
     }
   }
 
-  const audioParts = await Promise.all(input.recordings.map(async (recording) => ({
-    type: 'input_audio',
-    input_audio: {
-      data: await blobToMonoWavBase64(recording.blob, signal),
-      format: 'wav',
-    },
-  })))
+  const audioParts = await Promise.all(input.recordings.map(async (recording) => {
+    const outgoingBlob = preparedAudioPayloads?.get(recording.id) ?? await blobToMonoWav(recording.blob, signal)
+    return {
+      type: 'input_audio',
+      input_audio: {
+        data: await blobToBase64(outgoingBlob, signal),
+        format: 'wav',
+      },
+    }
+  }))
   return {
     model,
     messages: [
@@ -233,7 +237,26 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
       return { providerUrl: endpoint, model, supportsAudio }
     },
 
-    async evaluate(input: EvaluationRequest): Promise<EvaluationFeedback> {
+    async prepareAudioPayloads(input: InterpretingEvaluationInput): Promise<ReadonlyMap<string, Blob>> {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), CLOUD_EVALUATION_TIMEOUT_MS)
+      try {
+        const entries = await Promise.all(input.recordings.map(async (recording) => [
+          recording.id,
+          await blobToMonoWav(recording.blob, controller.signal),
+        ] as const))
+        return new Map(entries)
+      } catch (error) {
+        if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+          throw new Error(`Local audio preview conversion timed out after ${CLOUD_EVALUATION_TIMEOUT_MS / 1000} seconds. The recordings remain on this device.`)
+        }
+        throw error
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    },
+
+    async evaluate(input: EvaluationRequest, preparedAudioPayloads?: ReadonlyMap<string, Blob>): Promise<EvaluationFeedback> {
       if (!('learnerAnswer' in input) && !supportsAudio) {
         throw new Error('The configured cloud endpoint has not been verified for audio input. Keep the recording local or configure an audio-capable endpoint explicitly.')
       }
@@ -251,7 +274,7 @@ export function createCloudProvider(config: CloudProviderConfig): CloudProviderL
       let completed = false
       try {
         const evaluation = (async () => {
-          const body = await buildCloudRequestBody(input, model, supportsAudio, controller.signal)
+          const body = await buildCloudRequestBody(input, model, supportsAudio, controller.signal, preparedAudioPayloads)
           throwIfAborted(controller.signal)
           const response = await fetch(endpoint, {
             method: 'POST',

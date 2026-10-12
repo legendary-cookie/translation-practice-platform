@@ -70,9 +70,19 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
   }
 
   const releaseStream = () => {
-    liveMonitor?.dispose()
+    try {
+      liveMonitor?.dispose()
+    } catch {
+      // Microphone tracks still need to stop if the Web Audio monitor fails to disconnect.
+    }
     liveMonitor = undefined
-    stream?.getTracks().forEach((track) => track.stop())
+    stream?.getTracks().forEach((track) => {
+      try {
+        track.stop()
+      } catch {
+        // Release every remaining track even if one browser track has already ended.
+      }
+    })
     stream = undefined
   }
 
@@ -154,48 +164,51 @@ export function createResponseRecorder(exerciseId: string): ResponseRecorder {
         chunks = []
         segmentIds = segmentId ? [segmentId] : []
         error = undefined
-        const mimeType = chooseMimeType()
         try {
+          const mimeType = chooseMimeType()
           recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
-        } catch (caught) {
-          state = 'error'
-          error = readableMicrophoneError(caught)
-          releaseStream()
-          notify()
-          throw new Error(error)
-        }
-        recorder.addEventListener('dataavailable', (event) => {
-          if (event.data.size > 0) {
-            chunks.push(event.data)
-          }
-        })
-        recorder.addEventListener('error', (event) => {
-          activeStartedAt = 0
-          clearLevelTimer()
-          releaseStream()
-          state = 'error'
-          error = event.error?.message ?? 'The recording failed.'
-          notify()
-        })
-        accumulatedDurationMs = 0
-        activeStartedAt = Date.now()
-        liveMonitor = createLiveInputMonitor(stream)
-        state = 'recording'
-        try {
+          recorder.addEventListener('dataavailable', (event) => {
+            if (event.data.size > 0) {
+              chunks.push(event.data)
+            }
+          })
+          recorder.addEventListener('error', (event) => {
+            activeStartedAt = 0
+            clearLevelTimer()
+            releaseStream()
+            state = 'error'
+            error = event.error?.message ?? 'The recording failed.'
+            notify()
+          })
+          accumulatedDurationMs = 0
+          activeStartedAt = Date.now()
+          liveMonitor = createLiveInputMonitor(stream)
+          state = 'recording'
           recorder.start()
+          levelTimer = setInterval(notify, 250)
+          notify()
+          if (mode === 'simultaneous') {
+            // The continuous take intentionally keeps segmentIds empty until the workspace adds its authored boundaries.
+            segmentIds = []
+          }
         } catch (caught) {
           activeStartedAt = 0
+          accumulatedDurationMs = 0
+          clearLevelTimer()
+          if (recorder && recorder.state !== 'inactive') {
+            try {
+              recorder.stop()
+            } catch {
+              // The stream is released below even when MediaRecorder cannot stop cleanly.
+            }
+          }
+          recorder = undefined
+          chunks = []
           releaseStream()
           state = 'error'
           error = readableMicrophoneError(caught)
           notify()
           throw new Error(error)
-        }
-        levelTimer = setInterval(notify, 250)
-        notify()
-        if (mode === 'simultaneous') {
-          // The continuous take intentionally keeps segmentIds empty until the workspace adds its authored boundaries.
-          segmentIds = []
         }
       } finally {
         startInProgress = false

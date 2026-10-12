@@ -11,14 +11,25 @@ export function createLiveInputMonitor(stream: MediaStream): LiveInputMonitor | 
     return undefined
   }
   const context = new AudioContextConstructor()
-  const source = context.createMediaStreamSource(stream)
-  const analyser = context.createAnalyser()
-  analyser.fftSize = 512
-  source.connect(analyser)
-  const samples = new Uint8Array(analyser.fftSize)
+  let source: MediaStreamAudioSourceNode | undefined
+  let analyser: AnalyserNode | undefined
+  try {
+    source = context.createMediaStreamSource(stream)
+    analyser = context.createAnalyser()
+    analyser.fftSize = 512
+    source.connect(analyser)
+  } catch (error) {
+    source?.disconnect()
+    analyser?.disconnect()
+    void context.close().catch(() => undefined)
+    throw error
+  }
+  const activeSource = source
+  const activeAnalyser = analyser
+  const samples = new Uint8Array(activeAnalyser.fftSize)
   return {
     getLevel() {
-      analyser.getByteTimeDomainData(samples)
+      activeAnalyser.getByteTimeDomainData(samples)
       let sum = 0
       for (const sample of samples) {
         const normalized = (sample - 128) / 128
@@ -27,8 +38,8 @@ export function createLiveInputMonitor(stream: MediaStream): LiveInputMonitor | 
       return Math.min(1, Math.sqrt(sum / samples.length) * 3)
     },
     dispose() {
-      source.disconnect()
-      analyser.disconnect()
+      activeSource.disconnect()
+      activeAnalyser.disconnect()
       void context.close()
     },
   }

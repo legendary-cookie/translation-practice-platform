@@ -47,6 +47,8 @@ export function hasConsentedCloudAudioDeliveryEvidence(
   if (evidence?.taskConsentGranted !== true
     || typeof evidence.providerUrl !== 'string'
     || typeof evidence.model !== 'string'
+    || !Array.isArray(evidence.attachedRecordingIds)
+    || !Array.isArray(evidence.audioAttachments)
     || !evidence.providerUrl.trim()
     || !evidence.model.trim()) return false
   if (input.recordings.length === 0 || input.responseSegments.length === 0) return false
@@ -54,12 +56,38 @@ export function hasConsentedCloudAudioDeliveryEvidence(
   const recordingIds = input.recordings.map((recording) => recording.id)
   const uniqueRecordingIds = new Set(recordingIds)
   const attachedIds = new Set(evidence.attachedRecordingIds)
+  const audioAttachments = evidence.audioAttachments
   if (uniqueRecordingIds.size !== recordingIds.length
     || attachedIds.size !== evidence.attachedRecordingIds.length
     || attachedIds.size !== recordingIds.length
-    || recordingIds.some((id) => !attachedIds.has(id))) {
+    || recordingIds.some((id, index) => !attachedIds.has(id) || evidence.attachedRecordingIds[index] !== id)
+    || !Array.isArray(audioAttachments)
+    || audioAttachments.length !== recordingIds.length) {
     return false
   }
+
+  const mappingMatchesInput = audioAttachments.every((attachment, index) => {
+    if (!attachment || typeof attachment !== 'object'
+      || attachment.attachmentIndex !== index + 1 || attachment.recordingId !== recordingIds[index]
+      || !Array.isArray(attachment.responseSegments)) return false
+    const expectedSegments = input.responseSegments
+      .filter((segment) => segment.recordingId === attachment.recordingId)
+      .map((segment) => ({
+        responseSegmentId: segment.id,
+        sourceSegmentId: segment.sourceSegmentId,
+        responseStartMs: segment.responseStartMs,
+        responseEndMs: segment.responseEndMs,
+      }))
+    return expectedSegments.length === attachment.responseSegments.length
+      && expectedSegments.every((expected, segmentIndex) => {
+        const mapped = attachment.responseSegments[segmentIndex]
+        return Boolean(mapped && mapped.responseSegmentId === expected.responseSegmentId
+          && mapped.sourceSegmentId === expected.sourceSegmentId
+          && mapped.responseStartMs === expected.responseStartMs
+          && mapped.responseEndMs === expected.responseEndMs)
+      })
+  })
+  if (!mappingMatchesInput) return false
 
   const recordingsById = new Map(input.recordings.map((recording) => [recording.id, recording]))
   return input.responseSegments.every((segment) => {

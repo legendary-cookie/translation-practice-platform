@@ -8,6 +8,7 @@ import { getLocalRecognitionCapabilityWithTimeout, installLocalRecognitionLangua
 import { requestWithDeadline } from './request-with-deadline'
 import { isPackagedAudioOfflineReady } from './offline-asset-status'
 import { fetchAudioBlobWithDeadline } from './audio-asset-requests'
+import { loadImportedAudioMetadata } from './audio-import-metadata'
 
 export type InterpretingStart = {
   exercise: InterpretingExercise
@@ -164,22 +165,10 @@ export function InterpretingSetup({
       return
     }
     const importedMimeType = inferImportedAudioMime(file.type, file.name)
-    const objectUrl = URL.createObjectURL(file)
-    const metadataAudio = new Audio()
-    metadataAudio.preload = 'metadata'
+    let objectUrl: string | undefined
     try {
-      const durationMs = await new Promise<number>((resolve, reject) => {
-        metadataAudio.addEventListener('loadedmetadata', () => {
-          if (!Number.isFinite(metadataAudio.duration) || metadataAudio.duration <= 0) {
-            reject(new Error('The selected audio file has no readable duration.'))
-            return
-          }
-          resolve(Math.round(metadataAudio.duration * 1000))
-        }, { once: true })
-        metadataAudio.addEventListener('error', () => reject(new Error('The selected audio file could not be decoded in this browser.')), { once: true })
-        metadataAudio.src = objectUrl
-        metadataAudio.load()
-      })
+      const metadata = await loadImportedAudioMetadata(file)
+      objectUrl = metadata.objectUrl
       if (importGeneration !== localAudioImportGeneration.current) {
         URL.revokeObjectURL(objectUrl)
         return
@@ -194,7 +183,7 @@ export function InterpretingSetup({
         difficulty: difficulty === 'all' ? 'intermediate' : difficulty,
         audioUrl: objectUrl,
         audioMimeType: importedMimeType || 'audio/*',
-        durationMs,
+        durationMs: metadata.durationMs,
       })
       setImportedSource({
         exercise: importedExercise,
@@ -205,7 +194,7 @@ export function InterpretingSetup({
           segmentIds: [segmentId],
           createdAt: new Date().toISOString(),
           mimeType: importedMimeType || 'application/octet-stream',
-          durationMs,
+          durationMs: metadata.durationMs,
           byteLength: file.size,
           blob: file,
           kind: 'source-import',
@@ -213,15 +202,13 @@ export function InterpretingSetup({
         },
       })
       setAssetStatus('ready')
+      objectUrl = undefined
     } catch (error) {
-      URL.revokeObjectURL(objectUrl)
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
       if (importGeneration === localAudioImportGeneration.current) {
         setImportError(error instanceof Error ? error.message : 'The selected audio file could not be imported.')
         setAssetStatus('unavailable')
       }
-    } finally {
-      metadataAudio.removeAttribute('src')
-      metadataAudio.load()
     }
   }
 

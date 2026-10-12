@@ -146,6 +146,16 @@ export type ConsentedCloudAudioEvidence = {
   model: string
   taskConsentGranted: true
   attachedRecordingIds: readonly string[]
+  audioAttachments: readonly {
+    attachmentIndex: number
+    recordingId: string
+    responseSegments: readonly {
+      responseSegmentId: string
+      sourceSegmentId: string
+      responseStartMs: number
+      responseEndMs: number
+    }[]
+  }[]
 }
 
 export type InterpretingContentScores = {

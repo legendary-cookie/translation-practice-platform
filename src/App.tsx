@@ -191,6 +191,13 @@ function ConsentDialog({
               <section key={`${part.kind}-${index}`}>
                 <h3>{part.label}</h3>
                 {part.text && <p className="consent-quote" dir={partLanguage?.direction} lang={partLanguage?.code}>{part.text}</p>}
+                {part.kind === 'learner-audio' && part.responseSegments && (
+                  <p className="consent-quote">
+                    {part.responseSegments.length > 0
+                      ? `Attachment ${part.attachmentIndex ?? index}: ${part.responseSegments.map((segment) => `${segment.responseSegmentId} from ${segment.sourceSegmentId}, ${(segment.responseStartMs / 1000).toFixed(3)}–${(segment.responseEndMs / 1000).toFixed(3)} s`).join('; ')}`
+                      : `Attachment ${part.attachmentIndex ?? index} has no mapped response range and will not be used as delivery evidence.`}
+                  </p>
+                )}
                 {part.previewUrl && <><audio controls preload="metadata" src={part.previewUrl}>Audio preview is unavailable.</audio><p className="consent-quote">{part.mimeType} · {part.durationMs} ms · {part.byteLength} bytes</p></>}
               </section>
             )

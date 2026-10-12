@@ -90,6 +90,9 @@ test('consented attached cloud audio can verify delivery annotations without tru
     model: 'synthetic-audio-fixture',
     taskConsentGranted: true,
     attachedRecordingIds: ['qa-recording'],
+    audioAttachments: [{ attachmentIndex: 1, recordingId: 'qa-recording', responseSegments: [{
+      responseSegmentId: 'qa-response-segment', sourceSegmentId: 'qa-source-segment', responseStartMs: 250, responseEndMs: 1500,
+    }] }],
   }
 
   const cloud = validateInterpretingFeedback(feedback, input, consentedAudio)

@@ -225,9 +225,21 @@ async function buildCloudRequestBody(
     }
   }))
   const attachedRecordingIds = attachedParts.map((item) => item.recordingId)
+  const audioAttachments = attachedParts.map((item, index) => ({
+    attachmentIndex: index + 1,
+    recordingId: item.recordingId,
+    responseSegments: input.responseSegments
+      .filter((segment) => segment.recordingId === item.recordingId)
+      .map((segment) => ({
+        responseSegmentId: segment.id,
+        sourceSegmentId: segment.sourceSegmentId,
+        responseStartMs: segment.responseStartMs,
+        responseEndMs: segment.responseEndMs,
+      })),
+  }))
   const cloudAudioEvidence: ConsentedCloudAudioEvidence | undefined = input.recordings.length > 0
     && attachedRecordingIds.length === input.recordings.length
-    ? { providerUrl, model, taskConsentGranted: true, attachedRecordingIds }
+    ? { providerUrl, model, taskConsentGranted: true, attachedRecordingIds, audioAttachments }
     : undefined
   return {
     body: {

@@ -9,6 +9,7 @@ import {
   PROVISIONAL_DRAFT_LABEL,
 } from '../../domain/exam'
 import { useRecoveryCountdown } from './use-recovery-countdown'
+import { confirmAndDiscardExamRun } from './exam-discard-confirmation'
 
 export type ExamCatalogProps = {
   profiles: ExamProfile[]
@@ -82,7 +83,7 @@ export function ExamCatalog({
             <button
               className="button button--quiet"
               type="button"
-              onClick={() => onDiscardRun(activeRun.id)}
+              onClick={() => void confirmAndDiscardExamRun(activeRun.id, onDiscardRun)}
             >
               Discard Draft
             </button>

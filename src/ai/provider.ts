@@ -30,6 +30,13 @@ export type CloudConsentRequest = {
       durationMs?: number
       byteLength?: number
       previewUrl?: string
+      attachmentIndex?: number
+      responseSegments?: readonly {
+        responseSegmentId: string
+        sourceSegmentId: string
+        responseStartMs: number
+        responseEndMs: number
+      }[]
     }>
   }
   revokePreview?: () => void
@@ -131,7 +138,7 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
         : [
             { kind: 'source-transcript', label: 'Exact source segment transcripts', language: input.exercise.sourceLanguage, text: input.exercise.segments.map((segment) => `${segment.id}: ${segment.transcript}`).join('\n') },
             { kind: 'learner-transcript', label: 'Learner transcripts with recognition status', language: input.exercise.targetLanguage, text: input.responseSegments.map((segment) => `${segment.id} (${segment.recognitionStatus}): ${segment.transcript || '[empty]'}`).join('\n') },
-            ...input.recordings.map((recording) => {
+            ...input.recordings.map((recording, recordingIndex) => {
               const outgoingBlob = preparedAudioPayloads?.get(recording.id)
               if (!outgoingBlob) {
                 throw new Error(`No prepared audio payload exists for recording ${recording.id}.`)
@@ -139,7 +146,24 @@ export function createEvaluationRouter(dependencies: EvaluationRouterDependencie
               const previewUrl = URL.createObjectURL(outgoingBlob)
               previewUrls.push(previewUrl)
               const outgoingDurationMs = Math.round(Math.max(0, outgoingBlob.size - 44) / 32)
-              return { kind: 'learner-audio' as const, label: `Learner audio WAV · converted locally from ${recording.mimeType} · ${recording.id}`, mimeType: outgoingBlob.type, durationMs: outgoingDurationMs, byteLength: outgoingBlob.size, previewUrl }
+              const responseSegments = input.responseSegments
+                .filter((segment) => segment.recordingId === recording.id)
+                .map((segment) => ({
+                  responseSegmentId: segment.id,
+                  sourceSegmentId: segment.sourceSegmentId,
+                  responseStartMs: segment.responseStartMs,
+                  responseEndMs: segment.responseEndMs,
+                }))
+              return {
+                kind: 'learner-audio' as const,
+                label: `Learner audio attachment ${recordingIndex + 1} · converted locally from ${recording.mimeType} · ${recording.id}`,
+                mimeType: outgoingBlob.type,
+                durationMs: outgoingDurationMs,
+                byteLength: outgoingBlob.size,
+                previewUrl,
+                attachmentIndex: recordingIndex + 1,
+                responseSegments,
+              }
             }),
             { kind: 'delivery-metrics', label: 'Local delivery metrics', text: JSON.stringify(input.deliveryAnalysis) },
           ]

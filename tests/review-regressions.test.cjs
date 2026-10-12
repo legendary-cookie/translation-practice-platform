@@ -246,6 +246,13 @@ test('consented attached cloud audio is distinct from unqualified local energy e
     model: 'loopback-mock',
     taskConsentGranted: true,
     attachedRecordingIds: ['recording-a'],
+    audioAttachments: [{
+      attachmentIndex: 1,
+      recordingId: 'recording-a',
+      responseSegments: [{
+        responseSegmentId: 'response-a', sourceSegmentId: 'segment-a', responseStartMs: 100, responseEndMs: 900,
+      }],
+    }],
   }
   const feedback = {
     summary: 'Synthetic validated response.',
@@ -349,7 +356,12 @@ test('the router keeps energy evidence scoreless locally and scores attached aud
 
     const cloudRequest = await makeRouter('local-first-cloud-fallback').evaluate(input)
     assert.equal(cloudRequest.status, 'needs-consent')
-    assert.equal(cloudRequest.request.payloadPreview.parts.filter((part) => part.kind === 'learner-audio').length, 1)
+    const audioPreview = cloudRequest.request.payloadPreview.parts.filter((part) => part.kind === 'learner-audio')
+    assert.equal(audioPreview.length, 1)
+    assert.equal(audioPreview[0].attachmentIndex, 1)
+    assert.deepEqual(audioPreview[0].responseSegments, [{
+      responseSegmentId: 'response-a', sourceSegmentId: 'segment-a', responseStartMs: 100, responseEndMs: 900,
+    }])
     assert.equal(requests.length, 0)
 
     const result = await cloudRequest.request.confirm()

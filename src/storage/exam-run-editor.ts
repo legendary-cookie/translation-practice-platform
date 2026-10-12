@@ -184,7 +184,6 @@ export async function renewExamRunEditorLease(
     if (!current || current.status !== 'in-progress' || current.editorToken !== editorToken) {
       throw new ExamRunEditorLeaseLostError(runId)
     }
-    if (leaseExpiry(current) <= nowMs) throw new ExamRunEditorLeaseLostError(runId)
     const renewed = { ...current, editorLeaseExpiresAt: new Date(nowMs + leaseMs).toISOString() }
     onRenew?.(renewed)
     await store.putRun(renewed)

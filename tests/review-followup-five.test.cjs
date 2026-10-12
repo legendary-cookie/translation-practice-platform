@@ -146,6 +146,9 @@ test('feedback identifies consented attached cloud audio instead of labeling it 
   }
   const feedback = validateInterpretingFeedback(raw, input, {
     providerUrl: 'https://synthetic.invalid/v1', model: 'fixture', taskConsentGranted: true, attachedRecordingIds: [recording.id],
+    audioAttachments: [{ attachmentIndex: 1, recordingId: recording.id, responseSegments: [{
+      responseSegmentId: 'response-1', sourceSegmentId: 'source-1', responseStartMs: 0, responseEndMs: 900,
+    }] }],
   })
   assert.equal(feedback.deliveryEvidenceSource, 'consented-cloud-audio')
   const markup = renderToStaticMarkup(React.createElement(InterpretingFeedbackPanel, {

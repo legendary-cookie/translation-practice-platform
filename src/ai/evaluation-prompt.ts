@@ -66,9 +66,15 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, c
       : 'The imported source has no supplied transcript, and there is no sufficiently confident delivery analysis. Do not fabricate content or delivery scores or source evidence; explain the limitation.'
     : 'Source transcript evidence is available for literal evidence checks.'
 
+  const consentedAudioWasAttached = cloudAudioEvidence?.taskConsentGranted === true
   const audioInstruction = attachedCloudAudioCanBeScored
-    ? 'The learner explicitly consented to send the attached response audio to this cloud evaluator. You may use the audio only to assess delivery (fluency, pacing, hesitation); do not infer transcript content from it or override the supplied transcript evidence.'
-    : 'Use only the transcripts and derived delivery metrics below; response audio stays on the learner\'s device and is not attached to this evaluation.'
+    ? 'The learner explicitly consented to send the attached response audio to this cloud evaluator. The text prompt is followed by input_audio parts in the 1-based order shown in the attachment map below. Use each part only for its listed response ranges; do not infer transcript content from it or override supplied transcript evidence.'
+    : consentedAudioWasAttached
+      ? 'The learner explicitly consented to send the listed audio parts to this cloud evaluator, but their mapping does not qualify as trusted delivery evidence. Do not score delivery from these parts; use only the transcripts and any sufficiently confident local delivery analysis. Do not infer transcript content from the audio.'
+      : 'Use only the transcripts and derived delivery metrics below; response audio stays on the learner\'s device and is not attached to this evaluation.'
+  const audioAttachmentMap = consentedAudioWasAttached && cloudAudioEvidence
+    ? `\n\nCLOUD AUDIO ATTACHMENT MAP:\n${JSON.stringify(cloudAudioEvidence.audioAttachments, null, 2)}\nEND CLOUD AUDIO ATTACHMENT MAP`
+    : ''
   const deliveryInstruction = deliveryCanBeScored
     ? 'Sufficiently confident local delivery analysis is available for the saved response recordings.'
     : 'No sufficiently confident analysis covers every response recording. Omit deliveryScores and do not invent a delivery estimate. Amplitude/envelope-only metrics do not establish speech presence, signal quality, or delivery quality; do not infer these from loudness, peaks, or pauses.'
@@ -76,6 +82,7 @@ function buildInterpretingEvaluationPrompt(input: InterpretingEvaluationInput, c
   return `Evaluate this ${input.interpretingMode} interpreting practice from ${sourceLanguage.label} to ${targetLanguage.label}. ${audioInstruction} ${deliveryInstruction}
 
 ${sourceTranscriptNote}
+${audioAttachmentMap}
 
 Return this JSON shape:
 {

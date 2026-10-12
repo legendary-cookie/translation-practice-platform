@@ -25,7 +25,8 @@ import { isInterpretingOpenCurrent } from './features/interpreting/session-open-
 import { ExamCatalog } from './features/exam/ExamCatalog'
 import { ExamRunner } from './features/exam/ExamRunner'
 import { ExamResultsReport } from './features/exam/ExamResultsReport'
-import { ExamEvaluationBlockedError, evaluateExamRun } from './features/exam/exam-evaluator'
+import { approveExamPassageFeedback, ExamEvaluationBlockedError, evaluateExamRun, type ApprovedExamFeedbackCheckpoint } from './features/exam/exam-evaluator'
+import { snapshotExamProfile } from './domain/exam'
 import { DEFAULT_EXAM_PROFILES } from './data/exam-profiles'
 import { getInterpretingExerciseById } from './data/interpreting-exercises'
 import { DirectionQualityNotice, ModelCapabilityStatus } from './features/settings/ModelCapabilityStatus'
@@ -104,9 +105,10 @@ async function snapshotBundledSourceAudio(exercise: InterpretingExercise): Promi
 
 type PendingExamConsent = {
   run: ActiveExamRun
+  profile: ExamProfile
   passageId: string
   request: CloudConsentRequest
-  approvedFeedback: Record<string, TranslationFeedback>
+  approvedFeedback?: ApprovedExamFeedbackCheckpoint
 }
 
 type PendingPracticeConsent = {
@@ -855,11 +857,14 @@ export default function App() {
 
   async function handleSubmitExamRun(
     completedRun: ActiveExamRun,
-    approvedFeedback: Record<string, TranslationFeedback> = {},
+    approvedFeedback?: ApprovedExamFeedbackCheckpoint,
+    profileOverride?: ExamProfile,
   ) {
-    if (!selectedExamProfile) {
+    const selectedProfile = profileOverride ?? selectedExamProfile
+    if (!selectedProfile) {
       return
     }
+    const evaluationProfile = snapshotExamProfile(selectedProfile)
     const submissionGeneration = dataLoadGeneration.current
     setActiveExamRun(completedRun)
     setExamEvaluationNotice(undefined)
@@ -868,7 +873,7 @@ export default function App() {
     try {
       const result = await evaluateExamRun(
         completedRun,
-        selectedExamProfile,
+        evaluationProfile,
         evaluationRouter,
         (completed, total) => setExamEvaluationProgress({ completed, total }),
         approvedFeedback,
@@ -898,9 +903,10 @@ export default function App() {
       if (error instanceof ExamEvaluationBlockedError && error.status === 'needs-consent' && error.request) {
         setPendingExamConsent({
           run: completedRun,
+          profile: evaluationProfile,
           passageId: error.passageId,
           request: error.request,
-          approvedFeedback,
+          approvedFeedback: error.approvedFeedback ?? approvedFeedback,
         })
         setExamEvaluationNotice(`${error.message} Review the exact task before deciding whether to use cloud evaluation.`)
       } else {
@@ -953,11 +959,15 @@ export default function App() {
         setExamEvaluationNotice('The cloud provider returned interpreting feedback for an exam passage. No practice estimate was saved; the exam remains available for retry.')
         return
       }
+      const approvedFeedback = approveExamPassageFeedback(
+        pending.approvedFeedback,
+        pending.run,
+        pending.profile,
+        pending.passageId,
+        feedback,
+      )
       setPendingExamConsent(undefined)
-      await handleSubmitExamRun(pending.run, {
-        ...pending.approvedFeedback,
-        [pending.passageId]: feedback,
-      })
+      await handleSubmitExamRun(pending.run, approvedFeedback, pending.profile)
     } catch (error) {
       pending.request.revokePreview?.()
       if (dataLoadGeneration.current !== submissionGeneration) {

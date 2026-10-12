@@ -12,27 +12,49 @@ import { snapshotExamProfile } from '../../domain/exam'
 
 export type ExamEvaluationBlockStatus = 'needs-consent' | 'unavailable'
 
+export type ApprovedExamPassageFeedback = {
+  sectionId: string
+  passageId: string
+  sourceText: string
+  sourceLanguage: LanguageCode
+  targetLanguage: LanguageCode
+  answer: string
+  feedback: TranslationFeedback
+}
+
+export type ApprovedExamFeedbackCheckpoint = {
+  runId: string
+  profileId: string
+  profileVersion: number
+  rubricVersion: string
+  passages: Record<string, ApprovedExamPassageFeedback>
+}
+
 export class ExamEvaluationBlockedError extends Error {
   readonly status: ExamEvaluationBlockStatus
   readonly passageId: string
   readonly request?: CloudConsentRequest
+  readonly approvedFeedback?: ApprovedExamFeedbackCheckpoint
 
   constructor({
     status,
     reason,
     passageId,
     request,
+    approvedFeedback,
   }: {
     status: ExamEvaluationBlockStatus
     reason: string
     passageId: string
     request?: CloudConsentRequest
+    approvedFeedback?: ApprovedExamFeedbackCheckpoint
   }) {
     super(reason)
     this.name = 'ExamEvaluationBlockedError'
     this.status = status
     this.passageId = passageId
     this.request = request
+    this.approvedFeedback = approvedFeedback
   }
 }
 
@@ -77,41 +99,122 @@ function validateExamFeedback(
   return validateFeedback(feedback, { sourceText, learnerAnswer })
 }
 
+type ExamPassageInput = {
+  sectionId: string
+  passageId: string
+  passageTitle: string
+  sourceText: string
+  targetLanguage: LanguageCode
+  sourceLanguage: LanguageCode
+  answer: string
+}
+
+function listExamPassages(run: ActiveExamRun, profile: ExamProfile): ExamPassageInput[] {
+  return profile.sections.flatMap((section) => section.passages.map((passage) => ({
+    sectionId: section.id,
+    passageId: passage.id,
+    passageTitle: passage.title,
+    sourceText: passage.sourceText,
+    targetLanguage: passage.targetLanguage,
+    sourceLanguage: resolveSourceLanguage(section.direction, passage.targetLanguage, profile),
+    answer: run.answers[section.id]?.[passage.id] ?? '',
+  })))
+}
+
+function checkpointMatchesRun(
+  checkpoint: ApprovedExamFeedbackCheckpoint | undefined,
+  run: ActiveExamRun,
+  profile: ExamProfile,
+): checkpoint is ApprovedExamFeedbackCheckpoint {
+  return checkpoint !== undefined
+    && checkpoint.runId === run.id
+    && checkpoint.profileId === profile.id
+    && checkpoint.profileVersion === profile.version
+    && checkpoint.rubricVersion === profile.rubricVersion
+}
+
+function passageMatchesCheckpoint(
+  approved: ApprovedExamPassageFeedback | undefined,
+  item: ExamPassageInput,
+): approved is ApprovedExamPassageFeedback {
+  return approved !== undefined
+    && approved.sectionId === item.sectionId
+    && approved.passageId === item.passageId
+    && approved.sourceText === item.sourceText
+    && approved.sourceLanguage === item.sourceLanguage
+    && approved.targetLanguage === item.targetLanguage
+    && approved.answer === item.answer
+}
+
+function createFeedbackCheckpoint(
+  run: ActiveExamRun,
+  profile: ExamProfile,
+  passages: ExamPassageInput[],
+  feedbackMap: Record<string, TranslationFeedback>,
+): ApprovedExamFeedbackCheckpoint {
+  return {
+    runId: run.id,
+    profileId: profile.id,
+    profileVersion: profile.version,
+    rubricVersion: profile.rubricVersion,
+    passages: Object.fromEntries(passages.flatMap((item) => {
+      const feedback = feedbackMap[item.passageId]
+      return feedback === undefined ? [] : [[item.passageId, {
+        sectionId: item.sectionId,
+        passageId: item.passageId,
+        sourceText: item.sourceText,
+        sourceLanguage: item.sourceLanguage,
+        targetLanguage: item.targetLanguage,
+        answer: item.answer,
+        feedback,
+      } satisfies ApprovedExamPassageFeedback]]
+    })),
+  }
+}
+
+/** Validate cloud-approved feedback and bind it to this exact run, profile, rubric, and passage input. */
+export function approveExamPassageFeedback(
+  existing: ApprovedExamFeedbackCheckpoint | undefined,
+  run: ActiveExamRun,
+  profile: ExamProfile,
+  passageId: string,
+  feedback: unknown,
+): ApprovedExamFeedbackCheckpoint {
+  const profileSnapshot = snapshotExamProfile(profile)
+  const passages = listExamPassages(run, profileSnapshot)
+  const item = passages.find((passage) => passage.passageId === passageId)
+  if (!item || !item.answer.trim()) {
+    throw new Error('The approved exam passage no longer has a matching answer.')
+  }
+
+  const reusable: Record<string, TranslationFeedback> = {}
+  if (checkpointMatchesRun(existing, run, profileSnapshot)) {
+    for (const candidate of passages) {
+      const approved = existing.passages[candidate.passageId]
+      if (!passageMatchesCheckpoint(approved, candidate)) continue
+      try {
+        reusable[candidate.passageId] = validateExamFeedback(approved.feedback, candidate.sourceText, candidate.answer)
+      } catch {
+        // A malformed/stale checkpoint is never trusted; it will be evaluated again.
+      }
+    }
+  }
+
+  reusable[passageId] = validateExamFeedback(feedback, item.sourceText, item.answer)
+  return createFeedbackCheckpoint(run, profileSnapshot, passages, reusable)
+}
+
 export async function evaluateExamRun(
   run: ActiveExamRun,
   profile: ExamProfile,
   evaluationRouter: EvaluationRouter,
   onProgress?: (completed: number, total: number) => void,
-  approvedFeedback: Record<string, TranslationFeedback> = {},
+  approvedFeedback?: ApprovedExamFeedbackCheckpoint,
 ): Promise<ConsolidatedExamResult> {
   const profileSnapshot = snapshotExamProfile(profile)
   const evaluatedSections: SectionEvaluationInput[] = []
-
-  const allPassages: Array<{
-    sectionId: string
-    passageId: string
-    passageTitle: string
-    sourceText: string
-    targetLanguage: LanguageCode
-    sourceLanguage: LanguageCode
-    answer: string
-  }> = []
-
-  for (const section of profileSnapshot.sections) {
-    for (const passage of section.passages) {
-      const sourceLanguage = resolveSourceLanguage(section.direction, passage.targetLanguage, profileSnapshot)
-      const answer = run.answers[section.id]?.[passage.id] ?? ''
-      allPassages.push({
-        sectionId: section.id,
-        passageId: passage.id,
-        passageTitle: passage.title,
-        sourceText: passage.sourceText,
-        targetLanguage: passage.targetLanguage,
-        sourceLanguage,
-        answer,
-      })
-    }
-  }
+  const allPassages = listExamPassages(run, profileSnapshot)
+  const canReuseCheckpoint = checkpointMatchesRun(approvedFeedback, run, profileSnapshot)
 
   const feedbackMap: Record<string, TranslationFeedback> = {}
   let completedCount = 0
@@ -120,12 +223,16 @@ export async function evaluateExamRun(
     if (!item.answer.trim()) {
       feedbackMap[item.passageId] = validateExamFeedback(EMPTY_FEEDBACK, item.sourceText, item.answer)
     } else {
-      const approved = approvedFeedback[item.passageId]
-      if (approved) {
-        feedbackMap[item.passageId] = validateExamFeedback(approved, item.sourceText, item.answer)
-        completedCount += 1
-        onProgress?.(completedCount, allPassages.length)
-        continue
+      const approved = canReuseCheckpoint ? approvedFeedback.passages[item.passageId] : undefined
+      if (passageMatchesCheckpoint(approved, item)) {
+        try {
+          feedbackMap[item.passageId] = validateExamFeedback(approved.feedback, item.sourceText, item.answer)
+          completedCount += 1
+          onProgress?.(completedCount, allPassages.length)
+          continue
+        } catch {
+          // Re-evaluate invalid checkpoint data rather than surfacing or persisting it.
+        }
       }
 
       const exercise: Exercise = {
@@ -156,6 +263,7 @@ export async function evaluateExamRun(
             reason: evalResult.reason,
             passageId: item.passageId,
             request: evalResult.status === 'needs-consent' ? evalResult.request : undefined,
+            approvedFeedback: createFeedbackCheckpoint(run, profileSnapshot, allPassages, feedbackMap),
           })
         }
       } catch (err) {
@@ -166,6 +274,7 @@ export async function evaluateExamRun(
           status: 'unavailable',
           reason: err instanceof Error ? err.message : 'Evaluation error',
           passageId: item.passageId,
+          approvedFeedback: createFeedbackCheckpoint(run, profileSnapshot, allPassages, feedbackMap),
         })
       }
     }

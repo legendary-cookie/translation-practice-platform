@@ -45,6 +45,27 @@ async function saveAndSubmitRun(
   }
 }
 
+function reconcilePersistedRun(run: ActiveExamRun, profile: ExamProfile): ActiveExamRun {
+  const savedAt = Date.parse(run.lastSavedAt)
+  const elapsedSinceSave = Number.isFinite(savedAt)
+    ? Math.max(0, Math.floor((Date.now() - savedAt) / 1000))
+    : 0
+  const { run: updatedRun, overallExpired } = decrementTimers(run, profile, elapsedSinceSave)
+  let nextRun = updatedRun
+
+  if (!overallExpired) {
+    while (!isLastSection(nextRun, profile)) {
+      const sectionId = profile.sections[nextRun.currentSectionIndex]?.id
+      if (!sectionId || (nextRun.sectionRemainingSeconds[sectionId] ?? 0) > 0) {
+        break
+      }
+      nextRun = advanceSection(nextRun, profile)
+    }
+  }
+
+  return nextRun
+}
+
 export function ExamRunner({
   profile,
   initialRun,
@@ -52,7 +73,7 @@ export function ExamRunner({
   onCancel,
   onPersistenceError,
 }: ExamRunnerProps) {
-  const [run, setRun] = useState<ActiveExamRun>(() => initialRun ?? createActiveExamRun(profile))
+  const [run, setRun] = useState<ActiveExamRun>(() => initialRun ? reconcilePersistedRun(initialRun, profile) : createActiveExamRun(profile))
   const [showAidsModal, setShowAidsModal] = useState(false)
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [sectionExpiredAlert, setSectionExpiredAlert] = useState<string | undefined>()
@@ -62,7 +83,8 @@ export function ExamRunner({
 
   const isDirtyRef = useRef(false)
   const lastTickTime = useRef(Date.now())
-  const autoSubmitTriggeredRef = useRef(false)
+  const timerIntervalRef = useRef<number | undefined>(undefined)
+  const submissionStartedRef = useRef(false)
   const reportedPersistenceFailuresRef = useRef(new Set<string>())
   const onSubmitRunRef = useRef(onSubmitRun)
   const onPersistenceErrorRef = useRef(onPersistenceError)
@@ -76,6 +98,13 @@ export function ExamRunner({
     if (!reportedPersistenceFailuresRef.current.has(operation)) {
       reportedPersistenceFailuresRef.current.add(operation)
       onPersistenceErrorRef.current?.(message)
+    }
+  }
+
+  const stopTimer = () => {
+    if (timerIntervalRef.current !== undefined) {
+      window.clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = undefined
     }
   }
 
@@ -102,9 +131,9 @@ export function ExamRunner({
   useEffect(() => {
     lastTickTime.current = Date.now()
 
-    const intervalId = setInterval(() => {
+    const intervalId = window.setInterval(() => {
       if (runRef.current.overallRemainingSeconds <= 0 && runRef.current.submissionAttemptedAt) {
-        clearInterval(intervalId)
+        stopTimer()
         return
       }
 
@@ -133,7 +162,7 @@ export function ExamRunner({
           }
         }
 
-        const shouldAutoSubmit = overallExpired && !autoSubmitTriggeredRef.current && !nextRun.submissionAttemptedAt
+        const shouldAutoSubmit = overallExpired && !submissionStartedRef.current && !nextRun.submissionAttemptedAt
         const submissionRun = shouldAutoSubmit
           ? { ...nextRun, submissionAttemptedAt: new Date().toISOString() }
           : nextRun
@@ -149,15 +178,21 @@ export function ExamRunner({
         }
 
         if (shouldAutoSubmit) {
-          autoSubmitTriggeredRef.current = true
+          submissionStartedRef.current = true
           isDirtyRef.current = false
-          clearInterval(intervalId)
+          stopTimer()
           void saveAndSubmitRun(submissionRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
         }
       }
     }, 1000)
+    timerIntervalRef.current = intervalId
 
-    return () => clearInterval(intervalId)
+    return () => {
+      if (timerIntervalRef.current === intervalId) {
+        timerIntervalRef.current = undefined
+      }
+      window.clearInterval(intervalId)
+    }
   }, [profile])
 
   // Periodic auto-save every 3 seconds if dirty
@@ -186,9 +221,12 @@ export function ExamRunner({
   const currentSection = profile.sections[run.currentSectionIndex] ?? profile.sections[0]
   const currentSectionAnswers = run.answers[currentSection.id] ?? {}
   const currentSectionSeconds = run.sectionRemainingSeconds[currentSection.id] ?? 0
-  const isCurrentSectionLocked = currentSectionSeconds <= 0 && run.overallRemainingSeconds > 0
+  const isCurrentSectionLocked = submissionStartedRef.current || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
 
   const handleAnswerChange = (passageId: string, text: string) => {
+    if (submissionStartedRef.current) {
+      return
+    }
     const currentRun = runRef.current
     const section = profile.sections[currentRun.currentSectionIndex] ?? currentSection
     const updatedRun: ActiveExamRun = {
@@ -208,6 +246,9 @@ export function ExamRunner({
   }
 
   const handleNextSection = () => {
+    if (submissionStartedRef.current) {
+      return
+    }
     const currentRun = runRef.current
     if (isLastSection(currentRun, profile)) {
       setShowSubmitModal(true)
@@ -223,9 +264,20 @@ export function ExamRunner({
   }
 
   const handleConfirmSubmit = () => {
+    if (submissionStartedRef.current) {
+      return
+    }
+    submissionStartedRef.current = true
     setShowSubmitModal(false)
+    const currentRun = runRef.current
+    const submissionRun = currentRun.overallRemainingSeconds <= 0 && !currentRun.submissionAttemptedAt
+      ? { ...currentRun, submissionAttemptedAt: new Date().toISOString() }
+      : currentRun
+    runRef.current = submissionRun
+    setRun(submissionRun)
     isDirtyRef.current = false
-    void saveAndSubmitRun(runRef.current, onSubmitRunRef.current, onPersistenceErrorRef.current)
+    stopTimer()
+    void saveAndSubmitRun(submissionRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
   }
 
   const handleSaveAndExit = async () => {

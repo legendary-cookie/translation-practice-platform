@@ -11,24 +11,28 @@ function formatTime(seconds: number): string {
 export function TranslationWorkspace({
   exercise,
   initialAnswer,
+  initialElapsedSeconds,
   isSubmitting,
   notice,
   timeLimitSeconds,
   onCancel,
   onDraftChange,
+  onElapsedChange,
   onSubmit,
 }: {
   exercise: Exercise
   initialAnswer: string
+  initialElapsedSeconds: number
   isSubmitting: boolean
   notice?: string
   timeLimitSeconds?: number
   onCancel: () => void
   onDraftChange: (answer: string) => void
+  onElapsedChange: (elapsedSeconds: number) => void
   onSubmit: (answer: string, elapsedSeconds: number) => void
 }) {
   const [answer, setAnswer] = useState(initialAnswer)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds)
   const startedAt = useRef(Date.now())
   const [validationMessage, setValidationMessage] = useState<string | undefined>()
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
@@ -37,15 +41,20 @@ export function TranslationWorkspace({
   const characterCount = answer.replace(/\s/gu, '').length
 
   useEffect(() => {
-    startedAt.current = Date.now()
-    setElapsedSeconds(0)
+    const restoredElapsedSeconds = Math.max(0, Math.floor(initialElapsedSeconds))
+    startedAt.current = Date.now() - restoredElapsedSeconds * 1000
+    setElapsedSeconds(restoredElapsedSeconds)
     setAnswer(initialAnswer)
   }, [exercise.id])
 
   useEffect(() => {
-    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt.current) / 1000)), 1000)
+    const timer = window.setInterval(() => {
+      const nextElapsedSeconds = Math.floor((Date.now() - startedAt.current) / 1000)
+      setElapsedSeconds(nextElapsedSeconds)
+      onElapsedChange(nextElapsedSeconds)
+    }, 1000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [onElapsedChange])
 
   const remainingSeconds = timeLimitSeconds === undefined ? undefined : Math.max(0, timeLimitSeconds - elapsedSeconds)
   const isOvertime = remainingSeconds === 0

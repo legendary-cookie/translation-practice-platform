@@ -20,9 +20,11 @@ export type LocalModelProgressCallback = (progress: LocalModelProgress) => void
 
 export const LOCAL_MODEL_CACHE_EVICTED_MESSAGE = 'The local model cache is missing. Your browser may have evicted the downloaded model; prepare it again before retrying local evaluation.'
 export const LOCAL_EVALUATION_INVALID_RESPONSE_MESSAGE = 'The local evaluator returned incomplete or invalid feedback twice. No score was saved. Try again, review manually, or choose explicit cloud consent.'
+export const LOCAL_EVALUATION_TIMEOUT_MESSAGE = 'Local evaluation timed out after 120 seconds. The local model was reset; prepare it again before retrying.'
 const LOCAL_MODEL_READY_MARKER = 'lingo-practice-local-model-ready'
 const LOCAL_EVALUATION_MAX_TOKENS = 1400
 const LOCAL_EVALUATION_MAX_ATTEMPTS = 2
+const LOCAL_EVALUATION_TIMEOUT_MS = 120_000
 const QWEN3_NON_THINKING_BODY = { enable_thinking: false } as const
 type DiagnosticMode = 'unconstrained' | 'json' | 'json-prompt' | 'thinking-on'
 type StreamChunk = {
@@ -83,6 +85,30 @@ async function collectStream(stream: AsyncIterable<StreamChunk>, phase: string):
     finishReason,
     elapsedMs: Math.round(performance.now() - startedAt),
   }
+}
+
+function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => void,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      try {
+        onTimeout()
+      } finally {
+        reject(new ProviderUnavailableError(message))
+      }
+    }, timeoutMs)
+  })
+
+  return Promise.race([operation, timeoutPromise]).finally(() => {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
+  })
 }
 
 async function runRequestedDiagnostic(engine: WebWorkerMLCEngine, mode: DiagnosticMode): Promise<void> {
@@ -296,24 +322,43 @@ export function createLocalProvider(
           thinking: false,
         })
         try {
-          const response = await engine.chat.completions.create({
-            messages: [
-              {
-                role: 'system',
-                content: attempt === 1
-                  ? evaluationSystemPrompt
-                  : `${evaluationSystemPrompt} The previous response was invalid or truncated. Return one complete JSON object with every required field and no Markdown, commentary, or extra text.`,
-              },
-              { role: 'user', content: buildEvaluationPrompt(input) },
-            ],
-            temperature: attempt === 1 ? 0.2 : 0,
-            top_p: attempt === 1 ? 0.9 : 0.8,
-            max_tokens: LOCAL_EVALUATION_MAX_TOKENS,
-            stream: true,
-            extra_body: QWEN3_NON_THINKING_BODY,
-          })
-          logLocalEvent('evaluation.stream-opened', { attempt, elapsedMs: Math.round(performance.now() - attemptStartedAt) })
-          const generated = await collectStream(response as AsyncIterable<StreamChunk>, 'evaluation.' + attempt)
+          const resetTimedOutEngine = () => {
+            try {
+              engine.interruptGenerate()
+            } catch {
+              // The worker may already have exited while the timeout fired.
+            }
+            worker?.terminate()
+            worker = undefined
+            enginePromise = undefined
+            forgetLocalModelReady()
+            report({ status: 'unavailable', error: LOCAL_EVALUATION_TIMEOUT_MESSAGE, text: 'Local evaluation timed out; prepare the model again before retrying.' })
+          }
+          const generated = await withTimeout(
+            (async () => {
+              const response = await engine.chat.completions.create({
+                messages: [
+                  {
+                    role: 'system',
+                    content: attempt === 1
+                      ? evaluationSystemPrompt
+                      : `${evaluationSystemPrompt} The previous response was invalid or truncated. Return one complete JSON object with every required field and no Markdown, commentary, or extra text.`,
+                  },
+                  { role: 'user', content: buildEvaluationPrompt(input) },
+                ],
+                temperature: attempt === 1 ? 0.2 : 0,
+                top_p: attempt === 1 ? 0.9 : 0.8,
+                max_tokens: LOCAL_EVALUATION_MAX_TOKENS,
+                stream: true,
+                extra_body: QWEN3_NON_THINKING_BODY,
+              })
+              logLocalEvent('evaluation.stream-opened', { attempt, elapsedMs: Math.round(performance.now() - attemptStartedAt) })
+              return collectStream(response as AsyncIterable<StreamChunk>, 'evaluation.' + attempt)
+            })(),
+            LOCAL_EVALUATION_TIMEOUT_MS,
+            resetTimedOutEngine,
+            LOCAL_EVALUATION_TIMEOUT_MESSAGE,
+          )
           if (generated.finishReason === 'length') {
             throw new FeedbackValidationError('The local evaluator response was truncated before completion.')
           }

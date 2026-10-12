@@ -294,6 +294,8 @@ export function createLocalProvider(
         void startRequestedDiagnostic(await enginePromise)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'The local model could not be prepared.'
+        worker?.terminate()
+        worker = undefined
         enginePromise = undefined
         report({ status: 'unavailable', error: message, text: 'Local model preparation failed.' })
         throw new ProviderUnavailableError(message)

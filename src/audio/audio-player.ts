@@ -44,6 +44,7 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
   audio.load()
   let currentSegment: AudioSegment | undefined
   let repeat = false
+  let playbackAttempt = 0
   const listeners = new Set<AudioPlayerListener>()
 
   const notify = () => {
@@ -56,16 +57,44 @@ export function createAudioPlayer(exercise: InterpretingExercise): AudioPlayer {
   }
 
   function playWithTimeout(): Promise<void> {
-    const playback = audio.play()
+    const attempt = ++playbackAttempt
+    let playback: Promise<void>
+    try {
+      playback = audio.play()
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error('The source clip could not be played.'))
+    }
     return new Promise<void>((resolve, reject) => {
+      let settled = false
       const timeoutId = setTimeout(() => {
+        settled = true
+        if (attempt === playbackAttempt) {
+          playbackAttempt += 1
+          audio.pause()
+          // Reset the media element to abort a pending play/load attempt before the UI offers retry.
+          audio.load()
+        }
         reject(new Error('The source clip did not start playing.'))
       }, 8000)
       playback.then(() => {
+        if (settled) {
+          // A play promise may resolve after pause/load interrupted the timed-out attempt.
+          if (playbackAttempt === attempt + 1) {
+            audio.pause()
+          }
+          return
+        }
         clearTimeout(timeoutId)
+        settled = true
+        if (attempt !== playbackAttempt) {
+          reject(new Error('The source clip playback was cancelled.'))
+          return
+        }
         resolve()
       }).catch((error: unknown) => {
+        if (settled) return
         clearTimeout(timeoutId)
+        settled = true
         reject(error instanceof Error ? error : new Error('The source clip could not be played.'))
       })
     })

@@ -227,6 +227,8 @@ export default function App() {
   const [examRecoveryStatus, setExamRecoveryStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [localProviderEpoch, setLocalProviderEpoch] = useState(0)
   const [initialPracticeMode, setInitialPracticeMode] = useState<'written' | 'news'>('written')
+  const settingsRef = useRef<StoredSettings>(DEFAULT_SETTINGS)
+  const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
   const dataLoadGeneration = useRef(0)
   const localProviderEpochRef = useRef(0)
   const localProgressHandlerRef = useRef<(progress: LocalModelProgress, providerEpoch: number) => void>(() => undefined)
@@ -251,14 +253,9 @@ export default function App() {
     }
     setLocalProgress(progress)
     if (progress.status === 'ready' || progress.status === 'unavailable') {
-      setSettings((current) => {
-        if (localProviderEpochRef.current !== providerEpoch) {
-          return current
-        }
-        const nextSettings = { ...current, localModelStatus: progress.status }
-        void trackPersistence(database.saveSettings(nextSettings)).catch(() => undefined)
-        return nextSettings
-      })
+      void updateSettings((current) => localProviderEpochRef.current === providerEpoch
+        ? { ...current, localModelStatus: progress.status }
+        : current).catch(() => undefined)
     }
   }
 
@@ -323,6 +320,7 @@ export default function App() {
       if (dataLoadGeneration.current !== loadGeneration) {
         return
       }
+      settingsRef.current = savedSettings
       setSettings(savedSettings)
       setCloudDraft({ baseUrl: savedSettings.cloudBaseUrl, model: savedSettings.cloudModel, apiKey: '', supportsAudio: savedSettings.cloudSupportsAudio })
     }).catch(() => undefined)
@@ -377,9 +375,26 @@ export default function App() {
     getCapability: () => capability,
   }), [capability, cloudProvider, localProvider, settings.evaluationMode])
 
-  async function updateSettings(nextSettings: StoredSettings) {
-    await trackPersistence(database.saveSettings(nextSettings))
-    setSettings(nextSettings)
+  function updateSettings(update: Partial<StoredSettings> | ((current: StoredSettings) => StoredSettings)): Promise<void> {
+    const operation = settingsWriteQueueRef.current.then(async () => {
+      const previous = settingsRef.current
+      const nextSettings = typeof update === 'function' ? update(previous) : { ...previous, ...update }
+      if (nextSettings === previous) return
+      settingsRef.current = nextSettings
+      setSettings(nextSettings)
+      try {
+        await database.saveSettings(nextSettings)
+      } catch (error) {
+        if (settingsRef.current === nextSettings) {
+          settingsRef.current = previous
+          setSettings(previous)
+        }
+        throw error
+      }
+    })
+    const trackedOperation = trackPersistence(operation)
+    settingsWriteQueueRef.current = trackedOperation.then(() => undefined, () => undefined)
+    return trackedOperation
   }
 
   async function prepareLocalModel() {
@@ -406,6 +421,7 @@ export default function App() {
     await database.clearData()
     setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
+    settingsRef.current = DEFAULT_SETTINGS
     setSettings(DEFAULT_SETTINGS)
     setCloudDraft({ baseUrl: '', model: '', apiKey: '', supportsAudio: false })
     setLocalProgress({ status: 'not-prepared', text: 'Local model has not been prepared.' })
@@ -722,7 +738,7 @@ export default function App() {
 
   async function saveCloudPreferences(baseUrl: string, model: string, supportsAudio: boolean) {
     validateCloudProviderPreferences(baseUrl, model)
-    await updateSettings({ ...settings, cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
+    await updateSettings({ cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
   }
 
   function beginPractice(selection: PracticeStart) {
@@ -776,6 +792,22 @@ export default function App() {
     }
     setPracticeNotice(undefined)
     setPendingInterpretingConsent(undefined)
+  }
+
+  function startNewsPractice() {
+    const hasMeaningfulDraft = Boolean(activeExercise && !feedback && (draftAnswer.trim() || draftElapsedSeconds > 0))
+    if (hasMeaningfulDraft && !window.confirm('Starting news practice will discard your current written draft. Continue?')) {
+      return
+    }
+    setPracticeSetupMode('written')
+    setActiveExercise(undefined)
+    setTimeLimitSeconds(undefined)
+    setDraftAnswer('')
+    setDraftElapsedSeconds(0)
+    setFeedback(undefined)
+    setPendingConsent(undefined)
+    setInitialPracticeMode('news')
+    setCurrentPage('practice')
   }
 
   async function saveCompletedSession(
@@ -1196,7 +1228,7 @@ export default function App() {
             activeExamRun={activeExamRun}
             recentExamResults={recentExamResults}
             onStartInterpreting={openInterpretingSetup}
-            onStartNews={() => { setPracticeSetupMode('written'); setInitialPracticeMode('news'); setCurrentPage('practice') }}
+            onStartNews={startNewsPractice}
             onNavigate={navigateToPage}
           />
         )}
@@ -1275,7 +1307,7 @@ export default function App() {
             onStartExam={() => navigateToPage('exam')}
           />
         )}
-        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ ...settings, evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} onCloudDraftChange={setCloudDraft} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} sessionCount={recentSessions.length} interpretingSessionCount={recentInterpretingSessions.length} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={activeExercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { pendingConsent.request.revokePreview?.(); setPendingConsent(undefined) }} onConfirm={() => void confirmCloudEvaluation()} />}

@@ -40,6 +40,8 @@ type RecognitionWindow = Window & {
   webkitSpeechRecognition?: SpeechRecognitionStaticLike
 }
 
+const LOCAL_RECOGNITION_TIMEOUT_MS = 30_000
+
 export type LocalRecognitionCapability = {
   status: 'available' | 'downloadable' | 'downloading' | 'unavailable'
   languageTag: string
@@ -122,7 +124,39 @@ export async function recognizeLocal(track: MediaStreamTrack, languageTag: strin
     let finalTranscript = ''
     let bestConfidence: number | undefined
     const alternatives: string[] = []
+    let settled = false
+    let timeoutId: number | undefined
+
+    const cleanup = () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
+      track.removeEventListener('ended', handleTrackEnded)
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+    }
+    const finishWithError = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    const abortWithError = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      try {
+        recognition.abort()
+      } catch {
+        // The recognizer may already have stopped; always settle the caller either way.
+      }
+      reject(error)
+    }
+    const handleTrackEnded = () => abortWithError(new Error('The audio track ended before on-device recognition completed. Enter the transcript manually.'))
+
     recognition.onresult = (event) => {
+      if (settled) return
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index]
         for (let alternativeIndex = 0; alternativeIndex < result.length; alternativeIndex += 1) {
@@ -137,20 +171,33 @@ export async function recognizeLocal(track: MediaStreamTrack, languageTag: strin
         }
       }
     }
-    recognition.onerror = (event) => reject(new Error(event.error ? `On-device recognition failed: ${event.error}.` : 'On-device recognition failed.'))
-    recognition.onend = () => resolve({
-      transcript: finalTranscript.trim() || alternatives[0] || '',
-      recognitionStatus: bestConfidence !== undefined && bestConfidence >= 0.65 ? 'verified' : 'uncertain',
-      confidence: bestConfidence,
-      alternatives,
-      segmentId,
-    })
+    recognition.onerror = (event) => finishWithError(new Error(event.error ? `On-device recognition failed: ${event.error}.` : 'On-device recognition failed.'))
+    recognition.onend = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve({
+        transcript: finalTranscript.trim() || alternatives[0] || '',
+        recognitionStatus: bestConfidence !== undefined && bestConfidence >= 0.65 ? 'verified' : 'uncertain',
+        confidence: bestConfidence,
+        alternatives,
+        segmentId,
+      })
+    }
+    track.addEventListener('ended', handleTrackEnded, { once: true })
+    if (track.readyState === 'ended') {
+      handleTrackEnded()
+      return
+    }
+    timeoutId = window.setTimeout(() => {
+      abortWithError(new Error('On-device recognition timed out. Enter the transcript manually and try again.'))
+    }, LOCAL_RECOGNITION_TIMEOUT_MS)
     try {
       // The track overload is not present in every implementation. Never call the no-argument form,
       // because that can silently choose the browser's default remote recognition service.
       recognition.start(track)
     } catch (error) {
-      reject(error instanceof Error ? error : new Error('The browser could not start local recognition for this track.'))
+      finishWithError(error instanceof Error ? error : new Error('The browser could not start local recognition for this track.'))
     }
   })
 }

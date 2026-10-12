@@ -183,9 +183,11 @@ export function validateFeedback(raw: unknown, context: FeedbackValidationContex
   const issues = issueValues.map((issue) => normalizeAnnotation(issue, context))
 
   const suppliedOverall = raw.overallScore
-  const overallScore = typeof suppliedOverall === 'number'
-    ? normalizeScore(suppliedOverall, 'overallScore')
-    : Math.round(scoreDimensions.reduce((total, dimension) => total + dimensions[dimension], 0) / scoreDimensions.length)
+  if (suppliedOverall !== undefined) {
+    normalizeScore(suppliedOverall, 'overallScore')
+  }
+  // Keep the persisted/displayed total coherent with the validated rubric dimensions.
+  const overallScore = Math.round(scoreDimensions.reduce((total, dimension) => total + dimensions[dimension], 0) / scoreDimensions.length)
 
   return {
     summary: requiredText(raw.summary, 'summary'),
@@ -282,8 +284,19 @@ function normalizeInterpretingAnnotation(
   const unconfirmedRecognition = responseSegment !== undefined && responseSegment.recognitionStatus !== 'verified'
   const contentCategory = category === 'meaning-transfer' || category === 'omission' || category === 'addition-mistranslation' || category === 'terminology'
   const hasTranscriptEvidence = Boolean(responseSegment?.transcript.trim())
-  const hasRecordingEvidence = Boolean(responseSegment?.recordingId && context.recordings.some((recording) => recording.id === responseSegment.recordingId))
-  const hasRecordedDeliveryEvidence = Boolean(hasRecordingEvidence && matchingAnalysis)
+  const responseRecording = responseSegment?.recordingId
+    ? context.recordings.find((recording) => recording.id === responseSegment.recordingId)
+    : undefined
+  const hasRecordingEvidence = responseRecording !== undefined
+  const hasValidResponseRange = Boolean(responseSegment && responseRecording
+    && responseRecording.durationMs > 0
+    && Number.isFinite(responseSegment.responseStartMs)
+    && Number.isFinite(responseSegment.responseEndMs)
+    && responseSegment.responseStartMs >= 0
+    && responseSegment.responseEndMs > responseSegment.responseStartMs
+    && responseSegment.responseEndMs <= responseRecording.durationMs)
+  const hasRecordedDeliveryEvidence = Boolean(hasRecordingEvidence && hasValidResponseRange && matchingAnalysis)
+  const hasSourceTranscript = context.exercise.sourceTranscriptStatus !== 'missing'
   if (contentCategory && !sourceQuote && !learnerQuote) {
     throw new FeedbackValidationError('Content annotations must include literal source or learner text evidence.')
   }
@@ -292,7 +305,7 @@ function normalizeInterpretingAnnotation(
   }
   let evidenceStatus: InterpretingAnnotation['evidenceStatus'] = rawStatus
   if (rawStatus === 'verified' && contentCategory) {
-    if (!responseSegment || !hasTranscriptEvidence) {
+    if (!hasSourceTranscript || !responseSegment || !hasTranscriptEvidence) {
       evidenceStatus = 'insufficient'
     } else if (unconfirmedRecognition) {
       evidenceStatus = 'uncertain'
@@ -370,8 +383,11 @@ export function validateInterpretingFeedback(
   }
 
   const suppliedOverall = raw.overallScore
-  const overallScore = contentScoreStatus === 'complete' && suppliedOverall !== undefined
-    ? normalizeScore(suppliedOverall, 'overallScore')
+  if (suppliedOverall !== undefined) {
+    normalizeScore(suppliedOverall, 'overallScore')
+  }
+  const overallScore = contentScoreStatus === 'complete' && contentScoreValues
+    ? Math.round((contentScoreValues.meaningTransfer + contentScoreValues.omissions + contentScoreValues.additionsMistranslations + contentScoreValues.terminology) / 4)
     : undefined
   const recognitionValues = context.responseSegments.flatMap((segment) => segment.recognitionConfidence === undefined
     ? []

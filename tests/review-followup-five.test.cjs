@@ -29,6 +29,8 @@ test('per-run discard tombstone blocks only that exam run and rolls back a faile
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => values.delete(key),
+    key: (index) => [...values.keys()][index] ?? null,
+    get length() { return values.size },
   }
 
   await assert.rejects(discardExamRunWithTombstone(storage, 'run-a', async () => {

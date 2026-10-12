@@ -336,6 +336,12 @@ export type ActiveExamRun = {
   submissionAttemptedAt?: string
   /** A manually submitted attempt is paused while feedback or consent is being resolved. */
   evaluationPausedAt?: string
+  /** Per-tab editor lease; IndexedDB transactions are authoritative for ownership. */
+  editorToken?: string
+  /** Monotonic revision for answer, timer, and section mutations. */
+  revision?: number
+  /** Lease expiry mirrored in localStorage for synchronous crash checkpoints. */
+  editorLeaseExpiresAt?: string
 }
 
 export type PassageFeedbackItem = {

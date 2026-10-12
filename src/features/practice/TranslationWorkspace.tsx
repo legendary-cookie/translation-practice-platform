@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLanguage } from '../../domain/languages'
 import type { Exercise } from '../../domain/types'
+import { elapsedSecondsAt, resumeElapsedClock } from './pauseable-elapsed-clock'
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0')
@@ -13,6 +14,7 @@ export function TranslationWorkspace({
   initialAnswer,
   initialElapsedSeconds,
   isSubmitting,
+  clockPaused = false,
   notice,
   timeLimitSeconds,
   onCancel,
@@ -24,6 +26,7 @@ export function TranslationWorkspace({
   initialAnswer: string
   initialElapsedSeconds: number
   isSubmitting: boolean
+  clockPaused?: boolean
   notice?: string
   timeLimitSeconds?: number
   onCancel: () => void
@@ -34,6 +37,9 @@ export function TranslationWorkspace({
   const [answer, setAnswer] = useState(initialAnswer)
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds)
   const startedAt = useRef(Date.now())
+  const pausedAt = useRef<number | undefined>(undefined)
+  const onElapsedChangeRef = useRef(onElapsedChange)
+  onElapsedChangeRef.current = onElapsedChange
   const [validationMessage, setValidationMessage] = useState<string | undefined>()
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
@@ -43,18 +49,30 @@ export function TranslationWorkspace({
   useEffect(() => {
     const restoredElapsedSeconds = Math.max(0, Math.floor(initialElapsedSeconds))
     startedAt.current = Date.now() - restoredElapsedSeconds * 1000
+    pausedAt.current = clockPaused ? Date.now() : undefined
     setElapsedSeconds(restoredElapsedSeconds)
     setAnswer(initialAnswer)
   }, [exercise.id])
 
   useEffect(() => {
+    if (clockPaused) {
+      pausedAt.current ??= Date.now()
+      const frozenElapsed = elapsedSecondsAt(startedAt.current, Date.now(), pausedAt.current)
+      setElapsedSeconds(frozenElapsed)
+      onElapsedChangeRef.current(frozenElapsed)
+      return
+    }
+    if (pausedAt.current !== undefined) {
+      startedAt.current = resumeElapsedClock(startedAt.current, pausedAt.current, Date.now())
+      pausedAt.current = undefined
+    }
     const timer = window.setInterval(() => {
       const nextElapsedSeconds = Math.floor((Date.now() - startedAt.current) / 1000)
       setElapsedSeconds(nextElapsedSeconds)
-      onElapsedChange(nextElapsedSeconds)
+      onElapsedChangeRef.current(nextElapsedSeconds)
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [onElapsedChange])
+  }, [clockPaused, exercise.id])
 
   const remainingSeconds = timeLimitSeconds === undefined ? undefined : Math.max(0, timeLimitSeconds - elapsedSeconds)
   const isOvertime = remainingSeconds === 0
@@ -65,7 +83,10 @@ export function TranslationWorkspace({
       return
     }
     setValidationMessage(undefined)
-    onSubmit(answer, elapsedSeconds)
+    const submittedElapsedSeconds = elapsedSecondsAt(startedAt.current, Date.now(), pausedAt.current)
+    setElapsedSeconds(submittedElapsedSeconds)
+    onElapsedChangeRef.current(submittedElapsedSeconds)
+    onSubmit(answer, submittedElapsedSeconds)
   }
 
   return (

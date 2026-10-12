@@ -13,6 +13,7 @@ function createExamRunTransactionHarness(seed = {}) {
       const draftRuns = new Map(runs)
       const draftResults = new Map(results)
       const store = {
+        async getRun(runId) { return draftRuns.get(runId) },
         async getInProgressRuns() { return [...draftRuns.values()].filter((run) => run.status === 'in-progress') },
         async getCompletedRunIds() { return [...draftResults.keys()] },
         async getCompletedResult(runId) { return draftResults.get(runId) },

@@ -46,6 +46,9 @@ import type {
 } from './domain/types'
 import { DEFAULT_LOCAL_MODEL_ID } from './domain/types'
 import { getLanguage } from './domain/languages'
+import { createExamRunEditorToken, EXAM_RUN_EDITOR_HEARTBEAT_MS } from './storage/exam-run-editor'
+import { isExamResultOpenCurrent } from './features/exam/exam-result-open-guard'
+import { fetchAudioBlobWithDeadline } from './features/interpreting/audio-asset-requests'
 import './features/practice/practice.css'
 import './features/progress/progress.css'
 import './features/exam/exam.css'
@@ -78,11 +81,7 @@ const pageCopy: Record<Page, { eyebrow: string; title: string }> = {
 }
 
 async function snapshotBundledSourceAudio(exercise: InterpretingExercise): Promise<AudioRecordingRecord> {
-  const response = await fetch(exercise.audioUrl)
-  if (!response.ok) {
-    throw new Error('The bundled source audio could not be saved for this self-review.')
-  }
-  const blob = await response.blob()
+  const { blob } = await fetchAudioBlobWithDeadline(exercise.audioUrl)
   const mimeType = blob.type || 'audio/wav'
   return {
     id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `source-${Date.now()}`,
@@ -226,6 +225,7 @@ export default function App() {
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | undefined>()
   const [draftAnswer, setDraftAnswer] = useState('')
   const [draftElapsedSeconds, setDraftElapsedSeconds] = useState(0)
+  const [writtenClockPaused, setWrittenClockPaused] = useState(false)
   const [feedback, setFeedback] = useState<TranslationFeedback | undefined>()
   const [practiceNotice, setPracticeNotice] = useState<string | undefined>()
   const [pendingConsent, setPendingConsent] = useState<PendingPracticeConsent | undefined>()
@@ -242,6 +242,7 @@ export default function App() {
   const [examEvaluationProgress, setExamEvaluationProgress] = useState<{ completed: number; total: number } | undefined>()
   const [examEvaluationNotice, setExamEvaluationNotice] = useState<string | undefined>()
   const [pendingExamConsent, setPendingExamConsent] = useState<PendingExamConsent | undefined>()
+  const [examEditorLeaseLost, setExamEditorLeaseLost] = useState(false)
   const [examRecoveryStatus, setExamRecoveryStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [localProviderEpoch, setLocalProviderEpoch] = useState(0)
   const [initialPracticeMode, setInitialPracticeMode] = useState<'written' | 'news'>('written')
@@ -261,9 +262,12 @@ export default function App() {
   const diagnosticAutoStarted = useRef(false)
   const interpretingSessionOpenGenerationRef = useRef(0)
   const examStartRequestRef = useRef(false)
+  const examEditorTokenRef = useRef<string | undefined>(undefined)
   const examResultOpenGenerationRef = useRef(0)
   const savingInterpretingSaveIdsRef = useRef(new Set<string>())
   const writtenEvaluationGuardRef = useRef(createWrittenEvaluationGuard())
+
+  if (!examEditorTokenRef.current) examEditorTokenRef.current = createExamRunEditorToken()
 
   if (!settingsHydrationRef.current) settingsHydrationRef.current = createSettingsHydrationAttempt()
 
@@ -382,6 +386,41 @@ export default function App() {
   }
 
   useEffect(() => () => localProvider.dispose(), [localProvider])
+
+  useEffect(() => {
+    const run = activeExamRun
+    const editorToken = run?.editorToken
+    if (currentPage !== 'exam' || examView !== 'runner' || !run || !editorToken) return
+    let cancelled = false
+    const renew = async () => {
+      try {
+        const renewed = await database.renewExamRunEditorLease(run.id, editorToken)
+        if (cancelled) return
+        setActiveExamRun((current) => current?.id === run.id && current.editorToken === editorToken
+          ? { ...current, editorLeaseExpiresAt: renewed.editorLeaseExpiresAt }
+          : current)
+      } catch (error) {
+        if (cancelled) return
+        if (error instanceof Error && /ExamRunEditorLeaseLostError|ExamRunEditorOwnedError/.test(error.name)) {
+          setExamEditorLeaseLost(true)
+          setExamEvaluationNotice('This exam attempt is now owned by another tab. This tab is read-only; reload the catalog to see the current saved attempt.')
+        } else {
+          handleExamPersistenceError(`The exam editor lease could not be renewed${error instanceof Error ? ` (${error.message})` : ''}.`)
+        }
+      }
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void renew()
+    }
+    void renew()
+    const heartbeat = window.setInterval(() => void renew(), EXAM_RUN_EDITOR_HEARTBEAT_MS)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      cancelled = true
+      window.clearInterval(heartbeat)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [activeExamRun?.id, activeExamRun?.editorToken, currentPage, examView])
 
   useEffect(() => subscribeToDatabaseNotice(setDatabaseNotice), [])
   remoteDataClearHandlerRef.current = handleRemoteDataCleared
@@ -504,6 +543,7 @@ export default function App() {
   }
 
   function resetUiAfterLocalDataClear(nextProviderEpoch: number, notice?: string) {
+    examResultOpenGenerationRef.current += 1
     interpretingSessionOpenGenerationRef.current += 1
     setLocalProviderEpoch(nextProviderEpoch)
     forgetLocalModelReady()
@@ -532,6 +572,7 @@ export default function App() {
     setExamView('catalog')
     setExamRecoveryStatus('ready')
     setExamEvaluationNotice(undefined)
+    setExamEditorLeaseLost(false)
     setPendingExamConsent(undefined)
     setPendingInterpretingConsent(undefined)
     setActiveExercise(undefined)
@@ -556,6 +597,7 @@ export default function App() {
     if (lastRemoteClearEpochRef.current === epoch) return
     lastRemoteClearEpochRef.current = epoch
     dataLoadGeneration.current += 1
+    examResultOpenGenerationRef.current += 1
     writtenEvaluationGuardRef.current.activate(undefined)
     pendingConsent?.request.revokePreview?.()
     pendingInterpretingConsent?.request.revokePreview?.()
@@ -578,6 +620,7 @@ export default function App() {
     // Refuse unsupported browsers before stopping providers or discarding live UI state.
     database.assertCanClearData()
     dataLoadGeneration.current += 1
+    examResultOpenGenerationRef.current += 1
     writtenEvaluationGuardRef.current.activate(undefined)
     pendingConsent?.request.revokePreview?.()
     setPendingConsent(undefined)
@@ -620,9 +663,10 @@ export default function App() {
     const generation = dataLoadGeneration.current
     setExamEvaluationNotice('Claiming the local exam attempt…')
     try {
-      const claim = await database.claimActiveExamRun(profile)
+      const claim = await database.claimActiveExamRun(profile, examEditorTokenRef.current!)
       if (dataLoadGeneration.current !== generation) return
       setActiveExamRun(claim.run)
+      setExamEditorLeaseLost(false)
       setPendingExamConsent(undefined)
       setCurrentPage('exam')
       if (!claim.created) {
@@ -647,7 +691,7 @@ export default function App() {
     }
   }
 
-  function handleResumeExamRun(run: ActiveExamRun) {
+  async function handleResumeExamRun(run: ActiveExamRun) {
     const profile =
       examProfiles.find((p) => p.id === run.profileId) ??
       DEFAULT_EXAM_PROFILES.find((p) => p.id === run.profileId)
@@ -665,12 +709,30 @@ export default function App() {
       setCurrentPage('exam')
       return
     }
-    setSelectedExamProfile(profile)
-    setActiveExamRun(run)
-    setExamEvaluationNotice(undefined)
-    setPendingExamConsent(undefined)
-    setExamView('runner')
-    setCurrentPage('exam')
+    if (examStartRequestRef.current) return
+    examStartRequestRef.current = true
+    const generation = dataLoadGeneration.current
+    try {
+      const claimedRun = await database.claimExamRunEditor(run.id, examEditorTokenRef.current!)
+      if (dataLoadGeneration.current !== generation) return
+      setSelectedExamProfile(profile)
+      setActiveExamRun(claimedRun)
+      setExamEditorLeaseLost(false)
+      setExamEvaluationNotice(undefined)
+      setPendingExamConsent(undefined)
+      setExamView('runner')
+      setCurrentPage('exam')
+    } catch (error) {
+      if (dataLoadGeneration.current !== generation) return
+      const message = error instanceof Error && /ExamRunEditorOwnedError/.test(error.name)
+        ? 'This exam attempt is already open in another tab. Continue there, or wait for its editing lease to expire before resuming here.'
+        : `This exam attempt could not be resumed safely${error instanceof Error ? ` (${error.message})` : ''}. No changes were written.`
+      setExamEvaluationNotice(message)
+      setExamView('catalog')
+      setCurrentPage('exam')
+    } finally {
+      examStartRequestRef.current = false
+    }
   }
 
   function navigateToPage(page: Page) {
@@ -750,7 +812,12 @@ export default function App() {
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
-      const storedResult = await trackPersistence(database.completeExamRun(completedRun.id, result))
+      const storedResult = await trackPersistence(database.completeExamRun(
+        completedRun.id,
+        result,
+        completedRun.editorToken ?? '',
+        completedRun.revision ?? 0,
+      ))
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
       }
@@ -775,6 +842,7 @@ export default function App() {
         const reason = error instanceof Error ? error.message : 'Evaluation could not be completed.'
         const resumableRun = {
           ...completedRun,
+          revision: Math.max(0, completedRun.revision ?? 0) + 1,
           evaluationPausedAt: undefined,
           lastSavedAt: new Date().toISOString(),
         }
@@ -850,6 +918,7 @@ export default function App() {
     try {
       const resumableRun = {
         ...pending.run,
+        revision: Math.max(0, pending.run.revision ?? 0) + 1,
         evaluationPausedAt: undefined,
         lastSavedAt: new Date().toISOString(),
       }
@@ -895,13 +964,21 @@ export default function App() {
     setActiveExamResult(undefined)
     setSelectedExamProfile(undefined)
     setExamEvaluationNotice(undefined)
+    setExamEditorLeaseLost(false)
     setPendingExamConsent(undefined)
   }
 
   async function handleOpenExamResult(result: ConsolidatedExamResult) {
     interpretingSessionOpenGenerationRef.current += 1
-    const requestGeneration = ++examResultOpenGenerationRef.current
-    const requestIsCurrent = () => requestGeneration === examResultOpenGenerationRef.current && currentPage === 'progress'
+    const attempt = {
+      requestGeneration: ++examResultOpenGenerationRef.current,
+      dataGeneration: dataLoadGeneration.current,
+    }
+    const requestIsCurrent = () => isExamResultOpenCurrent(attempt, {
+      requestGeneration: examResultOpenGenerationRef.current,
+      dataGeneration: dataLoadGeneration.current,
+      page: currentPageRef.current,
+    })
     try {
       const storedResult = await database.getExamResult(result.id)
       if (!requestIsCurrent()) return
@@ -941,6 +1018,7 @@ export default function App() {
     setTimeLimitSeconds(selection.timeLimitSeconds)
     setDraftAnswer('')
     setDraftElapsedSeconds(0)
+    setWrittenClockPaused(false)
     setFeedback(undefined)
     setPracticeNotice(undefined)
     setPendingConsent(undefined)
@@ -981,6 +1059,7 @@ export default function App() {
       setTimeLimitSeconds(undefined)
       setDraftAnswer('')
       setDraftElapsedSeconds(0)
+      setWrittenClockPaused(false)
       setFeedback(undefined)
       setPendingConsent(undefined)
     }
@@ -1001,6 +1080,7 @@ export default function App() {
     setTimeLimitSeconds(undefined)
     setDraftAnswer('')
     setDraftElapsedSeconds(0)
+    setWrittenClockPaused(false)
     setFeedback(undefined)
     setPendingConsent(undefined)
     setInitialPracticeMode('news')
@@ -1279,6 +1359,7 @@ export default function App() {
     const attempt = writtenEvaluationGuardRef.current.begin(exercise.id)
     setDraftAnswer(answer)
     setDraftElapsedSeconds(elapsedSeconds)
+    setWrittenClockPaused(true)
     setPracticeNotice(undefined)
     setPendingConsent(undefined)
     setIsEvaluating(true)
@@ -1467,7 +1548,7 @@ export default function App() {
         )}
         {currentPage === 'practice' && !activeExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'interpreting' && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
-        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
+        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={(answer) => { setDraftAnswer(answer); setWrittenClockPaused(false) }} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} onSaveSelfReview={saveScorelessInterpretingSelfReview} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} pendingSave={currentPendingInterpretingSave !== undefined} isSaving={currentPendingInterpretingSave ? savingInterpretingSaveIds.has(currentPendingInterpretingSave.id) : false} onRetrySave={() => currentPendingInterpretingSave && void retryPendingInterpretingSave(currentPendingInterpretingSave.id)} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
@@ -1508,6 +1589,7 @@ export default function App() {
             onCancel={handleCancelExamRun}
             onPersistenceError={handleExamPersistenceError}
             isEvaluationPaused={Boolean(pendingExamConsent)}
+            isEditorLeaseLost={examEditorLeaseLost}
           />
         )}
         {currentPage === 'exam' && !isEvaluatingExam && examView === 'results' && activeExamResult && (

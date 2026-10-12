@@ -9,6 +9,7 @@ import {
   isLastSection,
 } from '../../domain/exam'
 import { database } from '../../storage/database'
+import { reconcilePersistedRun } from './persisted-run-reconciliation'
 import { ExamHeader } from './ExamHeader'
 import { ExamSectionWorkspace } from './ExamSectionWorkspace'
 import './exam.css'
@@ -20,6 +21,7 @@ export type ExamRunnerProps = {
   onCancel: (savedRun: ActiveExamRun) => void
   onPersistenceError?: (message: string) => void
   isEvaluationPaused?: boolean
+  isEditorLeaseLost?: boolean
 }
 
 async function saveAndSubmitRun(
@@ -48,30 +50,6 @@ async function saveAndSubmitRun(
   }
 }
 
-function reconcilePersistedRun(run: ActiveExamRun, profile: ExamProfile): ActiveExamRun {
-  if (run.evaluationPausedAt) {
-    return run
-  }
-  const savedAt = Date.parse(run.lastSavedAt)
-  const elapsedSinceSave = Number.isFinite(savedAt)
-    ? Math.max(0, Math.floor((Date.now() - savedAt) / 1000))
-    : 0
-  const { run: updatedRun, overallExpired } = decrementTimers(run, profile, elapsedSinceSave)
-  let nextRun = updatedRun
-
-  if (!overallExpired) {
-    while (!isLastSection(nextRun, profile)) {
-      const sectionId = profile.sections[nextRun.currentSectionIndex]?.id
-      if (!sectionId || (nextRun.sectionRemainingSeconds[sectionId] ?? 0) > 0) {
-        break
-      }
-      nextRun = advanceSection(nextRun, profile)
-    }
-  }
-
-  return nextRun
-}
-
 export function ExamRunner({
   profile,
   initialRun,
@@ -79,11 +57,13 @@ export function ExamRunner({
   onCancel,
   onPersistenceError,
   isEvaluationPaused = false,
+  isEditorLeaseLost = false,
 }: ExamRunnerProps) {
   const [run, setRun] = useState<ActiveExamRun>(() => initialRun ? reconcilePersistedRun(initialRun, profile) : createActiveExamRun(profile))
   const [showAidsModal, setShowAidsModal] = useState(false)
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [sectionExpiredAlert, setSectionExpiredAlert] = useState<string | undefined>()
+  const [hasLostEditorLease, setHasLostEditorLease] = useState(false)
 
   const runRef = useRef<ActiveExamRun>(run)
   runRef.current = run
@@ -92,6 +72,7 @@ export function ExamRunner({
   const lastTickTime = useRef(Date.now())
   const timerIntervalRef = useRef<number | undefined>(undefined)
   const submissionStartedRef = useRef(false)
+  const exitInProgressRef = useRef(false)
   const reportedPersistenceFailuresRef = useRef(new Set<string>())
   const onSubmitRunRef = useRef(onSubmitRun)
   const onPersistenceErrorRef = useRef(onPersistenceError)
@@ -104,6 +85,9 @@ export function ExamRunner({
     const reason = error instanceof Error && error.message ? ` (${error.message})` : ''
     const message = `${operation} could not be saved locally${reason} Your current in-memory exam remains open, but it may not be recoverable if this page closes.`
     console.error(`${operation} persistence failed.`, error)
+    if (error instanceof Error && /ExamRunEditorLeaseLostError|ExamRunEditorRevisionError|ExamRunDiscardedError|ExamRunCompletedError/.test(error.name)) {
+      setHasLostEditorLease(true)
+    }
     if (!reportedPersistenceFailuresRef.current.has(operation)) {
       reportedPersistenceFailuresRef.current.add(operation)
       onPersistenceErrorRef.current?.(message)
@@ -139,7 +123,11 @@ export function ExamRunner({
   useEffect(() => {
     const persistLatestRun = (operation: string) => {
       const runToSave = runRef.current
-      void database.stageExamRunRecovery(runToSave).catch((error) => reportPersistenceError('The exam recovery checkpoint', error))
+      try {
+        database.stageExamRunRecoverySync(runToSave)
+      } catch (error) {
+        reportPersistenceError('The synchronous exam recovery checkpoint', error)
+      }
       void database.saveExamRun(runToSave).then(() => {
         if (runRef.current === runToSave) {
           isDirtyRef.current = false
@@ -201,7 +189,7 @@ export function ExamRunner({
 
         const shouldAutoSubmit = overallExpired && !submissionStartedRef.current && !nextRun.submissionAttemptedAt
         const submissionRun = shouldAutoSubmit
-          ? { ...nextRun, submissionAttemptedAt: new Date().toISOString() }
+          ? { ...nextRun, revision: Math.max(0, nextRun.revision ?? 0) + 1, submissionAttemptedAt: new Date().toISOString() }
           : nextRun
 
         runRef.current = submissionRun
@@ -218,6 +206,11 @@ export function ExamRunner({
           submissionStartedRef.current = true
           isDirtyRef.current = false
           stopTimer()
+          try {
+            database.stageExamRunRecoverySync(submissionRun)
+          } catch (error) {
+            reportPersistenceError('The synchronous final exam recovery checkpoint', error)
+          }
           void saveAndSubmitRun(submissionRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
         }
       }
@@ -253,7 +246,7 @@ export function ExamRunner({
   const currentSection = profile.sections[run.currentSectionIndex] ?? profile.sections[0]
   const currentSectionAnswers = run.answers[currentSection.id] ?? {}
   const currentSectionSeconds = run.sectionRemainingSeconds[currentSection.id] ?? 0
-  const isCurrentSectionLocked = submissionStartedRef.current || Boolean(run.evaluationPausedAt) || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
+  const isCurrentSectionLocked = submissionStartedRef.current || hasLostEditorLease || isEditorLeaseLost || Boolean(run.evaluationPausedAt) || currentSectionSeconds <= 0 || run.overallRemainingSeconds <= 0
 
   const handleAnswerChange = (passageId: string, text: string) => {
     if (submissionStartedRef.current) {
@@ -263,6 +256,7 @@ export function ExamRunner({
     const section = profile.sections[currentRun.currentSectionIndex] ?? currentSection
     const updatedRun: ActiveExamRun = {
       ...currentRun,
+      revision: Math.max(0, currentRun.revision ?? 0) + 1,
       answers: {
         ...currentRun.answers,
         [section.id]: {
@@ -274,7 +268,11 @@ export function ExamRunner({
     }
     runRef.current = updatedRun
     isDirtyRef.current = true
-    void database.stageExamRunRecovery(updatedRun).catch((error) => reportPersistenceError('The exam recovery checkpoint', error))
+    try {
+      database.stageExamRunRecoverySync(updatedRun)
+    } catch (error) {
+      reportPersistenceError('The synchronous exam recovery checkpoint', error)
+    }
     setRun(updatedRun)
   }
 
@@ -284,7 +282,11 @@ export function ExamRunner({
     }
     const runToSave = runRef.current
     isDirtyRef.current = true
-    void database.stageExamRunRecovery(runToSave).catch((error) => reportPersistenceError('The exam recovery checkpoint', error))
+    try {
+      database.stageExamRunRecoverySync(runToSave)
+    } catch (error) {
+      reportPersistenceError('The synchronous exam recovery checkpoint', error)
+    }
     void database.saveExamRun(runToSave).then(() => {
       if (runRef.current === runToSave) {
         isDirtyRef.current = false
@@ -306,6 +308,11 @@ export function ExamRunner({
       const nextRun = advanceSectionAndForfeitTime(currentRun, profile)
       runRef.current = nextRun
       isDirtyRef.current = true
+      try {
+        database.stageExamRunRecoverySync(nextRun)
+      } catch (error) {
+        reportPersistenceError('The synchronous section-change recovery checkpoint', error)
+      }
       setRun(nextRun)
       void database.saveExamRun(nextRun).catch((error) => {
         reportPersistenceError('The section-change exam save', error)
@@ -314,7 +321,7 @@ export function ExamRunner({
   }
 
   const handleConfirmSubmit = () => {
-    if (submissionStartedRef.current) {
+    if (submissionStartedRef.current || exitInProgressRef.current || hasLostEditorLease || isEditorLeaseLost) {
       return
     }
     submissionStartedRef.current = true
@@ -323,6 +330,7 @@ export function ExamRunner({
     const now = new Date().toISOString()
     const submissionRun = {
       ...currentRun,
+      revision: Math.max(0, currentRun.revision ?? 0) + 1,
       lastSavedAt: now,
       evaluationPausedAt: now,
       ...(currentRun.overallRemainingSeconds <= 0 && !currentRun.submissionAttemptedAt
@@ -333,24 +341,44 @@ export function ExamRunner({
     setRun(submissionRun)
     isDirtyRef.current = false
     stopTimer()
+    try {
+      database.stageExamRunRecoverySync(submissionRun)
+    } catch (error) {
+      reportPersistenceError('The synchronous final exam recovery checkpoint', error)
+    }
     void saveAndSubmitRun(submissionRun, onSubmitRunRef.current, onPersistenceErrorRef.current)
   }
 
   const handleSaveAndExit = async () => {
+    if (submissionStartedRef.current || exitInProgressRef.current || hasLostEditorLease || isEditorLeaseLost) return
+    exitInProgressRef.current = true
+    submissionStartedRef.current = true
+    stopTimer()
     const previousRun = runRef.current
     isDirtyRef.current = false
     const exitingRun = {
       ...previousRun,
+      revision: Math.max(0, previousRun.revision ?? 0) + 1,
       evaluationPausedAt: undefined,
       lastSavedAt: new Date().toISOString(),
     }
     runRef.current = exitingRun
+    setRun(exitingRun)
     try {
-      await database.saveExamRun(exitingRun)
-      onCancel(exitingRun)
+      database.stageExamRunRecoverySync(exitingRun)
+      const releasedRun = await database.releaseExamRunEditor(exitingRun)
+      onCancel(releasedRun)
     } catch (error) {
-      runRef.current = previousRun
-      isDirtyRef.current = true
+      const resumedRun = {
+        ...previousRun,
+        revision: Math.max(previousRun.revision ?? 0, exitingRun.revision ?? 0) + 1,
+        lastSavedAt: new Date().toISOString(),
+      }
+      runRef.current = resumedRun
+      setRun(resumedRun)
+      submissionStartedRef.current = false
+      exitInProgressRef.current = false
+      lastTickTime.current = Date.now()
       isDirtyRef.current = true
       reportPersistenceError('The save-and-exit exam state', error)
     }

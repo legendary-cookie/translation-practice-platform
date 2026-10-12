@@ -1,9 +1,19 @@
 import type { ActiveExamRun, ConsolidatedExamResult } from '../domain/types'
+import {
+  EXAM_RUN_RECOVERY_KEY_PREFIX,
+  EXAM_RUN_TOMBSTONE_KEY_PREFIX,
+  clearExamRunEditorLease,
+  ExamRunEditorLeaseLostError,
+  ExamRunEditorRevisionError,
+  examRunRecoveryKey,
+  examRunTombstoneKey,
+  reconcileExamRunRecoverySnapshot,
+} from './exam-run-editor'
 
-export const EXAM_RUN_RECOVERY_KEY_PREFIX = 'lingo-practice-exam-run-recovery-v1:'
-export const EXAM_RUN_TOMBSTONE_KEY_PREFIX = 'lingo-practice-exam-run-discarded-v1:'
+export { EXAM_RUN_RECOVERY_KEY_PREFIX, EXAM_RUN_TOMBSTONE_KEY_PREFIX, examRunRecoveryKey, examRunTombstoneKey }
 
 export type ExamRunLifecycleStore = {
+  getRun(runId: string): Promise<ActiveExamRun | undefined>
   getInProgressRuns(): Promise<ActiveExamRun[]>
   getCompletedRunIds(): Promise<string[]>
   getCompletedResult(runId: string): Promise<ConsolidatedExamResult | undefined>
@@ -48,6 +58,7 @@ export async function claimExamRunSlot(
   candidate: ActiveExamRun,
   transaction: ExamRunLifecycleTransaction,
   recoveryRuns: ActiveExamRun[] = [],
+  onCreated?: (run: ActiveExamRun) => void,
 ): Promise<{ run: ActiveExamRun; created: boolean }> {
   return transaction(async (store) => {
     const [persistedRuns, completedRunIds] = await Promise.all([
@@ -55,23 +66,31 @@ export async function claimExamRunSlot(
       store.getCompletedRunIds(),
     ])
     const completed = new Set(completedRunIds)
-    const runsById = new Map<string, ActiveExamRun>()
-    for (const run of [...persistedRuns, ...recoveryRuns]) {
-      if (run.status !== 'in-progress' || completed.has(run.id)) continue
-      const previous = runsById.get(run.id)
-      if (!previous || Date.parse(run.lastSavedAt) >= Date.parse(previous.lastSavedAt)) {
-        runsById.set(run.id, run)
+    const runsById = new Map(persistedRuns
+      .filter((run) => run.status === 'in-progress' && !completed.has(run.id))
+      .map((run) => [run.id, run]))
+    for (const snapshot of recoveryRuns) {
+      if (snapshot.status !== 'in-progress' || completed.has(snapshot.id)) continue
+      const persisted = runsById.get(snapshot.id)
+      if (persisted) {
+        const reconciled = reconcileExamRunRecoverySnapshot(persisted, [snapshot])
+        if (reconciled && reconciled !== persisted) runsById.set(snapshot.id, reconciled)
+      } else if (!snapshot.editorToken) {
+        // Preserve legacy journal-only attempts created before editor leases existed.
+        runsById.set(snapshot.id, snapshot)
       }
     }
     const activeRun = [...runsById.values()].sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))[0]
     if (activeRun) {
       const persisted = persistedRuns.find((run) => run.id === activeRun.id)
-      if (!persisted || Date.parse(activeRun.lastSavedAt) > Date.parse(persisted.lastSavedAt)) {
+      if (!persisted || (activeRun.revision ?? 0) > (persisted.revision ?? 0)
+        || Date.parse(activeRun.lastSavedAt) > Date.parse(persisted.lastSavedAt)) {
         await store.putRun(activeRun)
       }
       return { run: activeRun, created: false }
     }
 
+    onCreated?.(candidate)
     await store.putRun(candidate)
     return { run: candidate, created: true }
   })
@@ -99,6 +118,15 @@ export async function stageExamRunRecoveryAtomically(
   await transaction(async (store) => {
     await assertExamRunNotCompletedInTransaction(store, run.id)
     await assertExamRunSlotAvailableInTransaction(store, run.id)
+    const persisted = await store.getRun(run.id)
+    if (run.editorToken
+      ? !persisted || persisted.status !== 'in-progress' || persisted.editorToken !== run.editorToken
+      : Boolean(persisted?.editorToken)) {
+      throw new ExamRunEditorLeaseLostError(run.id)
+    }
+    if ((persisted?.revision ?? 0) > (run.revision ?? 0)) {
+      throw new ExamRunEditorRevisionError(run.id)
+    }
     writeRecoverySnapshot()
   })
 }
@@ -107,8 +135,16 @@ export async function completeExamRunAtomically(
   runId: string,
   result: ConsolidatedExamResult,
   transaction: ExamRunLifecycleTransaction,
+  editor?: { token: string; revision: number },
 ): Promise<ConsolidatedExamResult> {
   return transaction(async (store) => {
+    if (editor) {
+      const current = await store.getRun(runId)
+      if (!current || current.status !== 'in-progress' || current.editorToken !== editor.token) {
+        throw new ExamRunEditorLeaseLostError(runId)
+      }
+      if ((current.revision ?? 0) !== editor.revision) throw new ExamRunEditorRevisionError(runId)
+    }
     const existingResult = await store.getCompletedResult(runId)
     const completedResult = existingResult ?? result
     if (!existingResult) await store.putResult(result)
@@ -124,14 +160,6 @@ export class ExamRunDiscardedError extends Error {
   }
 }
 
-export function examRunRecoveryKey(runId: string): string {
-  return `${EXAM_RUN_RECOVERY_KEY_PREFIX}${runId}`
-}
-
-export function examRunTombstoneKey(runId: string): string {
-  return `${EXAM_RUN_TOMBSTONE_KEY_PREFIX}${runId}`
-}
-
 export function isExamRunDiscarded(storage: Pick<Storage, 'getItem'>, runId: string): boolean {
   return storage.getItem(examRunTombstoneKey(runId)) !== null
 }
@@ -144,24 +172,32 @@ export async function assertExamRunNotDiscarded(
 }
 
 export async function discardExamRunWithTombstone(
-  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>,
+  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>,
   runId: string,
   deleteRun: () => Promise<void>,
 ): Promise<void> {
   const tombstoneKey = examRunTombstoneKey(runId)
-  const recoveryKey = examRunRecoveryKey(runId)
   const previousTombstone = storage.getItem(tombstoneKey)
-  const recoverySnapshot = storage.getItem(recoveryKey)
+  const recoveryPrefix = `${EXAM_RUN_RECOVERY_KEY_PREFIX}${runId}`
+  const recoverySnapshots: Array<[string, string]> = []
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index)
+    if (key === recoveryPrefix || key?.startsWith(`${recoveryPrefix}:`)) {
+      const value = storage.getItem(key)
+      if (value !== null) recoverySnapshots.push([key, value])
+    }
+  }
   storage.setItem(tombstoneKey, 'true')
 
   try {
-    storage.removeItem(recoveryKey)
+    for (const [key] of recoverySnapshots) storage.removeItem(key)
     await deleteRun()
+    clearExamRunEditorLease(storage, runId)
   } catch (error) {
     try {
       if (previousTombstone === null) storage.removeItem(tombstoneKey)
       else storage.setItem(tombstoneKey, previousTombstone)
-      if (recoverySnapshot !== null) storage.setItem(recoveryKey, recoverySnapshot)
+      for (const [key, value] of recoverySnapshots) storage.setItem(key, value)
     } catch {
       // If rollback itself is blocked, keep the tombstone fail-closed rather than
       // allowing an old tab to resurrect the attempt from its recovery journal.

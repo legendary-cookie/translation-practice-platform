@@ -7,6 +7,7 @@ import { validateInterpretingRightsManifest } from '../../data/interpreting-righ
 import { getLocalRecognitionCapabilityWithTimeout, installLocalRecognitionLanguage, type LocalRecognitionCapability } from '../../audio/local-speech-recognition'
 import { requestWithDeadline } from './request-with-deadline'
 import { isPackagedAudioOfflineReady } from './offline-asset-status'
+import { fetchAudioBlobWithDeadline } from './audio-asset-requests'
 
 export type InterpretingStart = {
   exercise: InterpretingExercise
@@ -31,7 +32,7 @@ async function hasCachedAudioAsset(audioUrl: string): Promise<boolean> {
   }
 }
 
-async function getPackagedAudioStatus(audioUrl: string): Promise<'ready' | 'available' | 'unavailable'> {
+async function getPackagedAudioStatus(audioUrl: string, signal?: AbortSignal): Promise<'ready' | 'available' | 'unavailable'> {
   const waitForControl = async () => {
     if (!('serviceWorker' in navigator)) return false
     if (navigator.serviceWorker.controller) return true
@@ -67,10 +68,7 @@ async function getPackagedAudioStatus(audioUrl: string): Promise<'ready' | 'avai
   }
 
   try {
-    const response = await fetch(audioUrl, { cache: 'default' })
-    if (!response.ok) {
-      return 'unavailable'
-    }
+    await fetchAudioBlobWithDeadline(audioUrl, { parentSignal: signal })
     const cached = await hasCachedAudioAsset(audioUrl)
     const controlled = 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller)
     return isPackagedAudioOfflineReady(cached, controlled) ? 'ready' : 'available'
@@ -99,6 +97,7 @@ export function InterpretingSetup({
   const [rightsStatus, setRightsStatus] = useState<'checking' | 'verified' | 'unavailable'>('checking')
   const [rightsError, setRightsError] = useState<string>()
   const [rightsRetry, setRightsRetry] = useState(0)
+  const [assetRetry, setAssetRetry] = useState(0)
   const [recognition, setRecognition] = useState<LocalRecognitionCapability>()
   const [isInstallingRecognition, setIsInstallingRecognition] = useState(false)
   const [importedSource, setImportedSource] = useState<ImportedSource>()
@@ -240,20 +239,23 @@ export function InterpretingSetup({
 
   useEffect(() => {
     let cancelled = false
+    const requestController = new AbortController()
     setAssetStatus('checking')
     if (!exerciseAudioUrl) {
       setAssetStatus('unavailable')
       return () => {
         cancelled = true
+        requestController.abort()
       }
     }
     if (isImportedAudio) {
       setAssetStatus('ready')
       return () => {
         cancelled = true
+        requestController.abort()
       }
     }
-    void getPackagedAudioStatus(exerciseAudioUrl).then((assetAvailability) => {
+    void getPackagedAudioStatus(exerciseAudioUrl, requestController.signal).then((assetAvailability) => {
       if (!cancelled) {
         setAssetStatus(assetAvailability)
       }
@@ -264,8 +266,9 @@ export function InterpretingSetup({
     })
     return () => {
       cancelled = true
+      requestController.abort()
     }
-  }, [exerciseAudioUrl, isImportedAudio])
+  }, [exerciseAudioUrl, isImportedAudio, assetRetry])
 
   useEffect(() => {
     let cancelled = false
@@ -375,6 +378,7 @@ export function InterpretingSetup({
             <span className={`interpreting-asset-status interpreting-asset-status--${assetStatus}`} role="status">{assetStatus === 'ready' ? importedSource ? 'Loaded on this device' : 'Offline-ready' : assetStatus === 'available' ? 'Available now · offline copy not confirmed' : assetStatus === 'checking' ? 'Checking asset…' : 'Asset unavailable'}</span>
           </div>
         ) : <p className="form-message" role="status">No audio exercise matches this direction.</p>}
+        {!isImportedAudio && exercise && assetStatus === 'unavailable' && <button className="text-button" type="button" onClick={() => setAssetRetry((attempt) => attempt + 1)}>Retry audio availability check</button>}
         {!isImportedAudio && <div className="interpreting-rights-status" role={rightsStatus === 'unavailable' ? 'alert' : 'status'}>
           {rightsStatus === 'checking' && <span>Verifying the packaged audio rights record…</span>}
           {rightsStatus === 'verified' && <span>Packaged audio paths, durations, formats, and rights records are verified.</span>}

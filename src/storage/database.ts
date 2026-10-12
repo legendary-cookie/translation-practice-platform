@@ -25,6 +25,22 @@ import {
   stageExamRunRecoveryAtomically,
   type ExamRunLifecycleStore,
 } from './exam-run-lifecycle'
+import {
+  EXAM_RUN_COMPLETION_KEY_PREFIX,
+  EXAM_RUN_EDITOR_KEY_PREFIX,
+  EXAM_RUN_EDITOR_LEASE_MS,
+  claimExamRunEditor,
+  clearExamRunEditorLease,
+  editorLeaseKey,
+  examRunCompletionKey,
+  examRunRecoveryKey,
+  publishExamRunEditorLease,
+  reconcileExamRunRecoverySnapshot,
+  releaseExamRunEditor,
+  renewExamRunEditorLease,
+  saveExamRunWithEditor,
+  writeExamRunRecoveryCheckpointSynchronously,
+} from './exam-run-editor'
 
 const DATABASE_NAME = 'lingo-practice-local'
 const DATABASE_VERSION = 4
@@ -75,7 +91,7 @@ function readExamRunRecoverySnapshots(): ActiveExamRun[] {
         if (isValidActiveRun(candidate)
           && candidate.status === 'in-progress'
           && Number.isFinite(Date.parse(candidate.lastSavedAt))
-          && key === `${EXAM_RUN_RECOVERY_KEY_PREFIX}${candidate.id}`) {
+          && key === examRunRecoveryKey(candidate.id, candidate.editorToken)) {
           snapshots.push(candidate)
         }
       } catch {
@@ -93,22 +109,25 @@ function clearExamRunRecoverySnapshot(runId: string, persistedRun?: ActiveExamRu
   if (!storage) {
     return
   }
-  const key = `${EXAM_RUN_RECOVERY_KEY_PREFIX}${runId}`
   try {
-    if (persistedRun) {
-      const serialized = storage.getItem(key)
-      if (serialized) {
-        const pending: unknown = JSON.parse(serialized)
-        if (isValidActiveRun(pending)) {
-          const savedAt = Date.parse(persistedRun.lastSavedAt)
-          const pendingAt = Date.parse(pending.lastSavedAt)
-          if (savedAt < pendingAt || (savedAt === pendingAt && JSON.stringify(persistedRun) !== JSON.stringify(pending))) {
-            return
-          }
-        }
-      }
+    const prefix = `${EXAM_RUN_RECOVERY_KEY_PREFIX}${runId}`
+    const keys: string[] = []
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index)
+      if (key === prefix || key?.startsWith(`${prefix}:`)) keys.push(key)
     }
-    storage.removeItem(key)
+    for (const key of keys) {
+      const serialized = storage.getItem(key)
+      if (!serialized) continue
+      const pending: unknown = JSON.parse(serialized)
+      if (!isValidActiveRun(pending)) {
+        storage.removeItem(key)
+        continue
+      }
+      if (persistedRun && pending.editorToken === persistedRun.editorToken
+        && (pending.revision ?? 0) > (persistedRun.revision ?? 0)) continue
+      if (!persistedRun || pending.editorToken === persistedRun.editorToken) storage.removeItem(key)
+    }
   } catch {
     // Failure to retire a snapshot is safe: reads reconcile it against IndexedDB.
   }
@@ -118,7 +137,10 @@ function recoverySnapshotEntries(storage: Storage): Array<[string, string]> {
   const entries: Array<[string, string]> = []
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index)
-    if (key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX) || key?.startsWith(EXAM_RUN_TOMBSTONE_KEY_PREFIX)) {
+    if (key?.startsWith(EXAM_RUN_RECOVERY_KEY_PREFIX)
+      || key?.startsWith(EXAM_RUN_TOMBSTONE_KEY_PREFIX)
+      || key?.startsWith(EXAM_RUN_EDITOR_KEY_PREFIX)
+      || key?.startsWith(EXAM_RUN_COMPLETION_KEY_PREFIX)) {
       const value = storage.getItem(key)
       if (value !== null) entries.push([key, value])
     }
@@ -128,6 +150,32 @@ function recoverySnapshotEntries(storage: Storage): Array<[string, string]> {
 
 function restoreExamRunRecoverySnapshots(storage: Storage, entries: Array<[string, string]>): void {
   for (const [key, value] of entries) storage.setItem(key, value)
+}
+
+function createExamRunLeaseMirrorMutation(storage: Storage, runId: string) {
+  const key = editorLeaseKey(runId)
+  let previous: string | null | undefined
+  let expectedAfter: string | null | undefined
+  const rememberPrevious = () => {
+    if (previous === undefined) previous = storage.getItem(key)
+  }
+  return {
+    publish(run: ActiveExamRun) {
+      rememberPrevious()
+      expectedAfter = JSON.stringify({ editorToken: run.editorToken, expiresAt: run.editorLeaseExpiresAt })
+      storage.setItem(key, expectedAfter)
+    },
+    clear() {
+      rememberPrevious()
+      expectedAfter = null
+      storage.removeItem(key)
+    },
+    restore() {
+      if (previous === undefined || expectedAfter === undefined || storage.getItem(key) !== expectedAfter) return
+      if (previous === null) storage.removeItem(key)
+      else storage.setItem(key, previous)
+    },
+  }
 }
 
 export function clearExamRunRecoverySnapshotsStrict(storage: Storage, entries: Array<[string, string]>): void {
@@ -185,15 +233,20 @@ export function subscribeToDataCleared(listener: (epoch: string) => void): () =>
 function mergeExamRunRecoverySnapshots(runs: ActiveExamRun[], completedRunIds: Set<string>): ActiveExamRun[] {
   const storage = getLocalStorage()
   const runsById = new Map(runs
-    .filter((run) => !completedRunIds.has(run.id) && (!storage || !isExamRunDiscarded(storage, run.id)))
+    .filter((run) => !completedRunIds.has(run.id)
+      && (!storage || (!isExamRunDiscarded(storage, run.id) && storage.getItem(examRunCompletionKey(run.id)) === null)))
     .map((run) => [run.id, run]))
   for (const snapshot of readExamRunRecoverySnapshots()) {
-    if (completedRunIds.has(snapshot.id) || (storage && isExamRunDiscarded(storage, snapshot.id))) {
+    if (completedRunIds.has(snapshot.id)
+      || (storage && (isExamRunDiscarded(storage, snapshot.id) || storage.getItem(examRunCompletionKey(snapshot.id)) !== null))) {
       continue
     }
     const storedRun = runsById.get(snapshot.id)
-    if (!storedRun || (storedRun.status === 'in-progress'
-      && Date.parse(snapshot.lastSavedAt) >= Date.parse(storedRun.lastSavedAt))) {
+    if (storedRun) {
+      const reconciled = reconcileExamRunRecoverySnapshot(storedRun, [snapshot])
+      if (reconciled && reconciled !== storedRun) runsById.set(snapshot.id, reconciled)
+    } else if (!snapshot.editorToken) {
+      // Only legacy, pre-lease snapshots may recover without their IDB row.
       runsById.set(snapshot.id, snapshot)
     }
   }
@@ -275,6 +328,7 @@ async function withExamRunLifecycleTransaction<T>(
   const runs = transaction.objectStore('examRuns')
   const results = transaction.objectStore('examResults')
   const store: ExamRunLifecycleStore = {
+    getRun: (runId) => runs.get(runId),
     getInProgressRuns: () => runs.index('by-status').getAll('in-progress'),
     getCompletedRunIds: async () => (await results.getAll()).map((result) => result.runId),
     getCompletedResult: (runId) => results.index('by-run-id').get(runId),
@@ -495,15 +549,77 @@ export const database = {
   },
 
   // Active exam runs (crash recovery)
-  async claimActiveExamRun(profile: ExamProfile): Promise<{ run: ActiveExamRun; created: boolean }> {
+  async claimActiveExamRun(profile: ExamProfile, editorToken: string): Promise<{ run: ActiveExamRun; created: boolean }> {
     return withDataWrite(async () => {
       const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; the exam attempt was not started.')
       const recoveryRuns = readExamRunRecoverySnapshots().filter((run) => !storage || !isExamRunDiscarded(storage, run.id))
-      return claimExamRunSlot(
-        createActiveExamRun(profile),
-        (operation) => withExamRunLifecycleTransaction(operation),
-        recoveryRuns,
-      )
+      const now = Date.now()
+      const candidate: ActiveExamRun = {
+        ...createActiveExamRun(profile),
+        editorToken,
+        revision: 0,
+        editorLeaseExpiresAt: new Date(now + EXAM_RUN_EDITOR_LEASE_MS).toISOString(),
+      }
+      const mirror = createExamRunLeaseMirrorMutation(storage, candidate.id)
+      try {
+        return await claimExamRunSlot(
+          candidate,
+          (operation) => withExamRunLifecycleTransaction(operation),
+          recoveryRuns,
+          (run) => mirror.publish(run),
+        )
+      } catch (error) {
+        mirror.restore()
+        throw error
+      }
+    })
+  },
+
+  async claimExamRunEditor(runId: string, editorToken: string): Promise<ActiveExamRun> {
+    return withDataWrite(async () => {
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; this exam attempt cannot be resumed safely.')
+      const recoverySnapshot = readExamRunRecoverySnapshots().find((run) => run.id === runId)
+      const mirror = createExamRunLeaseMirrorMutation(storage, runId)
+      try {
+        return await claimExamRunEditor(
+          runId,
+          editorToken,
+          (operation) => withExamRunLifecycleTransaction(async (store) => {
+            await assertExamRunNotDiscarded(storage, runId)
+            return operation(store)
+          }),
+          Date.now(),
+          recoverySnapshot,
+          EXAM_RUN_EDITOR_LEASE_MS,
+          (run) => mirror.publish(run),
+        )
+      } catch (error) {
+        mirror.restore()
+        throw error
+      }
+    })
+  },
+
+  async renewExamRunEditorLease(runId: string, editorToken: string): Promise<ActiveExamRun> {
+    return withDataWrite(async () => {
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; the exam editing lease could not be renewed.')
+      const mirror = createExamRunLeaseMirrorMutation(storage, runId)
+      try {
+        return await renewExamRunEditorLease(
+          runId,
+          editorToken,
+          (operation) => withExamRunLifecycleTransaction(operation),
+          Date.now(),
+          EXAM_RUN_EDITOR_LEASE_MS,
+          (run) => mirror.publish(run),
+        )
+      } catch (error) {
+        mirror.restore()
+        throw error
+      }
     })
   },
 
@@ -537,17 +653,25 @@ export const database = {
       .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt))
   },
 
+  stageExamRunRecoverySync(run: ActiveExamRun): string {
+    const storage = getLocalStorage()
+    if (!storage) throw new Error('Browser recovery storage is unavailable; this exam change was not checkpointed.')
+    return writeExamRunRecoveryCheckpointSynchronously(run, {
+      storage,
+      isDataEpochCurrent: () => {
+        try { dataWriteCoordinator.assertCurrentEpoch(); return true } catch { return false }
+      },
+    })
+  },
+
   async stageExamRunRecovery(run: ActiveExamRun): Promise<void> {
+    this.stageExamRunRecoverySync(run)
     await withDataWrite(async () => {
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable.')
       await withExamRunLifecycleTransaction(async (store) => {
         await assertExamRunNotDiscarded(storage, run.id)
-        await stageExamRunRecoveryAtomically(
-          run,
-          (operation) => operation(store),
-          () => storage.setItem(`${EXAM_RUN_RECOVERY_KEY_PREFIX}${run.id}`, JSON.stringify(run)),
-        )
+        await stageExamRunRecoveryAtomically(run, (operation) => operation(store), () => undefined)
       })
     })
   },
@@ -556,13 +680,45 @@ export const database = {
     await withDataWrite(async () => {
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable; this exam attempt was not saved.')
-      await withExamRunLifecycleTransaction(async (store) => {
-        await assertExamRunNotDiscarded(storage, run.id)
-        await assertExamRunNotCompletedInTransaction(store, run.id)
-        await assertExamRunSlotAvailableInTransaction(store, run.id)
-        await store.putRun(run)
-      })
-      clearExamRunRecoverySnapshot(run.id, run)
+      const mirror = createExamRunLeaseMirrorMutation(storage, run.id)
+      try {
+        const persisted = await withExamRunLifecycleTransaction(async (store) => {
+          await assertExamRunNotDiscarded(storage, run.id)
+          await assertExamRunNotCompletedInTransaction(store, run.id)
+          await assertExamRunSlotAvailableInTransaction(store, run.id)
+          return saveExamRunWithEditor(
+            run,
+            (operation) => operation(store),
+            Date.now(),
+            EXAM_RUN_EDITOR_LEASE_MS,
+            (savedRun) => mirror.publish(savedRun),
+          )
+        })
+        clearExamRunRecoverySnapshot(run.id, persisted)
+      } catch (error) {
+        mirror.restore()
+        throw error
+      }
+    })
+  },
+
+  async releaseExamRunEditor(run: ActiveExamRun): Promise<ActiveExamRun> {
+    return withDataWrite(async () => {
+      const storage = getLocalStorage()
+      if (!storage) throw new Error('Browser recovery storage is unavailable; the exam attempt was not released.')
+      const mirror = createExamRunLeaseMirrorMutation(storage, run.id)
+      try {
+        const released = await releaseExamRunEditor(
+          run,
+          (operation) => withExamRunLifecycleTransaction(operation),
+          () => mirror.clear(),
+        )
+        clearExamRunRecoverySnapshot(run.id)
+        return released
+      } catch (error) {
+        mirror.restore()
+        throw error
+      }
     })
   },
 
@@ -585,14 +741,16 @@ export const database = {
     })
   },
 
-  async completeExamRun(runId: string, result: ConsolidatedExamResult): Promise<ConsolidatedExamResult> {
+  async completeExamRun(runId: string, result: ConsolidatedExamResult, editorToken: string, revision: number): Promise<ConsolidatedExamResult> {
     return withDataWrite(async () => {
       const storage = getLocalStorage()
       if (!storage) throw new Error('Browser recovery storage is unavailable; the completed attempt could not be finalized safely.')
       const completedResult = await withExamRunLifecycleTransaction(async (store) => {
         await assertExamRunNotDiscarded(storage, runId)
-        return completeExamRunAtomically(runId, result, (operation) => operation(store))
+        return completeExamRunAtomically(runId, result, (operation) => operation(store), { token: editorToken, revision })
       })
+      try { storage.setItem(examRunCompletionKey(runId), 'true') } catch { /* IndexedDB completion rows still fence recovery. */ }
+      try { clearExamRunEditorLease(storage, runId) } catch { /* The completed IDB result fences stale tabs. */ }
       clearExamRunRecoverySnapshot(runId)
       return completedResult
     })

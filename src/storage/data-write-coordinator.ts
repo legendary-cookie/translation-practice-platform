@@ -172,5 +172,18 @@ export function createDataWriteCoordinator(options: {
     }
   }
 
-  return { runWrite, runExclusive, clearData, assertCanClearData }
+  function assertCurrentEpoch(): void {
+    let storage: StorageLike | undefined
+    try {
+      storage = getStorage()
+      if (!storage) throw new DataEpochInvalidatedError()
+      const currentEpoch = readEpoch(storage)
+      if (capturedEpoch !== currentEpoch) throw new DataEpochInvalidatedError()
+    } catch (error) {
+      if (error instanceof DataEpochInvalidatedError) throw error
+      throw new DataEpochInvalidatedError()
+    }
+  }
+
+  return { runWrite, runExclusive, clearData, assertCanClearData, assertCurrentEpoch }
 }

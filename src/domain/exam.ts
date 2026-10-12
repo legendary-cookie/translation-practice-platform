@@ -58,6 +58,7 @@ export function createActiveExamRun(profile: ExamProfile): ActiveExamRun {
     overallRemainingSeconds: Math.max(0, Math.round(profile.totalDurationMinutes * 60)),
     sectionRemainingSeconds,
     answers,
+    revision: 0,
   }
 }
 
@@ -91,6 +92,7 @@ export function decrementTimers(
     overallRemainingSeconds,
     sectionRemainingSeconds: nextSectionRemainingSeconds,
     lastSavedAt: new Date().toISOString(),
+    revision: safeElapsed > 0 ? Math.max(0, run.revision ?? 0) + 1 : run.revision,
   }
 
   return {
@@ -116,6 +118,7 @@ export function advanceSection(run: ActiveExamRun, profile: ExamProfile): Active
     ...run,
     currentSectionIndex: run.currentSectionIndex + 1,
     lastSavedAt: new Date().toISOString(),
+    revision: Math.max(0, run.revision ?? 0) + 1,
   }
 }
 

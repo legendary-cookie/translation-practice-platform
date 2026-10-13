@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLanguage } from '../../domain/languages'
 import type { Exercise } from '../../domain/types'
 import { elapsedSecondsAt, resumeElapsedClock } from './pauseable-elapsed-clock'
+import { countTextStatistics } from './text-statistics'
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0')
@@ -15,6 +16,8 @@ export function TranslationWorkspace({
   initialElapsedSeconds,
   isSubmitting,
   clockPaused = false,
+  saveStatus,
+  onPauseChange,
   notice,
   timeLimitSeconds,
   onCancel,
@@ -27,6 +30,8 @@ export function TranslationWorkspace({
   initialElapsedSeconds: number
   isSubmitting: boolean
   clockPaused?: boolean
+  saveStatus?: string
+  onPauseChange?: (paused: boolean) => void
   notice?: string
   timeLimitSeconds?: number
   onCancel: () => void
@@ -34,6 +39,8 @@ export function TranslationWorkspace({
   onElapsedChange: (elapsedSeconds: number) => void
   onSubmit: (answer: string, elapsedSeconds: number) => void
 }) {
+  const [focusMode, setFocusMode] = useState(false)
+  const [mobilePane, setMobilePane] = useState<'source' | 'answer'>('answer')
   const [answer, setAnswer] = useState(initialAnswer)
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds)
   const startedAt = useRef(Date.now())
@@ -43,8 +50,7 @@ export function TranslationWorkspace({
   const [validationMessage, setValidationMessage] = useState<string | undefined>()
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
-  const wordCount = useMemo(() => answer.trim() ? answer.trim().split(/\s+/u).filter(Boolean).length : 0, [answer])
-  const characterCount = answer.replace(/\s/gu, '').length
+  const { words: wordCount, characters: characterCount } = useMemo(() => countTextStatistics(answer, exercise.targetLanguage), [answer, exercise.targetLanguage])
 
   useEffect(() => {
     const restoredElapsedSeconds = Math.max(0, Math.floor(initialElapsedSeconds))
@@ -90,14 +96,18 @@ export function TranslationWorkspace({
   }
 
   return (
-    <div className="workspace-layout">
+    <div className={`workspace-layout ${focusMode ? 'workspace-layout--focus' : ''}`} data-mobile-pane={mobilePane}>
       <section className="workspace-main">
         <div className="workspace-heading"><div><button className="back-button" type="button" onClick={onCancel}>← Change setup</button><p className="eyebrow">{exercise.mode === 'news' ? 'News translation' : 'Written translation'}</p><h2>{exercise.title}</h2></div><div className={`timer ${isOvertime ? 'timer--overtime' : ''}`}><span className="timer__label">{timeLimitSeconds === undefined ? 'Elapsed' : 'Remaining'}</span><strong>{formatTime(timeLimitSeconds === undefined ? elapsedSeconds : remainingSeconds ?? elapsedSeconds)}</strong></div></div>
+        <div className="editor-toolbar"><div className="mobile-pane-switch segmented-control" role="group" aria-label="Translation panes"><button className="button button--quiet" type="button" aria-pressed={mobilePane === 'source'} onClick={() => setMobilePane('source')}>Read source</button><button className="button button--quiet" type="button" aria-pressed={mobilePane === 'answer'} onClick={() => setMobilePane('answer')}>Write answer</button></div><div className="settings-actions"><button className="button button--quiet" type="button" aria-pressed={focusMode} onClick={() => setFocusMode(!focusMode)}>{focusMode ? 'Show glossary' : 'Focus mode'}</button>{onPauseChange && <button className="button button--quiet" type="button" onClick={() => onPauseChange(!clockPaused)}>{clockPaused ? 'Resume timer' : 'Pause timer'}</button>}</div></div>
+        <div className="translation-panes">
         <div className="source-card"><div className="source-card__topline"><span className="eyebrow">Source · {sourceLanguage.nativeLabel}</span><span className="source-card__meta">{exercise.difficulty} · {exercise.topic}</span></div><p className="source-text" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{exercise.sourceText}</p></div>
-        <label className="answer-panel" htmlFor="translation-answer"><span className="answer-panel__topline"><span><span className="eyebrow">Your translation · {targetLanguage.nativeLabel}</span></span><span className="answer-panel__count">{wordCount} words · {characterCount} characters</span></span><textarea id="translation-answer" dir={targetLanguage.direction} lang={exercise.targetLanguage} value={answer} onChange={(event) => { const nextAnswer = event.target.value; setAnswer(nextAnswer); onDraftChange(nextAnswer) }} placeholder={`Write your ${targetLanguage.label} translation here…`} disabled={isSubmitting} /></label>
+        <label className="answer-panel" htmlFor="translation-answer"><span className="answer-panel__topline"><span><span className="eyebrow">Your translation · {targetLanguage.nativeLabel}</span></span><span className="answer-panel__count">{wordCount} words · {characterCount} characters</span></span><textarea id="translation-answer" dir={targetLanguage.direction} lang={exercise.targetLanguage} value={answer} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing && !isSubmitting) { event.preventDefault(); handleSubmit() } }} onChange={(event) => { const nextAnswer = event.target.value; setAnswer(nextAnswer); onDraftChange(nextAnswer) }} placeholder={`Write your ${targetLanguage.label} translation here…`} disabled={isSubmitting} /></label>
+        </div>
+        <p className="draft-status" role="status">{saveStatus ?? 'Draft stays in this tab'} · {clockPaused ? 'Timer paused' : 'Timer running'}</p>
         {validationMessage && <p className="form-message form-message--error" role="alert">{validationMessage}</p>}
         {notice && <p className="form-message" role="status">{notice}</p>}
-        <div className="workspace-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>Discard draft</button><button className="button button--primary" type="button" onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting ? 'Evaluating…' : 'Submit for feedback'} <span aria-hidden="true">→</span></button></div>
+        <div className="workspace-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>Change passage</button><button className="button button--primary" type="button" onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting ? 'Evaluating…' : 'Submit for feedback'} <span aria-hidden="true">→</span></button></div>
       </section>
       <aside className="workspace-aside"><details className="glossary-card" open><summary><span>Glossary</span><span aria-hidden="true">⌄</span></summary><div className="glossary-list">{exercise.glossary.map((entry) => <div className="glossary-entry" key={entry.term}><strong dir={sourceLanguage.direction}>{entry.term}</strong><span>{entry.note}</span>{entry.targetHint && <em>{entry.targetHint}</em>}</div>)}</div></details><div className="workspace-tip"><span className="workspace-tip__icon">✦</span><strong>Make room for meaning.</strong><p>There may be more than one good translation. Feedback will point to evidence, not compare you to a single answer.</p></div></aside>
     </div>

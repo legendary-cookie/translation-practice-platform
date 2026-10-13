@@ -1,7 +1,9 @@
-import { DEFAULT_LOCAL_MODEL_ID } from '../../domain/types'
+import { PersonalizedPractice } from './PersonalizedPractice'
+import type { WrittenDraft } from '../../domain/learning'
+import { WelcomeCard } from './WelcomeCard'
 import { getLanguage } from '../../domain/languages'
 import type { LocalModelProgress } from '../../ai/local-provider'
-import type { ActiveExamRun, ConsolidatedExamResult, SessionRecord } from '../../domain/types'
+import type { ActiveExamRun, ConsolidatedExamResult, Exercise, SessionRecord } from '../../domain/types'
 import { formatSeconds } from '../../domain/exam'
 import { useRecoveryCountdown } from '../exam/use-recovery-countdown'
 import type { SessionHistoryStatus } from '../practice/session-history'
@@ -9,6 +11,9 @@ import type { SessionHistoryStatus } from '../practice/session-history'
 export type DashboardPage = 'home' | 'practice' | 'exam' | 'progress' | 'settings'
 
 export function Dashboard({
+  savedDraft,
+  onContinueDraft,
+  onRecommendedPractice,
   localProgress,
   recentSessions,
   sessionHistoryStatus = 'ready',
@@ -18,6 +23,9 @@ export function Dashboard({
   onStartInterpreting,
   onStartNews,
 }: {
+  savedDraft?: WrittenDraft
+  onContinueDraft?: () => void
+  onRecommendedPractice?: (exercise: Exercise) => void
   localProgress: LocalModelProgress
   recentSessions: SessionRecord[]
   sessionHistoryStatus?: SessionHistoryStatus
@@ -38,10 +46,12 @@ export function Dashboard({
 
   return (
     <div className="page-content">
+      <WelcomeCard onStart={() => onNavigate('practice')} />
+      {savedDraft && <section className="continue-card"><div><p className="eyebrow">Continue where you left off</p><h2>{savedDraft.exercise.title}</h2><p>{getLanguage(savedDraft.exercise.sourceLanguage).nativeLabel} → {getLanguage(savedDraft.exercise.targetLanguage).nativeLabel} · {savedDraft.answer.length} characters in draft</p></div><button className="button button--primary" type="button" onClick={onContinueDraft}>Continue translation →</button></section>}
       {activeExamRun && (
         <section
           className="info-card info-card--accent"
-          style={{ marginBottom: '1.5rem', borderLeft: '4px solid #0284c7' }}
+          style={{ marginBottom: '1.5rem', borderLeft: '4px solid #175ac0' }}
           role="region"
           aria-label="Active Exam Recovery"
         >
@@ -81,6 +91,7 @@ export function Dashboard({
         </div>
       </section>
 
+      {onRecommendedPractice && <PersonalizedPractice sessions={recentSessions} onStart={onRecommendedPractice} onReview={() => onNavigate('progress')} />}
       <section className="section-block" aria-labelledby="modes-heading">
         <div className="section-heading">
           <div>
@@ -129,7 +140,7 @@ export function Dashboard({
         <article className="info-card info-card--accent">
           <div className="info-card__topline"><span className="eyebrow">Evaluation</span><span className="status-badge">{localStatusLabel}</span></div>
           <h3>Local AI is optional.</h3>
-          <p>Prepare {DEFAULT_LOCAL_MODEL_ID} in Settings for private, offline-capable practice. Cloud fallback always asks first.</p>
+          <p>Prepare a local model in Settings for private, offline-capable practice. Cloud fallback always asks first.</p>
           <button className="text-button" type="button" onClick={() => onNavigate('settings')}>Review privacy settings <span aria-hidden="true">→</span></button>
         </article>
         <article className="info-card">

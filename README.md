@@ -7,7 +7,7 @@ Lingo Practice is a local-first PWA for written, news, and audio interpreting pr
 Use Node.js 20.19+ (or a current compatible release), then install dependencies and start Vite:
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
@@ -18,7 +18,47 @@ npm run build
 npm run preview
 ```
 
-The production build is the packaging check for this release. Automated tests are intentionally not included in this pass.
+Run the behavior regression suite with `npm test`. `npm run build` checks TypeScript and creates the production PWA bundle. Browser QA is a separate gate; passing a build does not qualify a device or inference runtime.
+
+## Adaptive study desk
+
+- Desktop uses a compact collapsible navigation rail and paired source/answer panes. Phones use five primary destinations and explicit source/answer switching; interpreting is available from Home.
+- First launch can choose a default language direction, practice level, and learning goal without an account. Interface copy is currently English; source/answer content supports all seven scripts.
+- Light, dark, and device themes, editor text size, and line spacing are saved locally. Ctrl/Command + Enter submits written work; native text editing provides undo/redo. The timer can pause independently of the editor. Exam clocks keep their strict timing rules.
+- Written drafts save exact answer text, elapsed time, and an exercise snapshot. A successfully read recovery state and an origin-wide Web Lock protect the singleton draft. A second tab cannot autosave over its owner. A tab claims ownership and reads the latest stored draft before resuming or replacing it. Unsupported or unreadable storage leaves a clearly labeled in-tab practice; it does not overwrite unknown saved work.
+- Opening News setup preserves an owned draft. Replacement/discard confirms before losing meaningful work, including unsaved input. Successfully saved completed feedback retires the unfinished draft; failed session saves preserve recovery. All writes are fenced against data deletion, including writes queued by the deleting tab itself.
+- The recovered catalog has 96 exercises: four written and four news-style exercises in each of the twelve Chinese-centered directions. The passage selector exposes every filtered exercise. News dates describe fictional practice scenarios, not real reported events.
+
+## Local learning library
+
+Progress includes an editable glossary and mistake notebook with language/skill filters, search, mastery status, and temporary reconstruction self-review. Feedback can save an edited term pair or an evidence-linked revision note. Helpful/Incorrect ratings are attached to a successfully saved session; false positives are excluded from weakness counts without rewriting the original estimate.
+
+Spaced review uses deterministic SM-2 (Again/Hard/Good/Easy map to quality 1/3/4/5, an ease floor of 1.3, and 1/6/ease-based day intervals). Failed recall restarts repetitions. Mastered notes are excluded from due reviews. Enter reveals a card; keys 1–4 grade it when the review panel has focus. These are learner-directed review schedules, not a claim of learning effectiveness or official scoring.
+
+Home suggestions use real saved issues and practice frequency in the latest language direction. Early history is explicitly labeled insufficient for a trend; no starting score or imaginary data point is added. Learning tools perform no AI or network request. Model-generated drills and alternative unqualified model tiers remain outside this release.
+
+IndexedDB schema 6 preserves the earlier stores and adds draft, learning-card, and feedback-rating stores. JSON export version 5 includes those records, the current original catalog, detached snapshots for new written sessions, interpreting audio, exam snapshots, and appearance preferences. Legacy written sessions may not contain a historical passage snapshot; the exported current catalog is a reference for them. API keys remain absent. Export is reference-only; this release has no import/restore flow.
+
+## Browser verification
+
+Start a production preview on `127.0.0.1:4178`, then run the optional browser suite in another terminal:
+
+```powershell
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4178 --strictPort
+```
+
+```powershell
+# Use an existing Playwright installation; no test-runner dependency is added.
+$env:PLAYWRIGHT_MODULE_PATH = '<absolute path to the installed playwright module>'
+npm run test:browser
+```
+
+On Windows the suite uses installed Chrome. Set `QA_BROWSER_CHANNEL` to an installed supported channel when needed. Each suite creates disposable browser data, synthetic fixtures, and loopback-only mock evaluation. It never uses an existing browser profile or real API key. Generated evidence is under ignored `.browser-qa/` (override `BROWSER_QA_ARTIFACTS` if desired). It checks draft recovery/ownership, migration, consent/cancellation/mock feedback, local learning/review/export/deletion, synthetic microphone self-review, denied storage, and offline boot. Mobile viewport checks are browser simulations, not physical Android acceptance.
+
+## Platform support boundary
+
+The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Windows Chrome browser behavior is testable here; native Windows packages, APK distribution, physical Android back/keyboard/rotation behavior, screen-reader qualification, real microphone behavior, and refreshed real-device/model performance are not certified by these tests. A wrapper is deferred until its WebGPU, storage, and audio behavior can be measured. No silent analytics, account, synchronization, or cloud inference is introduced.
 
 ## Local evaluation
 
@@ -91,7 +131,7 @@ The exam simulator provides an authentic testing experience tailored to individu
 
 ### 3. Dual Timers & Crash Recovery
 - **Dual Timers**: Live tracking of current section countdown and overall exam countdown, using wall-clock time diffing to prevent timer drift when tabs are backgrounded.
-- **Auto-Save & Recovery**: Draft answers and remaining seconds auto-save to IndexedDB every 3 seconds and on blur. Browser reloads or unexpected closures can be resumed immediately with zero data loss.
+- **Auto-Save & Recovery**: Draft answers and remaining seconds auto-save to IndexedDB every 3 seconds and on blur. Saved checkpoints can be resumed after reload; an abrupt closure can still lose changes made since the latest successful save, and storage errors remain visible.
 - **Auto-Advance & Auto-Submit**: Sections auto-lock when section time expires; overall exam timer auto-submits when total time hits zero.
 
 ### 4. Consolidated Evaluation & Mandatory Practice Disclaimer
@@ -100,5 +140,5 @@ The exam simulator provides an authentic testing experience tailored to individu
 - **Mandatory Practice Disclaimer**: Every score and summary is explicitly labeled as an automated practice estimate. No official endorsement, certification, or affiliation with CIPG (中国外文局), ATICICG (翻译院), CPTA (人事考试网), or any MTI university is implied.
 - **Materials policy**: This release uses platform-authored practice passages and does not reproduce past exam papers. Ownership of past papers is not asserted; rights must be checked paper by paper before reuse.
 
-Arabic source and answer fields set `dir="rtl"`; all supported scripts use touch-sized controls and responsive layouts for narrow phones and laptops. The app uses system fonts and local SVG icons, with no remote font or image dependency.
+Arabic source and answer fields set `dir="rtl"`; all supported scripts use touch-sized controls and responsive layouts for narrow phones and laptops. The app uses system fonts and local SVG/PNG icons, with no remote font or image dependency.
 

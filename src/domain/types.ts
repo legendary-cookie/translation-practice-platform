@@ -222,6 +222,7 @@ export type SessionRecord = {
   mode: WrittenPracticeMode
   sourceLanguage: LanguageCode
   targetLanguage: LanguageCode
+  exerciseSnapshot?: Exercise
   answer: string
   feedback: TranslationFeedback
   elapsedSeconds: number
@@ -400,7 +401,11 @@ export type ConsolidatedExamResult = {
 }
 
 export type ExportData = {
-  version: 3
+  version: 5
+  exerciseCatalog?: Exercise[]
+  feedbackRatings?: import('./profile').FeedbackRating[]
+  writtenDraft?: import('./learning').WrittenDraft
+  learningCards?: import('./learning').LearningCard[]
   exportedAt: string
   settings: StoredSettings
   sessions: SessionRecord[]

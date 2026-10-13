@@ -1,7 +1,6 @@
 import type { EvaluationRequest } from '../domain/types'
 import type { LanguageCode } from '../domain/languages'
 import { DEFAULT_LOCAL_MODEL_ID } from '../domain/types'
-import { hasModelInCache, prebuiltAppConfig } from '@mlc-ai/web-llm'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { withCapabilityDeadline } from './capability-deadline'
 
@@ -179,6 +178,7 @@ async function detectStorage(): Promise<CapabilityAssessment['storage']> {
     const usageBytes = estimate.usage
     const quotaBytes = estimate.quota
     const freeBytes = usageBytes !== undefined && quotaBytes !== undefined ? Math.max(0, quotaBytes - usageBytes) : undefined
+    const { hasModelInCache, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
     const modelCached = await hasModelInCache(LOCAL_MODEL_REQUIREMENTS.modelId, prebuiltAppConfig).catch(() => false)
     const persistent = typeof navigator.storage.persisted === 'function' ? await navigator.storage.persisted() : undefined
 

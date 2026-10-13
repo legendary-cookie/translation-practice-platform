@@ -114,7 +114,7 @@ export function ExamResultsReport({
         <div className="progress-overview__score">
           <strong>
             {result.totalScore}
-            <span style={{ fontSize: '1.25rem', color: '#64748b' }}> / {result.maxScore}</span>
+            <span style={{ fontSize: '1.25rem', color: 'var(--muted)' }}> / {result.maxScore}</span>
           </strong>
           <span>
             {result.percentage}% · Practice estimate · <span className={`pill ${statusColorClass}`}>{statusLabel}</span>
@@ -190,7 +190,7 @@ export function ExamResultsReport({
             className="progress-card"
             style={{ marginTop: '1.25rem', padding: '1.25rem' }}
           >
-            <div className="progress-card__heading" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+            <div className="progress-card__heading" style={{ borderBottom: '1px solid var(--line)', paddingBottom: '0.75rem' }}>
               <div>
                 <span className="eyebrow">Section {sIndex + 1}</span>
                 <h3 style={{ margin: '0.25rem 0' }}>{section.sectionTitle}</h3>
@@ -214,10 +214,10 @@ export function ExamResultsReport({
                   <div
                     key={passage.passageId}
                     style={{
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--line)',
                       borderRadius: '8px',
                       padding: '1rem',
-                      backgroundColor: '#f8fafc',
+                      backgroundColor: 'var(--surface-soft)',
                     }}
                   >
                     <div
@@ -247,7 +247,7 @@ export function ExamResultsReport({
                     </div>
 
                     {isExpanded && (
-                      <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+                      <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
                         {/* Summary & Uncertainty */}
                         <div style={{ marginBottom: '1rem' }}>
                           <p><strong>Evaluation Summary: </strong>{passage.feedback.summary}</p>
@@ -298,7 +298,7 @@ export function ExamResultsReport({
                                   key={idx}
                                   style={{
                                     backgroundColor: '#ffffff',
-                                    border: '1px solid #e2e8f0',
+                                    border: '1px solid var(--line)',
                                     borderLeft: '4px solid #b45309',
                                     borderRadius: '4px',
                                     padding: '0.75rem',
@@ -312,7 +312,7 @@ export function ExamResultsReport({
                                   {issue.sourceQuote && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem' }}>
                                       <strong>Source: </strong>
-                                      <span dir={sourceLanguage?.direction} lang={passage.sourceLanguage} style={{ backgroundColor: '#f1f5f9', padding: '0.1rem 0.3rem' }}>
+                                      <span dir={sourceLanguage?.direction} lang={passage.sourceLanguage} style={{ backgroundColor: 'var(--surface-soft)', padding: '0.1rem 0.3rem' }}>
                                         {issue.sourceQuote}
                                       </span>
                                     </p>

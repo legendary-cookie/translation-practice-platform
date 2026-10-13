@@ -111,7 +111,7 @@ export function ProgressPage({
     const isLoading = statuses.some((status) => status === 'loading')
     const isFailed = failedSources.length > 0
     return (
-      <div className="progress-page" role="main">
+      <div className="progress-page">
         <section className="progress-empty">
           <span className="empty-state__icon" aria-hidden="true">↗</span>
           <p className="eyebrow">Local history</p>
@@ -123,7 +123,7 @@ export function ProgressPage({
                 ? 'Checking this device for saved practice sessions. You can continue practicing while the local history check finishes.'
                 : 'There are no saved sessions or mock exams on this browser yet. Complete a written translation, interpreting take, or exam simulation to see practice estimates and dimension trends here.'}
           </p>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '100%' }}>
             {sessionHistoryStatus === 'failed' && onRetrySessionHistory && <button className="button button--quiet" type="button" onClick={onRetrySessionHistory}>Retry written history</button>}
             {interpretingHistoryStatus === 'failed' && onRetryInterpretingHistory && <button className="button button--quiet" type="button" onClick={onRetryInterpretingHistory}>Retry interpreting history</button>}
             {examHistoryStatus === 'failed' && onRetryExamHistory && <button className="button button--quiet" type="button" onClick={onRetryExamHistory}>Retry exam history</button>}
@@ -165,7 +165,7 @@ export function ProgressPage({
   }, {} as Record<ScoreDimension, number>)
 
   return (
-    <div className="progress-page" role="main">
+    <div className="progress-page">
       {(sessionHistoryStatus === 'failed' || interpretingHistoryStatus === 'failed' || examHistoryStatus === 'failed') && <section className="notice-banner notice-banner--warning" role="alert">
         Saved local history is not fully available. Existing records may still be present; retry the failed history reads before treating any count as empty.
         {sessionHistoryStatus === 'failed' && onRetrySessionHistory && <button className="button button--quiet" type="button" onClick={onRetrySessionHistory}>Retry written history</button>}
@@ -173,7 +173,7 @@ export function ProgressPage({
         {examHistoryStatus === 'failed' && onRetryExamHistory && <button className="button button--quiet" type="button" onClick={onRetryExamHistory}>Retry exam history</button>}
       </section>}
       {/* Tab Switcher */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--line)', paddingBottom: '0.75rem' }}>
         <button
           className={`button ${activeTab === 'sessions' ? 'button--primary' : 'button--quiet'}`}
           type="button"

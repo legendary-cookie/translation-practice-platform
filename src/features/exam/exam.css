@@ -16,8 +16,8 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background-color: var(--surface-bg, #ffffff);
-  border-bottom: 2px solid var(--border-color, #e2e8f0);
+  background-color: var(--surface-bg, var(--surface));
+  border-bottom: 2px solid var(--border-color, var(--line));
   padding: 0.75rem 1rem;
   display: flex;
   flex-wrap: wrap;
@@ -43,7 +43,7 @@
 .exam-header__title {
   font-size: 1.125rem;
   font-weight: 700;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary, var(--ink));
   margin: 0;
 }
 
@@ -52,8 +52,8 @@
   font-weight: 600;
   padding: 0.2rem 0.5rem;
   border-radius: 9999px;
-  background-color: #e0f2fe;
-  color: #0369a1;
+  background-color: var(--accent-soft);
+  color: var(--accent-deep);
 }
 
 .exam-header__provisional-badge {
@@ -61,8 +61,8 @@
   font-weight: 600;
   padding: 0.2rem 0.5rem;
   border-radius: 9999px;
-  background-color: #fef3c7;
-  color: #b45309;
+  background-color: var(--warning-surface);
+  color: var(--warning-ink);
 }
 
 .exam-header__timers {
@@ -77,8 +77,8 @@
   flex-direction: column;
   align-items: flex-end;
   padding: 0.35rem 0.75rem;
-  background-color: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background-color: var(--surface-soft);
+  border: 1px solid var(--line);
   border-radius: 6px;
   min-width: 110px;
 }
@@ -87,7 +87,7 @@
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #64748b;
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -95,20 +95,20 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--ink);
 }
 
 .exam-timer--warning .exam-timer__digits {
-  color: #b45309;
+  color: var(--warning-ink);
 }
 
 .exam-timer--critical {
   border-color: #fca5a5;
-  background-color: #fef2f2;
+  background-color: var(--error-surface);
 }
 
 .exam-timer--critical .exam-timer__digits {
-  color: #dc2626;
+  color: var(--error-ink);
   animation: pulse-critical 1.5s infinite;
 }
 
@@ -131,15 +131,15 @@
   font-size: 0.8125rem;
   padding: 0.4rem 0.75rem;
   border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background-color: #ffffff;
-  color: #334155;
+  border: 1px solid var(--line);
+  background-color: var(--surface);
+  color: var(--ink);
   cursor: pointer;
   font-weight: 500;
 }
 
 .exam-header__aid-button:hover {
-  background-color: #f1f5f9;
+  background-color: var(--surface-soft);
 }
 
 /* Workspace layout */
@@ -163,7 +163,7 @@
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--line);
   padding-bottom: 0.5rem;
   flex-wrap: wrap;
 }
@@ -175,13 +175,13 @@
   font-weight: 600;
   background: none;
   border: 1px solid transparent;
-  color: #64748b;
+  color: var(--muted);
   cursor: pointer;
 }
 
 .exam-passage-tab:hover {
-  color: #0f172a;
-  background-color: #f1f5f9;
+  color: var(--ink);
+  background-color: var(--surface-soft);
 }
 
 .exam-passage-tab--active {
@@ -194,8 +194,8 @@
 .exam-source-pane {
   display: flex;
   flex-direction: column;
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background-color: var(--surface-soft);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1.25rem;
   user-select: none;
@@ -208,25 +208,25 @@
   align-items: baseline;
   margin-bottom: 1rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--line);
 }
 
 .exam-source-pane__title {
   font-size: 1rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink);
   margin: 0;
 }
 
 .exam-source-pane__meta {
   font-size: 0.75rem;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .exam-source-pane__body {
   font-size: 1rem;
   line-height: 1.75;
-  color: #1e293b;
+  color: var(--ink);
   white-space: pre-wrap;
   flex: 1;
   overflow-y: auto;
@@ -244,8 +244,8 @@
 .exam-target-pane {
   display: flex;
   flex-direction: column;
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
+  background-color: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1.25rem;
 }
@@ -260,12 +260,12 @@
 .exam-target-pane__label {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink);
 }
 
 .exam-target-pane__counter {
   font-size: 0.8125rem;
-  color: #64748b;
+  color: var(--muted);
   font-weight: 500;
 }
 
@@ -277,9 +277,9 @@
   padding: 1rem;
   font-size: 1rem;
   line-height: 1.7;
-  color: #0f172a;
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
+  color: var(--ink);
+  background-color: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 6px;
   box-sizing: border-box;
   font-family: inherit;
@@ -292,15 +292,15 @@
 }
 
 .exam-target-pane__textarea:disabled {
-  background-color: #f1f5f9;
-  color: #64748b;
+  background-color: var(--surface-soft);
+  color: var(--muted);
   cursor: not-allowed;
 }
 
 .exam-target-pane__notice {
   margin-top: 0.5rem;
   font-size: 0.8125rem;
-  color: #b45309;
+  color: var(--warning-ink);
 }
 
 /* Section Navigation Footer */
@@ -310,7 +310,7 @@
   align-items: center;
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--line);
   flex-wrap: wrap;
   gap: 1rem;
 }
@@ -329,7 +329,7 @@
 }
 
 .exam-modal {
-  background-color: #ffffff;
+  background-color: var(--surface);
   border-radius: 10px;
   max-width: 560px;
   width: 100%;
@@ -341,7 +341,7 @@
 .exam-modal__title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--ink);
   margin-top: 0;
   margin-bottom: 0.75rem;
 }
@@ -349,7 +349,7 @@
 .exam-modal__body {
   font-size: 0.9375rem;
   line-height: 1.6;
-  color: #334155;
+  color: var(--ink);
   margin-bottom: 1.5rem;
 }
 
@@ -365,10 +365,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background-color: #f1f5f9;
+  background-color: var(--surface-soft);
   border-left: 4px solid #0284c7;
   font-size: 0.8125rem;
-  color: #334155;
+  color: var(--ink);
   margin-top: 0.75rem;
   border-radius: 0 4px 4px 0;
 }

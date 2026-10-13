@@ -1,3 +1,7 @@
+import { EXERCISES } from '../data/exercises'
+import type { FeedbackRating } from '../domain/profile'
+import { assertWrittenDraftEditor } from './written-draft-editor'
+import type { LearningCard, WrittenDraft } from '../domain/learning'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type {
   ActiveExamRun,
@@ -43,7 +47,7 @@ import {
 } from './exam-run-editor'
 
 const DATABASE_NAME = 'lingo-practice-local'
-const DATABASE_VERSION = 4
+const DATABASE_VERSION = 6
 const SETTINGS_KEY = 'default'
 const DATABASE_UPGRADE_BLOCKED_NOTICE = 'A local database upgrade is waiting for another Lingo Practice tab. Close older tabs to continue; saved records are not being deleted.'
 
@@ -263,6 +267,9 @@ export const DEFAULT_SETTINGS: StoredSettings = {
 }
 
 interface TranslationDatabaseSchema extends DBSchema {
+  workspace: { key: string; value: WrittenDraft }
+  learningCards: { key: string; value: LearningCard }
+  feedbackRatings: { key: string; value: FeedbackRating }
   settings: {
     key: string
     value: StoredSettings
@@ -361,6 +368,9 @@ function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
         void connection?.then((db) => db.close()).catch(() => undefined)
       },
       upgrade(database, _oldVersion, _newVersion, transaction) {
+        if (!database.objectStoreNames.contains('feedbackRatings')) database.createObjectStore('feedbackRatings', { keyPath: 'id' })
+        if (!database.objectStoreNames.contains('workspace')) database.createObjectStore('workspace')
+        if (!database.objectStoreNames.contains('learningCards')) database.createObjectStore('learningCards', { keyPath: 'id' })
         if (!database.objectStoreNames.contains('settings')) {
           database.createObjectStore('settings')
         }
@@ -409,6 +419,50 @@ function getDatabase(): Promise<IDBPDatabase<TranslationDatabaseSchema>> {
 }
 
 export const database = {
+  async listFeedbackRatings(): Promise<FeedbackRating[]> {
+    return (await getDatabase()).getAll('feedbackRatings')
+  },
+  async saveFeedbackRating(rating: FeedbackRating): Promise<void> {
+    await withDataWrite(async () => {
+      const db = await getDatabase()
+      const transaction = db.transaction(['sessions', 'feedbackRatings'], 'readwrite')
+      const session = await transaction.objectStore('sessions').get(rating.sessionId)
+      if (!session || !session.feedback.issues[rating.issueIndex]) { transaction.abort(); await transaction.done.catch(() => undefined); throw new Error('This saved feedback issue is no longer available.') }
+      await transaction.objectStore('feedbackRatings').put(rating)
+      await transaction.done
+    })
+  },
+  async deleteFeedbackRating(id: string): Promise<void> {
+    await withDataWrite(async () => { await (await getDatabase()).delete('feedbackRatings', id) })
+  },
+  async getWrittenDraft(): Promise<WrittenDraft | undefined> {
+    return (await getDatabase()).get('workspace', 'written-draft')
+  },
+  async saveWrittenDraft(draft: WrittenDraft, token: string): Promise<void> {
+    await withDataWrite(async () => {
+      assertWrittenDraftEditor(token)
+      const db = await getDatabase()
+      assertWrittenDraftEditor(token)
+      await db.put('workspace', draft, 'written-draft')
+    })
+  },
+  async deleteWrittenDraft(token: string): Promise<void> {
+    await withDataWrite(async () => {
+      assertWrittenDraftEditor(token)
+      const db = await getDatabase()
+      assertWrittenDraftEditor(token)
+      await db.delete('workspace', 'written-draft')
+    })
+  },
+  async listLearningCards(): Promise<LearningCard[]> {
+    return (await getDatabase()).getAll('learningCards')
+  },
+  async saveLearningCard(card: LearningCard): Promise<void> {
+    await withDataWrite(async () => { await (await getDatabase()).put('learningCards', card) })
+  },
+  async deleteLearningCard(id: string): Promise<void> {
+    await withDataWrite(async () => { await (await getDatabase()).delete('learningCards', id) })
+  },
   async listSessions(): Promise<SessionRecord[]> {
     const db = await getDatabase()
     const sessions = await db.getAllFromIndex('sessions', 'by-created-at')
@@ -804,7 +858,11 @@ export const database = {
       })
     }
     return {
-      version: 3,
+      version: 5,
+      exerciseCatalog: structuredClone(EXERCISES),
+      feedbackRatings: await this.listFeedbackRatings(),
+      writtenDraft: await this.getWrittenDraft(),
+      learningCards: await this.listLearningCards(),
       exportedAt: new Date().toISOString(),
       settings,
       sessions,
@@ -823,7 +881,10 @@ export const database = {
       try {
         clearExamRunRecoverySnapshotsStrict(storage, recoveryEntries)
         const db = await getDatabase()
-        const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions'> = [
+        const storeNames: Array<'settings' | 'sessions' | 'examProfiles' | 'examRuns' | 'examResults' | 'recordings' | 'interpretingSessions' | 'workspace' | 'learningCards' | 'feedbackRatings'> = [
+          'feedbackRatings',
+          'workspace',
+          'learningCards',
           'settings',
           'sessions',
           'examProfiles',

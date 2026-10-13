@@ -64,6 +64,7 @@ export function createDataWriteCoordinator(options: {
   let capturedEpoch = captureEpoch()
 
   async function runWrite<T>(write: () => Promise<T> | T): Promise<T> {
+    const requestedEpoch = capturedEpoch
     const execute = async () => {
       let storage: StorageLike | undefined
       try {
@@ -83,7 +84,7 @@ export function createDataWriteCoordinator(options: {
           // deletion fails closed and is never advertised as complete.
           return write()
         }
-        if (capturedEpoch !== currentEpoch) {
+        if (requestedEpoch !== currentEpoch) {
           throw new DataEpochInvalidatedError()
         }
       }

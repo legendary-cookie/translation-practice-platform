@@ -101,6 +101,9 @@ test('exports recordings sequentially while retaining metadata and bytes', async
   })
 
   const replacements = {
+    getWrittenDraft: async () => undefined,
+    listLearningCards: async () => [],
+    listFeedbackRatings: async () => [],
     getSettings: async () => ({ evaluationMode: 'local' }),
     listSessions: async () => [],
     listInterpretingSessions: async () => [],
@@ -115,6 +118,8 @@ test('exports recordings sequentially while retaining metadata and bytes', async
   try {
     const exported = await database.exportData()
 
+    assert.equal(exported.version, 5)
+    assert.deepEqual(exported.learningCards, [])
     assert.equal(maximumActiveReads, 1, 'only one recording Blob is read into memory at a time')
     assert.equal(exported.recordings.length, recordings.length)
     for (const [index, recording] of recordings.entries()) {

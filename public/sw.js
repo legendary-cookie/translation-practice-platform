@@ -1,7 +1,7 @@
 // Vite replaces the release marker with a content hash in production builds.
 const CACHE_NAME = 'lingo-practice-shell-__RELEASE_ID__'
 const CACHE_PREFIX = 'lingo-practice-shell-'
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg']
+const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg', '/icons/icon-192.png', '/icons/icon-512.png']
 const AUDIO_ASSETS = [
   '/audio/interpreting/rights.json',
   '/audio/interpreting/zh-community-garden.wav',

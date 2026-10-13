@@ -56,7 +56,7 @@ export function ExamCatalog({
       {activeRun && (
         <section
           className="info-card info-card--accent"
-          style={{ marginBottom: '1.5rem', borderLeft: '4px solid #0284c7' }}
+          style={{ marginBottom: '1.5rem', borderLeft: '4px solid #175ac0' }}
           role="region"
           aria-label="Active Exam Recovery"
         >
@@ -105,12 +105,13 @@ export function ExamCatalog({
         </section>
       )}
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
-        <strong>✦ Mandatory Practice Notice: </strong>
+        <strong>Practice estimate: </strong>
         <span>
           {PRACTICE_ESTIMATE_DISCLAIMER} No official endorsement or certification by CIPG, ATICICG, CPTA, or any MTI university is implied.
         </span>
       </section>
 
+      <details className="exam-profile-notes"><summary>Read dated syllabus references and profile boundaries</summary>
       <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
         <strong>2023-12-25 CATTI syllabus references: </strong>
         <span>These are dated official syllabus baselines, not timeless administration promises. The simulator's rubric and scores remain platform-authored practice estimates.</span>
@@ -127,6 +128,8 @@ export function ExamCatalog({
         <strong>Profile boundaries: </strong>
         <span>MTI 357 varies by admitting university and admission year, so no generic national MTI profile is presented here. {MATERIALS_POLICY_NOTICE}</span>
       </section>
+
+      </details>
 
       {/* Catalog Header */}
       <div className="section-heading">
@@ -232,7 +235,7 @@ export function ExamCatalog({
                 </div>
 
                 <h3 style={{ margin: '0.25rem 0 0.5rem' }}>{profile.title}</h3>
-                <p style={{ fontSize: '0.875rem', color: '#475569', marginBottom: '1rem' }}>
+                <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
                   {profile.description}
                 </p>
 
@@ -259,15 +262,15 @@ export function ExamCatalog({
                 {/* Section Outline */}
                 <div
                   style={{
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
+                    backgroundColor: 'var(--surface-soft)',
+                    border: '1px solid var(--line)',
                     borderRadius: '6px',
                     padding: '0.75rem',
                     fontSize: '0.8125rem',
                     marginBottom: '1rem',
                   }}
                 >
-                  <strong style={{ display: 'block', marginBottom: '0.25rem', color: '#334155' }}>
+                  <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--ink)' }}>
                     Paper Structure:
                   </strong>
                   {profile.sections.map((sec, idx) => (

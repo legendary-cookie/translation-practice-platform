@@ -1,9 +1,4 @@
-import {
-  CreateWebWorkerMLCEngine,
-  hasModelInCache,
-  prebuiltAppConfig,
-  type WebWorkerMLCEngine,
-} from '@mlc-ai/web-llm'
+import type { WebWorkerMLCEngine } from '@mlc-ai/web-llm'
 import { FeedbackValidationError, validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
 import { DEFAULT_LOCAL_MODEL_ID, type EvaluationFeedback, type EvaluationRequest } from '../domain/types'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
@@ -324,7 +319,10 @@ export function createLocalProvider(
       }, LOCAL_MODEL_PREPARATION_TIMEOUT_MESSAGE)
 
       try {
-        const rawPreparation = CreateWebWorkerMLCEngine(attemptWorker, modelId, {
+        const rawPreparation = (async () => {
+          const { CreateWebWorkerMLCEngine, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
+          if (generation !== preparationGeneration) throw new ProviderUnavailableError(LOCAL_MODEL_PREPARATION_TIMEOUT_MESSAGE)
+          return CreateWebWorkerMLCEngine(attemptWorker, modelId, {
           appConfig: prebuiltAppConfig,
           initProgressCallback: (progress) => {
             if (generation !== preparationGeneration) return
@@ -332,6 +330,7 @@ export function createLocalProvider(
             report({ status: 'preparing', progress: progress.progress, text: progress.text })
           },
         })
+        })()
         preparationPromise = deadline.wrap(rawPreparation)
         enginePromise = preparationPromise
         const engine = await preparationPromise
@@ -539,6 +538,7 @@ export function createLocalProvider(
 
     async isCached() {
       try {
+        const { hasModelInCache, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
         return await hasModelInCache(modelId, prebuiltAppConfig)
       } catch {
         return false

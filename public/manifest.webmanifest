@@ -1,25 +1,25 @@
 {
   "name": "Lingo Practice",
   "short_name": "Lingo",
-  "description": "Local-first written translation practice.",
+  "description": "Local-first translation, exam, and interpreting practice.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f3f6f1",
-  "theme_color": "#386b57",
+  "background_color": "#f4f7fb",
+  "theme_color": "#175ac0",
   "lang": "en",
   "orientation": "any",
   "icons": [
     {
-      "src": "/icons/icon-192.svg",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512.svg",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

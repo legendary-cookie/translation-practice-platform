@@ -1,3 +1,7 @@
+import { acquireWrittenDraftEditor, type WrittenDraftEditor } from './storage/written-draft-editor'
+import { readWrittenDraft, type WrittenDraft } from './domain/learning'
+import { useWorkspacePreferences, clearWorkspacePreferences } from './features/settings/AppearanceSettings'
+import { LearningTools } from './features/review/LearningTools'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AccessibleModal } from './components/AccessibleModal'
 import { createCloudProvider, validateCloudProviderPreferences } from './ai/cloud-provider'
@@ -148,7 +152,7 @@ function Navigation({ currentPage, onNavigate }: { currentPage: Page; onNavigate
       </div>
       <div className="navigation__items">
         {navigationItems.map((item) => (
-          <button className={`navigation__item ${currentPage === item.id ? 'navigation__item--active' : ''}`} key={item.id} type="button" aria-current={currentPage === item.id ? 'page' : undefined} onClick={() => onNavigate(item.id)}>
+          <button className={`navigation__item ${currentPage === item.id ? 'navigation__item--active' : ''}`} key={item.id} type="button" aria-label={item.label} aria-current={currentPage === item.id ? 'page' : undefined} onClick={() => onNavigate(item.id)}>
             <span className="navigation__icon" aria-hidden="true">{item.icon}</span>
             <span>{item.label}</span>
           </button>
@@ -218,6 +222,20 @@ function ConsentDialog({
 }
 
 export default function App() {
+  const { preferences } = useWorkspacePreferences()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [recoveredDraft, setRecoveredDraft] = useState<WrittenDraft>()
+  const [draftRecoveryStatus, setDraftRecoveryStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [writtenDraftOwned, setWrittenDraftOwned] = useState(false)
+  const writtenDraftEditorRef = useRef<WrittenDraftEditor | undefined>(undefined)
+  const writtenDraftWritesRef = useRef(new Set<Promise<unknown>>())
+  const writtenDraftRetirementRef = useRef<Promise<void>>(Promise.resolve())
+  const writtenDraftOpenSequence = useRef(0)
+  const draftReadSequence = useRef(0)
+  const [clearingWrittenData, setClearingWrittenData] = useState(false)
+  const clearingWrittenDataRef = useRef(false)
+  const [draftSaveStatus, setDraftSaveStatus] = useState('Checking saved draft…')
+  const draftRecoveryEligible = useRef(true)
   const [currentPage, setCurrentPage] = useState<Page>('home')
   const currentPageRef = useRef<Page>(currentPage)
   currentPageRef.current = currentPage
@@ -670,6 +688,8 @@ export default function App() {
   function handleRemoteDataCleared(epoch: string) {
     if (lastRemoteClearEpochRef.current === epoch) return
     lastRemoteClearEpochRef.current = epoch
+    clearingWrittenDataRef.current = true
+    setClearingWrittenData(true)
     dataLoadGeneration.current += 1
     examResultOpenGenerationRef.current += 1
     writtenEvaluationGuardRef.current.activate(undefined)
@@ -694,6 +714,10 @@ export default function App() {
   async function clearLocalData() {
     // Refuse unsupported browsers before stopping providers or discarding live UI state.
     database.assertCanClearData()
+    clearingWrittenDataRef.current = true
+    setClearingWrittenData(true)
+    writtenDraftOpenSequence.current += 1
+    draftReadSequence.current += 1
     const settingsHydrationAttemptAtClear = settingsHydrationRef.current
     const settingsWereHydratingAtClear = settingsHydrationStatus === 'loading'
     dataLoadGeneration.current += 1
@@ -725,8 +749,17 @@ export default function App() {
       setSettings(settingsRef.current)
       setLocalProgress({ status: 'not-prepared', text: 'Local model needs preparation after the failed deletion.', error: restartNotice })
       setLocalProviderEpoch(nextProviderEpoch)
+      clearingWrittenDataRef.current = false
+      setClearingWrittenData(false)
+      setDraftRecoveryStatus('failed')
       throw error
     }
+    await releaseWrittenDraftOwnership()
+    setRecoveredDraft(undefined)
+    clearingWrittenDataRef.current = false
+    setClearingWrittenData(false)
+    setDraftRecoveryStatus('ready')
+    try { clearWorkspacePreferences() } catch { /* Appearance preferences contain no practice content. */ }
     resetUiAfterLocalDataClear(nextProviderEpoch)
   }
 
@@ -842,6 +875,7 @@ export default function App() {
   }
 
   function navigateToPage(page: Page) {
+    writtenDraftOpenSequence.current += 1
     examResultOpenGenerationRef.current += 1
     if (currentPage === 'practice' && page !== 'practice') {
       localProvider.cancelEvaluation()
@@ -1127,7 +1161,39 @@ export default function App() {
     await updateSettings({ cloudBaseUrl: baseUrl.trim(), cloudModel: model.trim(), cloudSupportsAudio: supportsAudio })
   }
 
-  function beginPractice(selection: PracticeStart) {
+  async function beginPractice(selection: PracticeStart) {
+    if (clearingWrittenDataRef.current) { setPracticeNotice('This tab cannot start a draft while local deletion is in progress or its data view is stale. Wait for deletion, or reload after another tab clears data.'); return }
+    if (draftRecoveryStatus === 'loading') { setPracticeNotice('Checking saved drafts. Try again when the check finishes.'); return }
+    const request = ++writtenDraftOpenSequence.current
+    const generation = dataLoadGeneration.current
+    await writtenDraftRetirementRef.current
+    const heldEditor = writtenDraftEditorRef.current
+    await Promise.allSettled([...writtenDraftWritesRef.current])
+    const editor = heldEditor ?? (draftRecoveryStatus === 'ready' ? await acquireWrittenDraftEditor().catch(() => undefined) : undefined)
+    const abandon = () => { if (!heldEditor) editor?.release() }
+    if (request !== writtenDraftOpenSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) { abandon(); return }
+    if (draftRecoveryStatus === 'ready' && navigator.locks && !editor) { setPracticeNotice('Your saved written draft is open in another tab. Close that tab or leave its practice using Change setup, then retry.'); return }
+    if (editor) {
+      try {
+        const value = await database.getWrittenDraft()
+        if (request !== writtenDraftOpenSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) { abandon(); return }
+        const latest = readWrittenDraft(value)
+        if (value && !latest) throw new Error('The saved draft is malformed; export local data before deleting it.')
+        if (!heldEditor) setRecoveredDraft(latest)
+        const hasMeaningfulDraft = Boolean(latest?.answer.trim() || (heldEditor && ((!feedback && draftAnswer.trim()) || recoveredDraft?.answer.trim())))
+        if (hasMeaningfulDraft && !window.confirm('Starting a new passage replaces your current or saved written draft. Continue?')) { abandon(); return }
+      } catch (error) {
+        abandon()
+        setDraftRecoveryStatus('failed')
+        setDraftSaveStatus(`Draft not saved. The saved draft could not be checked. ${error instanceof Error ? error.message : ''}`)
+        return
+      }
+    }
+    if (!editor && activeExercise && !feedback && draftAnswer.trim() && !window.confirm('Your current draft stays only in this tab. Replace it with a new passage?')) return
+    writtenDraftEditorRef.current = editor
+    setWrittenDraftOwned(Boolean(editor))
+    if (!editor) setDraftSaveStatus('Draft not saved. Recovery or browser ownership is unavailable; this practice stays in this tab.')
+    draftRecoveryEligible.current = false
     localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(selection.exercise.id)
     pendingConsent?.request.revokePreview?.()
@@ -1166,6 +1232,11 @@ export default function App() {
   }
 
   function resetPractice() {
+    if (currentPage === 'practice' && activeExercise && !feedback && draftAnswer.trim() && !window.confirm('Discard this written draft? Your saved draft will also be removed.')) return
+    if (currentPage === 'practice') {
+      draftRecoveryEligible.current = false
+      void retireWrittenDraft().catch(() => setPracticeNotice('The saved draft could not be removed. It remains available after reload.'))
+    }
     localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
     pendingConsent?.request.revokePreview?.()
@@ -1193,9 +1264,9 @@ export default function App() {
   }
 
   function startNewsPractice() {
-    const hasMeaningfulDraft = Boolean(activeExercise && !feedback && (draftAnswer.trim() || draftElapsedSeconds > 0))
-    if (hasMeaningfulDraft && !window.confirm('Starting news practice will discard your current written draft. Continue?')) {
-      return
+    if (activeExercise && !feedback) {
+      if (writtenDraftEditorRef.current) setRecoveredDraft({ exercise: activeExercise, answer: draftAnswer, elapsedSeconds: draftElapsedSeconds, timeLimitSeconds, updatedAt: new Date().toISOString() })
+      else if (draftAnswer.trim() && !window.confirm('This draft has not been saved. Opening News setup discards its in-tab answer. Continue?')) return
     }
     localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
@@ -1230,6 +1301,7 @@ export default function App() {
       id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `session-${Date.now()}`,
       createdAt: new Date().toISOString(),
       exerciseId: exercise.id,
+      exerciseSnapshot: structuredClone(exercise),
       mode: exercise.mode,
       sourceLanguage: exercise.sourceLanguage,
       targetLanguage: exercise.targetLanguage,
@@ -1246,6 +1318,7 @@ export default function App() {
         setRecentSessions((sessions) => mergeRecentSessions([savedSession], sessions))
       },
       onSaveForCurrentAttempt: () => {
+        void retireWrittenDraft(false).catch(() => { if (dataLoadGeneration.current === generation && attemptIsCurrent()) setPracticeNotice('Practice was saved, but its draft could not be retired. It remains recoverable until local storage is available.') })
         setFeedback(nextFeedback)
         setPracticeNotice(`${provider === 'cloud' ? 'Cloud' : 'Local'} evaluation complete. Saved to this device.`)
       },
@@ -1650,10 +1723,157 @@ export default function App() {
   const firstPendingInterpretingSave = pendingInterpretingSaves[0]
   const currentPendingSaveVisibleInPanel = currentPage === 'interpreting' && interpretingFeedback !== undefined && currentPendingInterpretingSave !== undefined
 
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => {
+      document.documentElement.dataset.theme = preferences.theme === 'system' ? (media.matches ? 'dark' : 'light') : preferences.theme
+      document.documentElement.style.setProperty('--editor-size', `${preferences.fontSize}px`)
+      document.documentElement.style.setProperty('--editor-leading', String(preferences.lineHeight))
+    }
+    apply()
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [preferences])
+
+  function trackWrittenDraftWrite<T>(write: Promise<T>): Promise<T> {
+    const pending = trackPersistence(write)
+    writtenDraftWritesRef.current.add(pending)
+    void pending.then(() => writtenDraftWritesRef.current.delete(pending), () => writtenDraftWritesRef.current.delete(pending))
+    return pending
+  }
+
+  async function releaseWrittenDraftOwnership(expected = writtenDraftEditorRef.current) {
+    if (!expected || writtenDraftEditorRef.current !== expected) return
+    writtenDraftEditorRef.current = undefined
+    setWrittenDraftOwned(false)
+    await Promise.allSettled([...writtenDraftWritesRef.current])
+    expected.release()
+  }
+
+  function retireWrittenDraft(releaseOwnership = true): Promise<void> {
+    const editor = writtenDraftEditorRef.current
+    const generation = dataLoadGeneration.current
+    const operation = writtenDraftRetirementRef.current.then(async () => {
+      if (!editor || writtenDraftEditorRef.current !== editor || generation !== dataLoadGeneration.current) return
+      await Promise.allSettled([...writtenDraftWritesRef.current])
+      await trackWrittenDraftWrite(database.deleteWrittenDraft(editor.token))
+      if (writtenDraftEditorRef.current !== editor || generation !== dataLoadGeneration.current) return
+      setRecoveredDraft(undefined)
+      if (releaseOwnership) await releaseWrittenDraftOwnership(editor)
+    })
+    writtenDraftRetirementRef.current = operation.catch(() => undefined)
+    return operation
+  }
+
+  async function loadWrittenDraftRecovery() {
+    if (clearingWrittenDataRef.current) return
+    const request = ++draftReadSequence.current
+    const generation = dataLoadGeneration.current
+    setDraftRecoveryStatus('loading')
+    await writtenDraftRetirementRef.current
+    const heldEditor = writtenDraftEditorRef.current
+    let claimedEditor: WrittenDraftEditor | undefined
+    const abandon = () => claimedEditor?.release()
+    try {
+      if (activeExercise && !heldEditor && navigator.locks) {
+        claimedEditor = await acquireWrittenDraftEditor()
+        if (request !== draftReadSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) { abandon(); return }
+        if (!claimedEditor) throw new Error('Another tab owns the saved draft. Close its practice and retry.')
+      }
+      await Promise.allSettled([...writtenDraftWritesRef.current])
+      const value = await database.getWrittenDraft()
+      if (request !== draftReadSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) { abandon(); return }
+      const candidate = readWrittenDraft(value)
+      if (value && !candidate) throw new Error('The saved draft is malformed. Export local data before deleting it.')
+      if (activeExercise && candidate?.answer.trim() && (activeExercise.id !== candidate.exercise.id || draftAnswer !== candidate.answer)) {
+        if (!window.confirm('A different saved draft was recovered. Replace it with the practice currently in this tab?')) {
+          abandon()
+          setRecoveredDraft(candidate)
+          setDraftRecoveryStatus('failed')
+          setDraftSaveStatus('Draft not saved. Your previous saved draft is preserved; reload to recover it.')
+          return
+        }
+      }
+      if (claimedEditor) { writtenDraftEditorRef.current = claimedEditor; setWrittenDraftOwned(true) }
+      if (draftRecoveryEligible.current) setRecoveredDraft(candidate)
+      setDraftRecoveryStatus('ready')
+      setDraftSaveStatus(activeExercise && !heldEditor && !claimedEditor ? 'Draft not saved. This browser cannot protect shared drafts; this practice stays in this tab.' : 'Draft recovery ready')
+    } catch (error) {
+      abandon()
+      if (request !== draftReadSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) return
+      setDraftRecoveryStatus('failed')
+      setDraftSaveStatus(`Draft not saved. Saved drafts could not be checked; existing data has not been deleted. ${error instanceof Error ? error.message : ''}`)
+    }
+  }
+
+  useEffect(() => {
+    void loadWrittenDraftRecovery()
+    const unsubscribe = subscribeToDataCleared(() => {
+      draftReadSequence.current += 1
+      setRecoveredDraft(undefined)
+      draftRecoveryEligible.current = false
+      void releaseWrittenDraftOwnership()
+    })
+    return () => { draftReadSequence.current += 1; unsubscribe(); writtenDraftEditorRef.current?.release() }
+  }, [])
+
+  useEffect(() => {
+    const editor = writtenDraftEditorRef.current
+    if (draftRecoveryStatus !== 'ready' || clearingWrittenDataRef.current || clearingWrittenData || !writtenDraftOwned || !editor || !activeExercise || feedback) return
+    let current = true
+    const generation = dataLoadGeneration.current
+    const draft: WrittenDraft = { exercise: activeExercise, answer: draftAnswer, elapsedSeconds: draftElapsedSeconds, timeLimitSeconds, updatedAt: new Date().toISOString() }
+    setDraftSaveStatus('Saving draft…')
+    void trackWrittenDraftWrite(database.saveWrittenDraft(draft, editor.token)).then(() => {
+      if (current && generation === dataLoadGeneration.current) { setRecoveredDraft(draft); setDraftSaveStatus('Draft saved on this device') }
+    }).catch(() => { if (current && generation === dataLoadGeneration.current) setDraftSaveStatus('Draft not saved. Keep this tab open and enable local storage.') })
+    return () => { current = false }
+  }, [draftRecoveryStatus, clearingWrittenData, writtenDraftOwned, activeExercise, draftAnswer, draftElapsedSeconds, timeLimitSeconds, feedback])
+
+  async function continueWrittenDraft() {
+    if (clearingWrittenDataRef.current) return
+    if (activeExercise) { navigateToPage('practice'); return }
+    if (!recoveredDraft || draftRecoveryStatus !== 'ready') return
+    const request = ++writtenDraftOpenSequence.current
+    const generation = dataLoadGeneration.current
+    await writtenDraftRetirementRef.current
+    const heldEditor = writtenDraftEditorRef.current
+    const editor = heldEditor ?? await acquireWrittenDraftEditor().catch(() => undefined)
+    const abandon = () => { if (!heldEditor) editor?.release() }
+    if (request !== writtenDraftOpenSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) { abandon(); return }
+    if (!editor) { setPracticeNotice('This saved draft is already open in another tab, or this browser cannot protect shared drafts. Close the other tab and retry.'); return }
+    try {
+      const value = await database.getWrittenDraft()
+      if (request !== writtenDraftOpenSequence.current || generation !== dataLoadGeneration.current || clearingWrittenDataRef.current) { abandon(); return }
+      const stored = readWrittenDraft(value)
+      if (value && !stored) throw new Error('The saved draft is malformed. Export local data before deleting it.')
+      // Only an existing lock holder may resume its own unsaved, in-tab snapshot.
+      const latest = heldEditor ? recoveredDraft : stored
+      if (!latest) { abandon(); setRecoveredDraft(undefined); setPracticeNotice('That draft is no longer saved on this device.'); return }
+      writtenDraftEditorRef.current = editor
+      setWrittenDraftOwned(true)
+      draftRecoveryEligible.current = false
+      writtenEvaluationGuardRef.current.activate(latest.exercise.id)
+      setActiveExercise(latest.exercise)
+      setDraftAnswer(latest.answer)
+      setDraftElapsedSeconds(latest.elapsedSeconds)
+      setTimeLimitSeconds(latest.timeLimitSeconds)
+      setWrittenClockPaused(true)
+      setFeedback(undefined)
+      setPracticeNotice('Recovered your saved draft. Resume the timer when you are ready.')
+      navigateToPage('practice')
+    } catch (error) {
+      abandon()
+      setDraftRecoveryStatus('failed')
+      setDraftSaveStatus(`Draft not saved. Recovery could not be completed. ${error instanceof Error ? error.message : ''}`)
+    }
+  }
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? 'app-shell--collapsed' : ''}`}>
+      <a className="skip-link" href="#main-workspace">Skip to workspace</a>
       {!isTakingExam && !isTakingInterpreting && <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></aside>}
-      <main className="main-content">
+      <main className="main-content" id="main-workspace" tabIndex={-1}>
         {firstPendingInterpretingSave && !currentPendingSaveVisibleInPanel && (
           <section className="notice-banner notice-banner--warning pending-interpreting-save" role="alert">
             <span>{pendingInterpretingSaves.length === 1 ? 'One interpreting self-review is still only in memory.' : `${pendingInterpretingSaves.length} interpreting self-reviews are still only in memory.`} Retry local storage when it is available.</span>
@@ -1662,23 +1882,30 @@ export default function App() {
             </button>
           </section>
         )}
+        {draftRecoveryStatus === 'failed' && <section className="notice-banner" role="alert"><p>{draftSaveStatus}</p><button className="button button--quiet" type="button" onClick={() => void loadWrittenDraftRecovery()}>Retry saved draft recovery</button></section>}
+        {practiceNotice && !activeExercise && currentPage === 'practice' && <p className="form-message" role="status">{practiceNotice}</p>}
+        {practiceNotice && currentPage === 'home' && <p className="form-message" role="status">{practiceNotice}</p>}
         {databaseNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{databaseNotice}</section>}
         {remoteDataNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{remoteDataNotice}</section>}
         {sessionHistoryStatus === 'failed' && <SessionHistoryNotice onRetry={() => void loadWrittenSessionHistory()} />}
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
+            <button className="rail-toggle button button--quiet" type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>☰</button>
             <div>
               <p className="eyebrow">{pageCopyForCurrentPage.eyebrow}</p>
               <h1>{pageCopyForCurrentPage.title}</h1>
             </div>
             <div className="topbar__meta">
               <span className="status-dot" aria-hidden="true" />
-              <span>Saved on this device</span>
+              <span>{settings.evaluationMode === 'local-only' ? 'Local-only feedback' : 'Cloud asks first'}</span>
             </div>
           </header>
         )}
         {currentPage === 'home' && (
           <Dashboard
+            savedDraft={recoveredDraft}
+            onContinueDraft={continueWrittenDraft}
+            onRecommendedPractice={(exercise) => void beginPractice({ exercise })}
             localProgress={localProgress}
             recentSessions={recentSessions}
             sessionHistoryStatus={sessionHistoryStatus}
@@ -1691,8 +1918,8 @@ export default function App() {
         )}
         {currentPage === 'practice' && !activeExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginPractice} /></>}
         {currentPage === 'interpreting' && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
-        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating || pendingConsent !== undefined} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={(answer) => { setDraftAnswer(answer); setWrittenClockPaused(false) }} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
-        {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
+        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating || pendingConsent !== undefined} saveStatus={draftSaveStatus} onPauseChange={setWrittenClockPaused} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
+        {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel sessionId={recentSessions.find((session) => session.exerciseId === activeExercise.id && session.answer === draftAnswer && session.feedback === feedback)?.id} answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} onSaveSelfReview={saveScorelessInterpretingSelfReview} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} pendingSave={currentPendingInterpretingSave !== undefined} isSaving={currentPendingInterpretingSave ? savingInterpretingSaveIds.has(currentPendingInterpretingSave.id) : false} onRetrySave={() => currentPendingInterpretingSave && void retryPendingInterpretingSave(currentPendingInterpretingSave.id)} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'exam' && !isEvaluatingExam && examEvaluationNotice && (
@@ -1700,7 +1927,7 @@ export default function App() {
             {examEvaluationNotice}
           </section>
         )}
-        {currentPage === 'exam' && !isEvaluatingExam && <ModelCapabilityStatus capability={capability} />}
+        {currentPage === 'exam' && !isEvaluatingExam && <details className="capability-details"><summary>Local AI availability</summary><ModelCapabilityStatus capability={capability} /></details>}
         {currentPage === 'exam' && isEvaluatingExam && (
           <div className="exam-modal-backdrop" role="presentation">
             <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="eval-heading">
@@ -1711,11 +1938,11 @@ export default function App() {
                   <span> Completed {examEvaluationProgress.completed} of {examEvaluationProgress.total} tasks.</span>
                 )}
               </p>
-              <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ height: '8px', background: 'var(--line)', borderRadius: '4px', overflow: 'hidden' }}>
                 <div
                   style={{
                     height: '100%',
-                    background: '#0284c7',
+                    background: '#175ac0',
                     width: `${examEvaluationProgress ? Math.round((examEvaluationProgress.completed / examEvaluationProgress.total) * 100) : 0}%`,
                     transition: 'width 200ms ease',
                   }}
@@ -1753,6 +1980,7 @@ export default function App() {
             onDiscardRun={handleDiscardExamRun}
           />
         )}
+        {currentPage === 'progress' && <LearningTools />}
         {currentPage === 'progress' && (
           <ProgressPage
             sessions={recentSessions}

@@ -83,6 +83,7 @@ test('cache preflight consumes the same 120-second budget as generation', async 
   const f = localFixture(t)
   await f.provider.prepare()
   const pending = f.provider.evaluate({ mode: 'written', learnerAnswer: 'synthetic answer', exercise: { sourceText: 'synthetic source', sourceLanguage: 'en', targetLanguage: 'zh' } })
+  await new Promise((resolve) => setImmediate(resolve))
   f.advance(119000)
   f.resolveCache()
   await assert.rejects(pending, /synthetic generation/)

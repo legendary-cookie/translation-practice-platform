@@ -45,7 +45,7 @@
 .accessible-modal--fallback .accessible-modal__panel { width: min(100%, 690px); }
 
 .accessible-modal-failure {
-  background: #fff5dc;
+  background: var(--warning-surface);
   border: 2px solid #8b4d1d;
   border-radius: 10px;
   color: #47280d;

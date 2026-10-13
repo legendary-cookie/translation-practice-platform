@@ -1,3 +1,7 @@
+import { FeedbackActions } from './FeedbackActions'
+import { useState } from 'react'
+import { database } from '../../storage/database'
+import { newReviewState } from '../../domain/learning'
 import { getLanguage } from '../../domain/languages'
 import type { Exercise, FeedbackAnnotation, ScoreDimension, TranslationFeedback } from '../../domain/types'
 
@@ -9,27 +13,44 @@ const dimensionLabels: Record<ScoreDimension, string> = {
   taskStyle: 'Task style and register',
 }
 
-function Evidence({ issue, exercise }: { issue: FeedbackAnnotation; exercise: Exercise }) {
+function Evidence({ issue, exercise, sessionId, issueIndex }: { issue: FeedbackAnnotation; exercise: Exercise; sessionId?: string; issueIndex: number }) {
+  const [saveMessage, setSaveMessage] = useState<string>()
+  const [saving, setSaving] = useState(false)
+  async function saveIssue() {
+    setSaving(true)
+    try {
+      await database.saveLearningCard({ id: crypto.randomUUID(), kind: 'mistake', source: issue.sourceQuote || issue.learnerQuote || exercise.title, target: issue.suggestion, sourceLanguage: issue.sourceQuote ? exercise.sourceLanguage : exercise.targetLanguage, targetLanguage: exercise.targetLanguage, notes: `${dimensionLabels[issue.dimension]}: ${issue.explanation}`, dimension: issue.dimension, learnerQuote: issue.learnerQuote, createdAt: new Date().toISOString(), review: newReviewState() })
+      setSaveMessage('Saved in Progress → Mistake notebook. Edit the suggestion before relying on it.')
+    } catch { setSaveMessage('This note could not be saved. Try again when local storage is available.') }
+    finally { setSaving(false) }
+  }
   const sourceLanguage = getLanguage(exercise.sourceLanguage)
   const targetLanguage = getLanguage(exercise.targetLanguage)
   return (
     <article className="issue-card">
       <div className="issue-card__heading"><span className="issue-card__dimension">{dimensionLabels[issue.dimension]}</span><span aria-hidden="true">↘</span></div>
+      <details className="evidence-details"><summary>Read evidence and revision</summary>
       {issue.sourceQuote && <div className="evidence-block"><span className="evidence-label">Source evidence</span><blockquote dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{issue.sourceQuote}</blockquote></div>}
       {issue.learnerQuote && <div className="evidence-block"><span className="evidence-label">Your answer</span><blockquote dir={targetLanguage.direction} lang={exercise.targetLanguage}>{issue.learnerQuote}</blockquote></div>}
       <p className="issue-explanation">{issue.explanation}</p>
       <div className="suggestion"><span>Try this</span><p>{issue.suggestion}</p></div>
+      </details>
+      <button className="button button--quiet" type="button" disabled={saving} onClick={() => void saveIssue()}>{saving ? 'Saving…' : 'Save revision note'}</button>
+      <FeedbackActions issue={issue} exercise={exercise} sessionId={sessionId} issueIndex={issueIndex} />
+      {saveMessage && <p className="muted-copy" role="status">{saveMessage}</p>}
     </article>
   )
 }
 
 export function FeedbackPanel({
+  sessionId,
   answer,
   exercise,
   feedback,
   onRevise,
   onChangeSetup,
 }: {
+  sessionId?: string
   answer: string
   exercise: Exercise
   feedback: TranslationFeedback
@@ -46,7 +67,7 @@ export function FeedbackPanel({
         <div className="feedback-columns"><div><span className="eyebrow">What is working</span><ul className="feedback-list">{feedback.strengths.length ? feedback.strengths.map((strength) => <li key={strength}>{strength}</li>) : <li>No specific strengths were returned.</li>}</ul></div><div><span className="eyebrow">Other valid renderings</span>{feedback.alternatives.length ? <ul className="feedback-list">{feedback.alternatives.map((alternative) => <li key={alternative}>{alternative}</li>)}</ul> : <p className="muted-copy">The evaluator did not add an alternative for this pass.</p>}</div></div>
         <div className="uncertainty-box"><span className="eyebrow">Uncertainty</span><p>{feedback.uncertainty}</p></div>
       </section>
-      <section className="feedback-issues" aria-labelledby="evidence-heading"><div className="section-heading"><div><p className="eyebrow">Evidence and revision</p><h2 id="evidence-heading">Look closer.</h2></div><span className="section-heading__note">{feedback.issues.length} evidence note{feedback.issues.length === 1 ? '' : 's'}</span></div>{feedback.issues.length ? feedback.issues.map((issue, index) => <Evidence key={`${issue.dimension}-${index}`} issue={issue} exercise={exercise} />) : <div className="no-issues"><span>✓</span><p>No evidence-backed issues survived validation for this pass.</p></div>}<div className="answer-review"><span className="eyebrow">Submitted answer</span><p dir={getLanguage(exercise.targetLanguage).direction} lang={exercise.targetLanguage}>{answer}</p></div></section>
+      <section className="feedback-issues" aria-labelledby="evidence-heading"><div className="section-heading"><div><p className="eyebrow">Evidence and revision</p><h2 id="evidence-heading">Look closer.</h2></div><span className="section-heading__note">{feedback.issues.length} evidence note{feedback.issues.length === 1 ? '' : 's'}</span></div>{feedback.issues.length ? feedback.issues.map((issue, index) => <Evidence key={`${issue.dimension}-${index}`} issue={issue} exercise={exercise} sessionId={sessionId} issueIndex={index} />) : <div className="no-issues"><span>✓</span><p>No evidence-backed issues survived validation for this pass.</p></div>}<div className="answer-review"><span className="eyebrow">Submitted answer</span><p dir={getLanguage(exercise.targetLanguage).direction} lang={exercise.targetLanguage}>{answer}</p></div></section>
     </div>
   )
 }

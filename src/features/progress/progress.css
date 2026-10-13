@@ -4,7 +4,7 @@
 .progress-empty h2 { color: var(--accent-deep); font-size: clamp(28px, 4vw, 42px); letter-spacing: -0.06em; margin: 0 0 12px; }
 .progress-empty > p:not(.eyebrow) { color: var(--muted); font-size: 14px; line-height: 1.7; margin: 0 0 24px; max-width: 490px; }
 
-.progress-overview { align-items: center; background: var(--accent-deep); border-radius: 21px; color: white; display: flex; justify-content: space-between; padding: clamp(25px, 4vw, 40px); }
+.progress-overview { align-items: center; background: var(--hero); border-radius: 21px; color: white; display: flex; justify-content: space-between; padding: clamp(25px, 4vw, 40px); }
 .progress-overview .eyebrow { color: #b9d9bd; }
 .progress-overview h2 { font-size: clamp(29px, 4vw, 43px); letter-spacing: -0.06em; line-height: 1; margin: 0 0 13px; }
 .progress-overview p:not(.eyebrow) { color: #d9e9da; font-size: 13px; line-height: 1.6; margin: 0; max-width: 490px; }
@@ -36,16 +36,16 @@
 .trend-row__label { display: grid; gap: 3px; min-width: 0; }
 .trend-row__label span, .direction-row span:first-child { color: var(--ink); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trend-row__label small { color: var(--muted); font-size: 10px; }
-.trend-row__track { background: #e8eee7; border-radius: 99px; height: 7px; overflow: hidden; }
+.trend-row__track { background: var(--line); border-radius: 99px; height: 7px; overflow: hidden; }
 .trend-row__track span { background: var(--accent); border-radius: inherit; display: block; height: 100%; }
 .trend-row > strong { color: var(--accent-deep); font-size: 12px; text-align: right; }
 .skill-row { display: grid; gap: 7px; }
 .skill-row > div:first-child { align-items: center; color: var(--muted); display: flex; font-size: 11px; justify-content: space-between; }
 .skill-row strong { color: var(--accent-deep); font-size: 12px; }
-.direction-row { align-items: center; border-bottom: 1px solid #edf1ec; display: flex; gap: 12px; justify-content: space-between; padding-bottom: 11px; }
+.direction-row { align-items: center; border-bottom: 1px solid var(--line); display: flex; gap: 12px; justify-content: space-between; padding-bottom: 11px; }
 .direction-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .direction-row span:last-child { color: var(--muted); font-size: 11px; white-space: nowrap; }
-.progress-card--note { background: #edf4ec; border-color: #d9e7d8; }
+.progress-card--note { background: var(--surface-soft); border-color: #d9e7d8; }
 .progress-card__mark { color: var(--accent); font-size: 23px; }
 .progress-card--note h3 { margin: 13px 0 8px; }
 .progress-card--note p { color: var(--muted); font-size: 12px; line-height: 1.65; margin: 0; }
@@ -57,14 +57,14 @@
 .settings-card__heading { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 21px; }
 .settings-card h3 { color: var(--accent-deep); font-size: 19px; letter-spacing: -0.035em; margin: 0; }
 .settings-card__badge, .settings-card__status { border-radius: 99px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: 0.07em; padding: 6px 9px; text-transform: uppercase; white-space: nowrap; }
-.settings-card__badge { background: #edf4ec; }
-.settings-card__status { background: #e9eee7; color: var(--muted); }
-.settings-card__status--ready { background: #d5ead8; color: var(--accent-deep); }
-.settings-card__status--preparing { background: #fff5dc; color: #8a6420; }
-.settings-card__status--unavailable { background: #f8e8e2; color: #8d402f; }
+.settings-card__badge { background: var(--surface-soft); }
+.settings-card__status { background: var(--surface-soft); color: var(--muted); }
+.settings-card__status--ready { background: var(--accent-soft); color: var(--accent-deep); }
+.settings-card__status--preparing { background: var(--warning-surface); color: var(--warning-ink); }
+.settings-card__status--unavailable { background: var(--error-surface); color: var(--error-ink); }
 .mode-choice-grid { display: grid; gap: 11px; grid-template-columns: 1fr 1fr; }
 .mode-choice { align-items: flex-start; border: 1px solid var(--line); border-radius: 11px; cursor: pointer; display: flex; gap: 11px; padding: 15px; }
-.mode-choice--selected { background: #eef5ed; border-color: #9dbda5; }
+.mode-choice--selected { background: var(--surface-soft); border-color: #9dbda5; }
 .mode-choice input { accent-color: var(--accent); margin-top: 3px; }
 .mode-choice span { display: grid; gap: 7px; }
 .mode-choice strong { color: var(--accent-deep); font-size: 13px; }
@@ -72,16 +72,16 @@
 .settings-card__copy { color: var(--muted); font-size: 12px; line-height: 1.65; margin: -5px 0 19px; max-width: 760px; }
 .settings-card__copy--small { margin: 17px 0 0; }
 .model-status-grid { display: grid; gap: 11px; grid-template-columns: 1fr 1fr; margin-bottom: 20px; }
-.model-status-grid > div { background: #f2f6f1; border-radius: 9px; display: grid; gap: 5px; padding: 12px; }
+.model-status-grid > div { background: var(--surface-soft); border-radius: 9px; display: grid; gap: 5px; padding: 12px; }
 .model-status-grid span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .model-status-grid strong { color: var(--accent-deep); font-size: 12px; }
-.settings-error { background: #f8e8e2; border-radius: 8px; color: #8d402f; font-size: 12px; line-height: 1.5; margin: 0 0 15px; padding: 10px; }
+.settings-error { background: var(--error-surface); border-radius: 8px; color: var(--error-ink); font-size: 12px; line-height: 1.5; margin: 0 0 15px; padding: 10px; }
 .settings-form { display: grid; gap: 15px; margin-bottom: 17px; max-width: 620px; }
 .field-help { color: var(--muted); font-size: 11px; line-height: 1.55; margin: -4px 0 0; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.button--danger { background: #f8e8e2; border: 1px solid #eed1c7; color: #8d402f; }
+.button--danger { background: var(--error-surface); border: 1px solid #eed1c7; color: var(--error-ink); }
 .delete-confirmation { background: #fff5f0; border: 1px solid #eed1c7; border-radius: 10px; margin-top: 17px; padding: 14px; }
-.delete-confirmation strong { color: #8d402f; display: block; font-size: 13px; }
+.delete-confirmation strong { color: var(--error-ink); display: block; font-size: 13px; }
 .delete-confirmation p { color: #8d6257; font-size: 11px; line-height: 1.5; margin: 6px 0 12px; }
 
 @media (max-width: 900px) {

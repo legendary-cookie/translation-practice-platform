@@ -2,6 +2,10 @@
 
 Lingo Practice is a local-first PWA for written, news, and audio interpreting practice across seven languages: Chinese, English, Russian, French, Hindi, Spanish, and Arabic. The first release includes the twelve Chinese-centered directions and works without an account.
 
+## New to the app?
+
+Start with the [simple getting-started guide](docs/USER-GUIDE.md). It walks through installation, your first exercise, larger text, saved work, and speaking practice. No coding knowledge or AI setup is needed to begin.
+
 ## Download 0.1.1
 
 | Platform | Download |

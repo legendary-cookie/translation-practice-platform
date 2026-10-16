@@ -63,6 +63,19 @@ const report = { profile, checks: [], posts: [], errors: [], diagnostics: [] }
     report.checks.push('Synthetic written task produces validated local feedback with networking disabled after preparation')
     console.log('PASS local inference', report.evaluationMs)
     await page.screenshot({ path: path.join(output, 'desktop-model-feedback.png'), fullPage: true })
+    await page.reload()
+    await page.getByRole('heading', { name: 'Translate with intention.' }).waitFor()
+    await nav('Settings')
+    const offlinePrepare = page.getByRole('button', { name: /^(Prepare local model|Prepare again|Retry local model)/ })
+    await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(button => /^(Prepare local model|Prepare again|Retry local model)/.test(button.textContent))?.disabled)
+    const offlineStarted = Date.now()
+    await offlinePrepare.click()
+    await page.waitForFunction(() => document.querySelector('.settings-card__status--ready, .settings-card__status--unavailable'), {}, { timeout: 150000 })
+    assert.equal(await page.locator('.settings-card__status--ready').count(), 1, await page.locator('.model-status-grid').innerText())
+    report.offlineReloadPreparationMs = Date.now() - offlineStarted
+    report.checks.push('A fresh document reloads the shell, optional runtime, worker and cached model while networking remains disabled')
+    assert.deepEqual(report.errors, [])
+    console.log('PASS offline reload and model warm-up', report.offlineReloadPreparationMs)
   } catch (error) {
     report.failure = error.message
     console.error(error)

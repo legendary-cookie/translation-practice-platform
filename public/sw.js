@@ -148,7 +148,7 @@ self.addEventListener('fetch', (event) => {
       const networkResponse = await fetch(request)
       if (networkResponse.ok && !request.headers.has('range')) {
         const responseCopy = networkResponse.clone()
-        void caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy))
+        await caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy)).catch(() => undefined)
       }
       return networkResponse
     } catch {

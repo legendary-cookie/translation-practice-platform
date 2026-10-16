@@ -1091,4 +1091,6 @@ export const zhCN: Record<string, string> = {
   "Choose an audio file of 25 MiB or less.": "请选择不超过 25 MiB 的音频文件。",
   "Choose an audio clip of 10 minutes or less.": "请选择不超过 10 分钟的音频片段。",
   "All saved cards are mastered; mark one active to schedule it again.": "所有已保存卡片均已掌握；将卡片标为未掌握后可重新安排复习。",
+  "Practice records were deleted, but workspace preferences could not be reset. Retry Delete local data in Settings.": "练习记录已删除，但工作区偏好设置未能重置。请在设置中重试“删除本地数据”。",
+  "Local data could not be deleted. Retry when storage is available.": "本地数据未能删除。请在存储恢复可用后重试。",
 }

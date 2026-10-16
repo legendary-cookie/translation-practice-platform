@@ -10,5 +10,6 @@
 - Document observed reader output, TalkBack formatting announcements and qualification limits.
 - Resolve PR follow-up for interrupted deletion, consistent exports, audio import limits, unsaved interpreting confirmation, stale-tab starts, cloud URL/key normalization, active review dates and dark report readability.
 - Explicitly prepare the Electron binary during Windows packaging for clean CI installs.
+- Keep lazy cache writes alive, avoid the AI runtime on first-launch capability checks, make exam evaluation progress accessible and report partial preference-reset failures with a retry.
 
 Windows packages are unsigned and Android packages are debug-signed. Android local AI remains gated. Model scores remain fallible practice estimates.

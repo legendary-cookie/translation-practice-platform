@@ -137,8 +137,7 @@ export function SettingsPage({
       setIsDeletePending(false)
       setMessage('Local sessions and settings have been deleted from this browser.')
     } catch (error) {
-      const reason = error instanceof Error ? ` (${error.message})` : ''
-      setDataActionError(`Local data could not be deleted${reason}. The records may still be stored in this browser.`)
+      setDataActionError(error instanceof Error ? error.message : 'Local data could not be deleted. Retry when storage is available.')
     } finally {
       setIsDeletingData(false)
     }

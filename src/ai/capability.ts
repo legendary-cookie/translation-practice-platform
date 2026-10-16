@@ -166,7 +166,7 @@ async function detectWebGpu(signals: NavigatorSignals): Promise<CapabilityAssess
   }
 }
 
-async function detectStorage(): Promise<CapabilityAssessment['storage']> {
+async function detectStorage(checkModelCache: boolean): Promise<CapabilityAssessment['storage']> {
   if (typeof navigator === 'undefined' || !navigator.storage?.estimate) {
     return {
       status: 'unknown',
@@ -179,8 +179,11 @@ async function detectStorage(): Promise<CapabilityAssessment['storage']> {
     const usageBytes = estimate.usage
     const quotaBytes = estimate.quota
     const freeBytes = usageBytes !== undefined && quotaBytes !== undefined ? Math.max(0, quotaBytes - usageBytes) : undefined
-    const { hasModelInCache, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
-    const modelCached = await hasModelInCache(LOCAL_MODEL_REQUIREMENTS.modelId, prebuiltAppConfig).catch(() => false)
+    let modelCached: boolean | undefined
+    if (checkModelCache) {
+      const { hasModelInCache, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
+      modelCached = await hasModelInCache(LOCAL_MODEL_REQUIREMENTS.modelId, prebuiltAppConfig).catch(() => false)
+    }
     const persistent = typeof navigator.storage.persisted === 'function' ? await navigator.storage.persisted() : undefined
 
     if (freeBytes !== undefined && freeBytes < LOCAL_MODEL_STORAGE_RESERVE_BYTES && !modelCached) {
@@ -290,7 +293,7 @@ export function createInitialCapability(): CapabilityAssessment {
   }
 }
 
-export async function detectDeviceCapability(timeoutMs = CAPABILITY_CHECK_TIMEOUT_MS): Promise<CapabilityAssessment> {
+export async function detectDeviceCapability(timeoutMs = CAPABILITY_CHECK_TIMEOUT_MS, checkModelCache = false): Promise<CapabilityAssessment> {
   if (typeof navigator === 'undefined') {
     return createInitialCapability()
   }
@@ -308,7 +311,7 @@ export async function detectDeviceCapability(timeoutMs = CAPABILITY_CHECK_TIMEOU
       features: [],
       reason: 'WebGPU adapter detection timed out. Retry the device capability check from Settings.',
     })),
-    withCapabilityDeadline(detectStorage(), timeoutMs, () => ({
+    withCapabilityDeadline(detectStorage(checkModelCache), timeoutMs, () => ({
       status: 'unknown' as const,
       reason: 'The browser storage check timed out. Model caching remains best-effort; retry the device capability check from Settings.',
     })),

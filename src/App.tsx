@@ -506,12 +506,12 @@ export default function App() {
   remoteDataClearHandlerRef.current = handleRemoteDataCleared
   useEffect(() => subscribeToDataCleared((epoch) => remoteDataClearHandlerRef.current(epoch)), [])
 
-  async function recheckDeviceCapability() {
+  async function recheckDeviceCapability(checkModelCache = hadLocalModelReady()) {
     const generation = ++capabilityCheckGenerationRef.current
     setIsCheckingCapability(true)
     setCapability(createInitialCapability())
     try {
-      const nextCapability = await detectDeviceCapability()
+      const nextCapability = await detectDeviceCapability(undefined, checkModelCache)
       if (capabilityCheckGenerationRef.current === generation) setCapability(nextCapability)
     } catch (error) {
       if (capabilityCheckGenerationRef.current === generation) {
@@ -543,6 +543,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false
+    if (!hadLocalModelReady()) return
     void localProvider.isCached().then((cached) => {
       if (!cancelled && hadLocalModelReady() && !cached) {
         setLocalProgress({
@@ -763,7 +764,14 @@ export default function App() {
     clearingWrittenDataRef.current = false
     setClearingWrittenData(false)
     setDraftRecoveryStatus('ready')
-    try { await clearWorkspacePreferences() } catch { /* Appearance preferences contain no practice content. */ }
+    try {
+      await clearWorkspacePreferences()
+    } catch {
+      const notice = 'Practice records were deleted, but workspace preferences could not be reset. Retry Delete local data in Settings.'
+      resetUiAfterLocalDataClear(nextProviderEpoch, notice)
+      setCurrentPage('settings')
+      throw new Error(notice)
+    }
     resetUiAfterLocalDataClear(nextProviderEpoch)
   }
 
@@ -1876,7 +1884,7 @@ export default function App() {
   }
 
   // Move to the new workspace after a view change, never after typing or timer ticks.
-  const workspaceView = `${currentPage}:${activeExercise?.id ?? ''}:${Boolean(feedback)}:${activeInterpretingExercise?.id ?? ''}:${Boolean(interpretingFeedback)}:${examView}`
+  const workspaceView = `${currentPage}:${activeExercise?.id ?? ''}:${Boolean(feedback)}:${activeInterpretingExercise?.id ?? ''}:${Boolean(interpretingFeedback)}:${examView}:${isEvaluatingExam}`
   const previousWorkspaceView = useRef(workspaceView)
   useEffect(() => {
     if (previousWorkspaceView.current === workspaceView) return
@@ -1956,10 +1964,10 @@ export default function App() {
         )}
         {currentPage === 'exam' && !isEvaluatingExam && <details className="capability-details"><summary>{t("Local AI availability")}</summary><ModelCapabilityStatus capability={capability} /></details>}
         {currentPage === 'exam' && isEvaluatingExam && (
-          <div className="exam-modal-backdrop" role="presentation">
-            <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="eval-heading">
+          <AccessibleModal open labelledBy="eval-heading" describedBy="eval-progress" onCancel={() => {}}>
+            <div>
               <h3 id="eval-heading" className="exam-modal__title">{t("Evaluating Exam Submissions…")}</h3>
-              <p className="exam-modal__body">{t("Assessing answered passages against the rubric dimensions.")}{examEvaluationProgress && (
+              <p id="eval-progress" className="exam-modal__body" role="status" aria-live="polite" aria-atomic="true">{t("Assessing answered passages against the rubric dimensions.")}{examEvaluationProgress && (
                   <span>{t(" Completed ")}{examEvaluationProgress.completed}{t(" of ")}{examEvaluationProgress.total}{t(" tasks.")}</span>
                 )}
               </p>
@@ -1974,7 +1982,7 @@ export default function App() {
                 />
               </div>
             </div>
-          </div>
+          </AccessibleModal>
         )}
         {currentPage === 'exam' && !isEvaluatingExam && examView === 'runner' && selectedExamProfile && (
           <ExamRunner
@@ -2025,12 +2033,12 @@ export default function App() {
             onRetryExamHistory={() => void loadExamHistory()}
           />
         )}
-        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} isCheckingCapability={isCheckingCapability} onRecheckCapability={() => void recheckDeviceCapability()} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
+        {currentPage === 'settings' && <SettingsPage capability={capability} cloudDraft={cloudDraft} localProgress={localProgress} localProvider={localProvider} isCheckingCapability={isCheckingCapability} onRecheckCapability={() => void recheckDeviceCapability(true)} onCloudDraftChange={(draft) => { cloudDraftRevisionRef.current += 1; setCloudDraft(draft) }} onDeleteData={clearLocalData} onEvaluationModeChange={(mode) => updateSettings({ evaluationMode: mode })} onPrepareLocal={prepareLocalModel} onSaveCloudPreferences={saveCloudPreferences} settings={settings} settingsHydrationStatus={settingsHydrationStatus} onRetrySettings={() => void loadStoredSettings()} sessionCount={recentSessions.length} writtenHistoryStatus={sessionHistoryStatus} interpretingSessionCount={recentInterpretingSessions.length} interpretingHistoryStatus={interpretingHistoryStatus} examResultCount={recentExamResults.length} examHistoryStatus={examHistoryStatus} onRetryHistory={retryHistoryReads} />}
       </main>
       {!isTakingExam && !isTakingInterpreting && <div className="mobile-navigation"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></div>}
       {activeExercise && pendingConsent && <ConsentDialog exercise={pendingConsent.exercise} request={pendingConsent.request} isSubmitting={isEvaluating} onCancel={() => { if (isEvaluating) return; pendingConsent.request.revokePreview?.(); setPendingConsent(undefined); setWrittenClockPaused(false); window.setTimeout(() => document.getElementById('translation-answer')?.focus(), 0) }} onConfirm={() => void confirmCloudEvaluation()} />}
       {pendingInterpretingConsent && <ConsentDialog exercise={pendingInterpretingConsent.request.exercise} request={pendingInterpretingConsent.request} isSubmitting={isEvaluating} onCancel={() => { if (isEvaluating) return; pendingInterpretingConsent.request.revokePreview?.(); setPendingInterpretingConsent(undefined); setPracticeNotice('Cloud evaluation was not approved. Audio and transcripts remain local.') }} onConfirm={() => void confirmInterpretingCloudEvaluation()} />}
-      {pendingExamConsent && (
+      {pendingExamConsent && !isEvaluatingExam && (
         <ConsentDialog
           exercise={pendingExamConsent.request.exercise}
           request={pendingExamConsent.request}

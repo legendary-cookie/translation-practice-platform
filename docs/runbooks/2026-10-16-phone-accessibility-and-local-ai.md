@@ -71,9 +71,9 @@ Limits: the matrix covers basic written English/Chinese discrimination, not cali
 
 | Command | Observed result |
 | --- | --- |
-| `npm test` | Exit 0; 135 passed, none failed/skipped |
+| `npm test` | Exit 0; 137 passed, none failed/skipped |
 | `npm audit --omit=dev --audit-level=moderate` | Exit 0; zero production vulnerabilities |
-| Browser gates | 108 English journey assertions, six Chinese interface checks, two startup recovery checks, two review recovery checks; 82 axe scans with zero violations and ten accessibility interaction checks |
+| Browser gates | 108 English journey assertions, six Chinese interface checks, two startup recovery checks, five review recovery checks; 82 matrix axe scans plus one evaluation-dialog scan with zero violations, and ten accessibility interaction checks |
 | `npm run package:windows` | Exit 0; final unsigned x64 installer and portable EXE |
 | `npm run package:android` | Exit 0; final debug APK; separate QA variant also built and installed successfully |
 | `apksigner verify --print-certs` | Exit 0; Android Debug certificate |
@@ -94,6 +94,8 @@ Local audio import rejects files over 25 MiB before creating a URL and clips ove
 The Save & Exit review finding was checked through a real production-browser failure injection: evaluation failed and the resumable write rejected, yet the exact answer remained and Save & Exit worked once storage was available. The runner is conditionally unmounted while evaluation runs. This path received regression coverage; no speculative state rewrite was made.
 
 Clean CI initially failed because Electron 44's npm package does not run a binary postinstall. The canonical packaging command now invokes its pinned binary installer before using the custom distribution. Local build and package gates were repeated after the follow-up.
+
+The final review pass also ties lazy service-worker cache writes to the response lifetime and preserves network use if caching fails. New users do not load the multi-megabyte model runtime during capability detection or ordinary navigation; cache validation runs for a previously prepared model or in Settings. Exam evaluation uses one accessible modal with polite progress, including cloud evaluation after consent. A native/workspace preference-reset failure after practice deletion is reported as a partial failure, retains the Settings retry action, and never reports complete deletion. Regression checks hold a cache write open, verify startup makes no large-runtime request, inject a preference-reset rejection and complete its explicit retry, and hold a consented mock exam request while checking modal focus, Tab/Escape behavior and axe output.
 
 ## Remaining work and rollback
 

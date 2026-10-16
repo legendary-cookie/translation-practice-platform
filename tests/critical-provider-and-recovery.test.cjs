@@ -47,6 +47,16 @@ function localFixture(t) {
   return { provider, workers, resolveCache: () => resolveCache(true), generations: () => generations, advance: (ms) => { now += ms }, evaluationDelays }
 }
 
+test('first-launch capability detection skips the model runtime until cache checking is requested', async t => {
+  setGlobal(t, 'navigator', { userAgent: 'Synthetic desktop', deviceMemory: 16, storage: { estimate: async () => ({ quota: 10e9, usage: 0 }) } })
+  let cacheChecks = 0
+  const capability = load('../src/ai/capability.ts', { '@mlc-ai/web-llm': { hasModelInCache: async () => { cacheChecks++; return false }, prebuiltAppConfig: {} } })
+  await capability.detectDeviceCapability(500)
+  assert.equal(cacheChecks, 0)
+  await capability.detectDeviceCapability(500, true)
+  assert.equal(cacheChecks, 1)
+})
+
 test('local evidence rejection retries with the validation cause and accepts only corrected literal evidence', async (t) => {
   setGlobal(t, 'localStorage', storage())
   setGlobal(t, 'Worker', class { addEventListener() {} postMessage() {} terminate() {} })

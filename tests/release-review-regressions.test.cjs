@@ -4,6 +4,25 @@ const { createDataWriteCoordinator, DATA_EPOCH_STORAGE_KEY } = require('../src/s
 const { createCloudProvider } = require('../src/ai/cloud-provider.ts')
 const { loadImportedAudioMetadata } = require('../src/features/interpreting/audio-import-metadata.ts')
 
+test('a lazy service-worker asset response stays alive until its cache write settles', async () => {
+  const handlers = new Map()
+  let releaseWrite, startWrite
+  const writing = new Promise(resolve => { startWrite = resolve })
+  const gate = new Promise(resolve => { releaseWrite = resolve })
+  require('node:vm').runInNewContext(require('fs').readFileSync(require('path').resolve(__dirname, '../public/sw.js'), 'utf8'), {
+    self: { location: { origin: 'https://synthetic.invalid' }, addEventListener: (type, handler) => handlers.set(type, handler) },
+    caches: { match: async () => undefined, open: async () => ({ put: async () => { startWrite(); await gate } }) },
+    fetch: async () => new Response('synthetic worker'), URL, Headers, Response,
+  })
+  let response, settled = false
+  handlers.get('fetch')({ request: { method: 'GET', url: 'https://synthetic.invalid/assets/local-worker.js', mode: 'cors', destination: 'worker', headers: new Headers() }, respondWith(promise) { response = promise; promise.then(() => { settled = true }) } })
+  await writing
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(settled, false)
+  releaseWrite()
+  assert.equal(await (await response).text(), 'synthetic worker')
+})
+
 test('next review excludes mastered cards and invalid dates', () => {
   const { nextActiveReviewAt } = require('../src/domain/learning.ts')
   const active = { review: { dueAt: '2026-10-20T00:00:00Z' } }

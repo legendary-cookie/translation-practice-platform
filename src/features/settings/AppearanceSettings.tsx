@@ -2,9 +2,10 @@ import { t } from '../../i18n'
 import type { InterfaceLanguage } from '../../i18n'
 import { useEffect, useState } from 'react'
 import { CHINESE_DIRECTIONS } from '../../domain/languages'
+import { persistNativeWorkspace, WORKSPACE_PREFERENCE_KEY } from '../../native/preferences'
 
 export type WorkspacePreferences = { interfaceLanguage: InterfaceLanguage; theme: 'system' | 'light' | 'dark'; fontSize: number; lineHeight: number; goal: string; directionId: string; experience: 'all' | 'beginner' | 'intermediate' | 'advanced'; welcomed: boolean }
-const KEY = 'lingo-workspace-preferences-v1'
+const KEY = WORKSPACE_PREFERENCE_KEY
 const EVENT = 'lingo-preferences-change'
 export const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = { interfaceLanguage: 'en', theme: 'system', fontSize: 18, lineHeight: 1.9, goal: 'Everyday practice', directionId: CHINESE_DIRECTIONS[0].id, experience: 'all', welcomed: false }
 
@@ -24,7 +25,8 @@ export function readWorkspacePreferences(): WorkspacePreferences {
   } catch { return DEFAULT_WORKSPACE_PREFERENCES }
 }
 
-export function clearWorkspacePreferences() {
+export async function clearWorkspacePreferences() {
+  await persistNativeWorkspace(null)
   localStorage.removeItem(KEY)
   window.dispatchEvent(new Event(EVENT))
 }
@@ -38,13 +40,14 @@ export function useWorkspacePreferences() {
     window.addEventListener('storage', sync)
     return () => { window.removeEventListener(EVENT, sync); window.removeEventListener('storage', sync) }
   }, [])
-  function update(change: Partial<WorkspacePreferences>) {
+  async function update(change: Partial<WorkspacePreferences>) {
     const next = { ...readWorkspacePreferences(), ...change }
     try {
       localStorage.setItem(KEY, JSON.stringify(next))
       setPreferences(next)
       setError(undefined)
       window.dispatchEvent(new Event(EVENT))
+      await persistNativeWorkspace(JSON.stringify(next))
     } catch { setError('This browser could not save the preference. Enable local storage and try again.') }
   }
   return { preferences, update, error }

@@ -47,6 +47,8 @@ The Android manifest requests microphone permission only for the interpreting re
 
 JSON exports use Android's system document picker without storage permissions or a shared temporary archive. The archive stays in memory while choosing a destination, outside Android's size-limited saved-state bundle. If Android kills the process during export, retry the export; the saved workspace remains unchanged. Exports are reference-only, without import/restore.
 
+Language and appearance preferences use native Android Preferences and hydrate the WebView mirror before React mounts. Writes/removal are serialized, and local data deletion removes the native copy too. New audio records store inline bytes in IndexedDB schema 7 with strict durability, avoiding external Blob backing files. The exact source/response audio hashes and Chinese preference survived a full emulator reboot. Readable legacy Blob records are supported, but already-unreadable old files cannot be reconstructed by this change; export earlier experimental builds before updating when possible.
+
 ## Repeat native checks
 
 `node scripts/desktop-checks.cjs` uses a disposable Electron profile and checks exact draft recovery after a full app relaunch. Set `DESKTOP_QA_EXECUTABLE` to the absolute unpacked `Lingo Practice.exe` path to check the packaged runtime. `node scripts/desktop-model-check.cjs` downloads the optional model into a separate QA profile and performs a real synthetic inference; this needs a compatible GPU, sufficient memory, and internet for initial preparation. Set `DESKTOP_QA_PROFILE` to reuse that QA cache.

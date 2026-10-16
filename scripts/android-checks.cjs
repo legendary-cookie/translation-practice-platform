@@ -80,6 +80,11 @@ async function hideKeyboard() {
     await page.waitForTimeout(1800)
     await page.getByRole('button', { name: 'Stop and save' }).click()
     await page.getByRole('button', { name: 'Save self-review without a score' }).click()
+    await page.getByText('Scoreless self-review and audio saved on this device. No automated score was generated.', { exact: true }).waitFor()
+    await browser.close()
+    adb('shell', 'am', 'force-stop', app)
+    adb('shell', 'am', 'start', '-W', '-n', `${app}/.MainActivity`)
+    await connect()
     await nav('Progress')
     await page.getByRole('button', { name: /Interpreting/ }).first().click()
     await page.getByRole('button', { name: 'Open saved self-review' }).first().click()
@@ -90,8 +95,13 @@ async function hideKeyboard() {
     pass('Emulator microphone records, saves a scoreless review, and replays the stored codec')
     await nav('Settings')
     await page.getByRole('button', { name: 'Export local JSON', exact: true }).click()
-    adb('shell', 'uiautomator', 'dump', '/sdcard/lingo-picker.xml')
-    const xml = adb('shell', 'cat', '/sdcard/lingo-picker.xml')
+    let xml = ''
+    for (let attempt = 0; attempt < 10; attempt++) {
+      adb('shell', 'uiautomator', 'dump', '/sdcard/lingo-picker.xml')
+      xml = adb('shell', 'cat', '/sdcard/lingo-picker.xml')
+      if (xml.includes('com.google.android.documentsui')) break
+      await page.waitForTimeout(200)
+    }
     assert.ok(xml.includes('com.google.android.documentsui'))
     const save = xml.match(/<node[^>]*resource-id="android:id\/button1"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
     assert.ok(save, 'System document picker Save control exists')
@@ -108,7 +118,19 @@ async function hideKeyboard() {
     pass('Native document picker writes readable JSON with the exact draft and saved audio')
     await page.locator('#interface-language').selectOption('zh-CN')
     await page.getByRole('heading', { name: '清楚了解数据边界。' }).waitFor()
-    await page.screenshot({ path: path.join(output, 'android-settings-chinese.png'), fullPage: true })
+    await page.waitForFunction(async () => {
+      const result = await window.Capacitor.nativePromise('Preferences', 'get', { key: 'lingo-workspace-preferences-v1' })
+      return JSON.parse(result.value ?? '{}').interfaceLanguage === 'zh-CN'
+    })
+    await browser.close()
+    adb('shell', 'am', 'force-stop', app)
+    adb('shell', 'am', 'start', '-W', '-n', `${app}/.MainActivity`)
+    await connect()
+    await page.waitForFunction(() => document.documentElement.lang === 'zh-CN')
+    await nav('设置')
+    assert.equal(await page.locator('#interface-language').inputValue(), 'zh-CN')
+    fs.writeFileSync(path.join(output, 'android-settings-chinese.png'), execFileSync(adbPath, ['-s', serial, 'exec-out', 'screencap', '-p']))
+    pass('Native interface preferences survive an immediate process kill and relaunch')
     assert.deepEqual(report.errors, [])
     assert.deepEqual(report.posts, [])
     pass('Chinese Android settings render with no uncaught errors or content POSTs')

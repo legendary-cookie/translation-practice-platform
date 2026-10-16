@@ -763,7 +763,7 @@ export default function App() {
     clearingWrittenDataRef.current = false
     setClearingWrittenData(false)
     setDraftRecoveryStatus('ready')
-    try { clearWorkspacePreferences() } catch { /* Appearance preferences contain no practice content. */ }
+    try { await clearWorkspacePreferences() } catch { /* Appearance preferences contain no practice content. */ }
     resetUiAfterLocalDataClear(nextProviderEpoch)
   }
 

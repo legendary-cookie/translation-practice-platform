@@ -37,7 +37,7 @@ Spaced review uses deterministic SM-2 (Again/Hard/Good/Easy map to quality 1/3/4
 
 Home suggestions use real saved issues and practice frequency in the latest language direction. Early history is explicitly labeled insufficient for a trend; no starting score or imaginary data point is added. Learning tools perform no AI or network request. Model-generated drills and alternative unqualified model tiers remain outside this release.
 
-IndexedDB schema 6 preserves the earlier stores and adds draft, learning-card, and feedback-rating stores. JSON export version 5 includes those records, the current original catalog, detached snapshots for new written sessions, interpreting audio, exam snapshots, and appearance preferences. Legacy written sessions may not contain a historical passage snapshot; the exported current catalog is a reference for them. API keys remain absent. Export is reference-only; this release has no import/restore flow.
+IndexedDB schema 7 preserves the earlier stores, including draft, learning-card, and feedback-rating stores. New audio is stored as standalone bytes with a strict transaction commit and reconstructed as a Blob for replay/export; readable legacy Blob records remain supported. Android appearance/language preferences use native Preferences with a WebView mirror hydrated before startup. JSON export version 5 includes local records, the current original catalog, detached snapshots for new written sessions, interpreting audio, exam snapshots, and appearance preferences. Legacy written sessions may not contain a historical passage snapshot; the exported current catalog is a reference for them. API keys remain absent. Export is reference-only; this release has no import/restore flow.
 
 ## Browser verification
 

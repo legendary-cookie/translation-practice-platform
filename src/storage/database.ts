@@ -1,4 +1,5 @@
 import { EXERCISES } from '../data/exercises'
+import { serializeAudioRecording, readAudioRecording, type StoredAudioRecording } from './audio-record-storage'
 import type { FeedbackRating } from '../domain/profile'
 import { assertWrittenDraftEditor } from './written-draft-editor'
 import type { LearningCard, WrittenDraft } from '../domain/learning'
@@ -47,7 +48,7 @@ import {
 } from './exam-run-editor'
 
 const DATABASE_NAME = 'lingo-practice-local'
-const DATABASE_VERSION = 6
+const DATABASE_VERSION = 7
 const SETTINGS_KEY = 'default'
 const DATABASE_UPGRADE_BLOCKED_NOTICE = 'A local database upgrade is waiting for another Lingo Practice tab. Close older tabs to continue; saved records are not being deleted.'
 
@@ -305,7 +306,7 @@ interface TranslationDatabaseSchema extends DBSchema {
   }
   recordings: {
     key: string
-    value: AudioRecordingRecord
+    value: StoredAudioRecording
     indexes: {
       'by-created-at': string
       'by-exercise-id': string
@@ -494,9 +495,11 @@ export const database = {
     recordings: AudioRecordingRecord[],
   ): Promise<void> {
     await withDataWrite(async () => {
+      const stored: StoredAudioRecording[] = []
+      for (const recording of recordings) stored.push(await serializeAudioRecording(recording))
       const db = await getDatabase()
-      const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite')
-      const recordingWrites = recordings.map((recording) => transaction.objectStore('recordings').put(recording))
+      const transaction = db.transaction(['recordings', 'interpretingSessions'], 'readwrite', { durability: 'strict' })
+      const recordingWrites = stored.map((recording) => transaction.objectStore('recordings').put(recording))
       recordingWrites.push(transaction.objectStore('interpretingSessions').put(session))
       await Promise.all(recordingWrites)
       await transaction.done
@@ -528,18 +531,22 @@ export const database = {
     const recordings = exerciseId
       ? await db.getAllFromIndex('recordings', 'by-exercise-id', exerciseId)
       : await db.getAllFromIndex('recordings', 'by-created-at')
-    return recordings.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    return recordings.map(readAudioRecording).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
   },
 
   async getAudioRecording(id: string): Promise<AudioRecordingRecord | undefined> {
     const db = await getDatabase()
-    return db.get('recordings', id)
+    const recording = await db.get('recordings', id)
+    return recording ? readAudioRecording(recording) : undefined
   },
 
   async saveAudioRecording(recording: AudioRecordingRecord): Promise<void> {
     await withDataWrite(async () => {
+      const stored = await serializeAudioRecording(recording)
       const db = await getDatabase()
-      await db.put('recordings', recording)
+      const transaction = db.transaction('recordings', 'readwrite', { durability: 'strict' })
+      await transaction.store.put(stored)
+      await transaction.done
     })
   },
 

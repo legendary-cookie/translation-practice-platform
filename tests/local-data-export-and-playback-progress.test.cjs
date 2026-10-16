@@ -100,18 +100,7 @@ test('exports recordings sequentially while retaining metadata and bytes', async
     }
   })
 
-  const replacements = {
-    getWrittenDraft: async () => undefined,
-    listLearningCards: async () => [],
-    listFeedbackRatings: async () => [],
-    getSettings: async () => ({ evaluationMode: 'local' }),
-    listSessions: async () => [],
-    listInterpretingSessions: async () => [],
-    listAudioRecordings: async () => recordings,
-    listExamRuns: async () => [],
-    listExamResults: async () => [],
-    listExamProfiles: async () => [],
-  }
+  const replacements = { readExportSnapshot: async () => ({ writtenDraft: undefined, learningCards: [], feedbackRatings: [], settings: { evaluationMode: 'local' }, sessions: [], interpretingSessions: [], recordings, examRuns: [], examResults: [], examProfiles: [] }) }
   const originals = Object.fromEntries(Object.keys(replacements).map((name) => [name, database[name]]))
   Object.assign(database, replacements)
 

@@ -29,6 +29,15 @@ export function newReviewState(now = new Date()): ReviewState {
   return { repetitions: 0, intervalDays: 0, ease: 2.5, dueAt: now.toISOString() }
 }
 
+export function nextActiveReviewAt(cards: LearningCard[]): number | undefined {
+  let next: number | undefined
+  for (const card of cards) {
+    const dueAt = Date.parse(card.review.dueAt)
+    if (!card.mastered && Number.isFinite(dueAt) && (next === undefined || dueAt < next)) next = dueAt
+  }
+  return next
+}
+
 /** SM-2 with Again/Hard/Good/Easy mapped to quality 1/3/4/5. */
 export function reviewCard(state: ReviewState, grade: 1 | 2 | 3 | 4, now = new Date()): ReviewState {
   const quality = [1, 3, 4, 5][grade - 1]

@@ -11,7 +11,7 @@
   padding: 1.5rem;
   border: 1px solid rgba(15, 23, 42, .12);
   border-radius: 1rem;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
 }
 
@@ -59,7 +59,7 @@
   padding: 1.25rem;
   border: 1px solid rgba(15, 23, 42, .12);
   border-radius: 1rem;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
 }
 
@@ -378,7 +378,7 @@
   padding: 1rem;
   border: 1px solid rgba(15, 23, 42, .12);
   border-radius: 1rem;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
 }
 
@@ -423,7 +423,7 @@
 
 .interpreting-segment-button--active {
   border-color: #0f766e;
-  background: #f0fdfa;
+  background: var(--accent-soft);
 }
 
 .interpreting-segment-button--active span:first-child {
@@ -471,7 +471,7 @@
 
 .interpreting-time {
   margin: 0;
-  color: #475569;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 

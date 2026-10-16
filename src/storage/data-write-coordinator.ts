@@ -66,6 +66,7 @@ export function createDataWriteCoordinator(options: {
   async function runWrite<T>(write: () => Promise<T> | T): Promise<T> {
     const requestedEpoch = capturedEpoch
     const execute = async () => {
+      if (requestedEpoch?.startsWith('pending:')) throw new DataEpochInvalidatedError()
       let storage: StorageLike | undefined
       try {
         storage = getStorage()
@@ -84,7 +85,7 @@ export function createDataWriteCoordinator(options: {
           // deletion fails closed and is never advertised as complete.
           return write()
         }
-        if (requestedEpoch !== currentEpoch) {
+        if (currentEpoch.startsWith('pending:') || requestedEpoch !== currentEpoch) {
           throw new DataEpochInvalidatedError()
         }
       }
@@ -113,7 +114,8 @@ export function createDataWriteCoordinator(options: {
 
     await locks.request(DATA_WRITE_LOCK_NAME, { mode: 'exclusive' }, async () => {
       const previousEpoch = readEpoch(storage)
-      if (capturedEpoch !== previousEpoch) throw new DataEpochInvalidatedError()
+      // An explicit, exclusively locked deletion may finish an interrupted clear.
+      if (capturedEpoch !== previousEpoch && !previousEpoch.startsWith('pending:')) throw new DataEpochInvalidatedError()
 
       const pendingEpoch = `pending:${createEpoch()}`
       storage.setItem(DATA_EPOCH_STORAGE_KEY, pendingEpoch)
@@ -154,7 +156,8 @@ export function createDataWriteCoordinator(options: {
     }
 
     return locks.request(DATA_WRITE_LOCK_NAME, { mode: 'exclusive' }, async () => {
-      if (readEpoch(storage) !== capturedEpoch) throw new DataEpochInvalidatedError()
+      const currentEpoch = readEpoch(storage)
+      if (currentEpoch.startsWith('pending:') || currentEpoch !== capturedEpoch) throw new DataEpochInvalidatedError()
       return operation()
     })
   }
@@ -179,7 +182,7 @@ export function createDataWriteCoordinator(options: {
       storage = getStorage()
       if (!storage) throw new DataEpochInvalidatedError()
       const currentEpoch = readEpoch(storage)
-      if (capturedEpoch !== currentEpoch) throw new DataEpochInvalidatedError()
+      if (currentEpoch.startsWith('pending:') || capturedEpoch !== currentEpoch) throw new DataEpochInvalidatedError()
     } catch (error) {
       if (error instanceof DataEpochInvalidatedError) throw error
       throw new DataEpochInvalidatedError()

@@ -1,4 +1,6 @@
 export const IMPORTED_AUDIO_METADATA_TIMEOUT_MS = 15_000
+export const IMPORTED_AUDIO_MAX_BYTES = 25 * 1024 * 1024
+export const IMPORTED_AUDIO_MAX_DURATION_MS = 10 * 60 * 1000
 
 export type ImportedAudioMetadata = {
   objectUrl: string
@@ -21,6 +23,7 @@ export async function loadImportedAudioMetadata(
   file: Blob,
   options: ImportedAudioMetadataOptions = {},
 ): Promise<ImportedAudioMetadata> {
+  if (file.size > IMPORTED_AUDIO_MAX_BYTES) throw new Error('Choose an audio file of 25 MiB or less.')
   const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
     ? options.timeoutMs as number
     : IMPORTED_AUDIO_METADATA_TIMEOUT_MS
@@ -53,6 +56,10 @@ export async function loadImportedAudioMetadata(
         const metadataAudio = audio
         if (!metadataAudio || !Number.isFinite(metadataAudio.duration) || metadataAudio.duration <= 0) {
           finish(() => reject(new Error('The selected audio file has no readable duration.')))
+          return
+        }
+        if (metadataAudio.duration * 1000 > IMPORTED_AUDIO_MAX_DURATION_MS) {
+          finish(() => reject(new Error('Choose an audio clip of 10 minutes or less.')))
           return
         }
         finish(() => resolve(Math.round(metadataAudio.duration * 1000)))

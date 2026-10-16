@@ -1219,6 +1219,7 @@ export default function App() {
   }
 
   function beginInterpreting(selection: InterpretingStart) {
+    if (clearingWrittenDataRef.current) return false
     localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
     setPracticeSetupMode('interpreting')
@@ -1233,6 +1234,7 @@ export default function App() {
     setPendingConsent(undefined)
     setPendingInterpretingConsent(undefined)
     setCurrentPage('interpreting')
+    return true
   }
 
   function resetPractice() {

@@ -840,45 +840,69 @@ export const database = {
     return results.sort((left, right) => right.completedAt.localeCompare(left.completedAt))
   },
 
-  async exportData(): Promise<ExportData> {
-    const [settings, sessions, interpretingSessions, recordings, examRuns, examResults, examProfiles] = await Promise.all([
-      this.getSettings(),
-      this.listSessions(),
-      this.listInterpretingSessions(),
-      this.listAudioRecordings(),
-      this.listExamRuns(),
-      this.listExamResults(),
-      this.listExamProfiles(),
+  async readExportSnapshot() {
+    const db = await getDatabase()
+    const transaction = db.transaction(['settings', 'sessions', 'interpretingSessions', 'recordings', 'examRuns', 'examResults', 'examProfiles', 'feedbackRatings', 'workspace', 'learningCards'], 'readonly')
+    const reads = Promise.all([
+      transaction.objectStore('settings').get(SETTINGS_KEY),
+      transaction.objectStore('sessions').getAll(),
+      transaction.objectStore('interpretingSessions').getAll(),
+      transaction.objectStore('recordings').getAll(),
+      transaction.objectStore('examRuns').getAll(),
+      transaction.objectStore('examResults').getAll(),
+      transaction.objectStore('examProfiles').getAll(),
+      transaction.objectStore('feedbackRatings').getAll(),
+      transaction.objectStore('workspace').get('written-draft'),
+      transaction.objectStore('learningCards').getAll(),
     ])
-    const exportedRecordings = []
-    for (const recording of recordings) {
-      const bytes = new Uint8Array(await recording.blob.arrayBuffer())
-      let binary = ''
-      const chunkSize = 0x8000
-      for (let index = 0; index < bytes.length; index += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
-      }
-      exportedRecordings.push({
-        ...recording,
-        dataUrl: `data:${recording.mimeType || 'application/octet-stream'};base64,${btoa(binary)}`,
-        blob: undefined,
-      })
-    }
+    const [snapshot] = await Promise.all([reads, transaction.done])
+    const [storedSettings, sessions, interpretingSessions, storedRecordings, examRuns, examResults, examProfiles, feedbackRatings, writtenDraft, learningCards] = snapshot
+    const completedRunIds = new Set(examResults.map(result => result.runId))
     return {
-      version: 5,
-      exerciseCatalog: structuredClone(EXERCISES),
-      feedbackRatings: await this.listFeedbackRatings(),
-      writtenDraft: await this.getWrittenDraft(),
-      learningCards: await this.listLearningCards(),
-      exportedAt: new Date().toISOString(),
-      settings,
-      sessions,
-      interpretingSessions,
-      recordings: exportedRecordings.map(({ blob: _blob, ...recording }) => recording),
-      examRuns,
-      examResults,
-      examProfiles,
+      settings: storedSettings ? { ...DEFAULT_SETTINGS, ...storedSettings, cloudSupportsAudio: storedSettings.cloudSupportsAudio ?? false } : { ...DEFAULT_SETTINGS },
+      sessions: sessions.sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+      interpretingSessions: interpretingSessions.sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+      recordings: storedRecordings.map(readAudioRecording).sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+      examRuns: examRuns.filter(run => !completedRunIds.has(run.id)).sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt)),
+      examResults: examResults.sort((left, right) => right.completedAt.localeCompare(left.completedAt)),
+      examProfiles, feedbackRatings, writtenDraft, learningCards,
     }
+  },
+
+  async exportData(): Promise<ExportData> {
+    return withDataWrite(async () => {
+      const snapshot = await this.readExportSnapshot()
+      const { settings, sessions, interpretingSessions, recordings, examRuns, examResults, examProfiles } = snapshot
+      const exportedRecordings = []
+      for (const recording of recordings) {
+        const bytes = new Uint8Array(await recording.blob.arrayBuffer())
+        let binary = ''
+        const chunkSize = 0x8000
+        for (let index = 0; index < bytes.length; index += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
+        }
+        exportedRecordings.push({
+          ...recording,
+          dataUrl: `data:${recording.mimeType || 'application/octet-stream'};base64,${btoa(binary)}`,
+          blob: undefined,
+        })
+      }
+      return {
+        version: 5,
+        exerciseCatalog: structuredClone(EXERCISES),
+        feedbackRatings: snapshot.feedbackRatings,
+        writtenDraft: snapshot.writtenDraft,
+        learningCards: snapshot.learningCards,
+        exportedAt: new Date().toISOString(),
+        settings,
+        sessions,
+        interpretingSessions,
+        recordings: exportedRecordings.map(({ blob: _blob, ...recording }) => recording),
+        examRuns,
+        examResults,
+        examProfiles,
+      }
+    })
   },
 
   async clearData(): Promise<void> {

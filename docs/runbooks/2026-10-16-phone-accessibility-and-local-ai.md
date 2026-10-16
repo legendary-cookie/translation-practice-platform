@@ -63,15 +63,17 @@ The actual worker/provider passed 14 cases: accurate, reversed and unrelated tra
 
 The packaged Windows app separately downloaded/prepared the model in 32.518 seconds and returned validated feedback for an accurate synthetic paragraph in 18.364 seconds with networking disabled. It gave a practice estimate of 100 and no corrections for that answer. These single-run timings are observations, not performance guarantees.
 
+After the final review fixes and rebuild, the packaged app rechecked successfully: cached preparation took 3.962 seconds and validated paragraph feedback took 13.516 seconds with networking disabled. Exact draft/localStorage recovery also passed again in the final unpacked runtime.
+
 Limits: the matrix covers basic written English/Chinese discrimination, not calibrated marking. A fluent but inaccurate answer can still have a high aggregate mean because dimensions are independent; review accuracy and the source. Critique explanations and suggested revisions can be wrong even with literal evidence. Other languages, interpreting critique quality, GPU/memory diversity, long answers and model-cache eviction remain outside this matrix. Hindi/Arabic critique and mobile local inference remain gated. Long tasks exceeding the context preflight are rejected. No live cloud provider was qualified.
 
 ## Repeatable commands and evidence
 
 | Command | Observed result |
 | --- | --- |
-| `npm test` | Exit 0; 129 passed, none failed/skipped |
+| `npm test` | Exit 0; 135 passed, none failed/skipped |
 | `npm audit --omit=dev --audit-level=moderate` | Exit 0; zero production vulnerabilities |
-| `npm run verify:browser` | Exit 0; 108 English journey assertions, six Chinese interface checks, two startup recovery checks, 58 axe scans with zero violations and eight accessibility interaction checks |
+| Browser gates | 108 English journey assertions, six Chinese interface checks, two startup recovery checks, two review recovery checks; 82 axe scans with zero violations and ten accessibility interaction checks |
 | `npm run package:windows` | Exit 0; final unsigned x64 installer and portable EXE |
 | `npm run package:android` | Exit 0; final debug APK; separate QA variant also built and installed successfully |
 | `apksigner verify --print-certs` | Exit 0; Android Debug certificate |
@@ -82,6 +84,16 @@ Limits: the matrix covers basic written English/Chinese discrimination, not cali
 Private local evidence remains in ignored `.browser-qa/`; CI uploads synthetic verification reports separately. Canonical native commands and signing details are in [native-packaging.md](native-packaging.md). The final APK was also installed as an update to the separate QA app. English/Chinese Home, Practice and Settings trees were inspected for raw CSS; none was found. The browser matrix repeats this text-leak check.
 
 Before making the repository public, a local scan inspected 1,690 reachable Git objects, including 752 text blobs. No matches were found for the checked private-key, GitHub-token, provider-token or AWS-key patterns, and no tracked secret-key/environment-file paths were found. This is a bounded pattern scan; it is not a claim that all possible secrets have been detected. Device recordings, profiles, model caches, device-specific logs and package build directories remain ignored.
+
+## PR review follow-up
+
+The final follow-up also fixes pending deletion epochs being accepted by newly opened tabs; one readonly transaction now captures all persisted export stores before sequential audio encoding, with the shared data lock held until completion. This export contains persisted exam rows, not unsaved recovery-journal changes. Explicit deletion retry can finish an interrupted clear; it does not silently reactivate writes.
+
+Local audio import rejects files over 25 MiB before creating a URL and clips over ten minutes after metadata decoding, cleaning up rejected URLs. Leave desk and native Back share the unsaved-take confirmation. A stale remotely cleared tab cannot open an interpreting desk or transfer ownership of an imported URL. Cloud completion paths preserve query parameters and session keys are trimmed. Next-review dates exclude mastered cards. Active interpreting, self-review and expanded exam reports were added to the light/dark, phone/desktop, English/Chinese accessibility matrix.
+
+The Save & Exit review finding was checked through a real production-browser failure injection: evaluation failed and the resumable write rejected, yet the exact answer remained and Save & Exit worked once storage was available. The runner is conditionally unmounted while evaluation runs. This path received regression coverage; no speculative state rewrite was made.
+
+Clean CI initially failed because Electron 44's npm package does not run a binary postinstall. The canonical packaging command now invokes its pinned binary installer before using the custom distribution. Local build and package gates were repeated after the follow-up.
 
 ## Remaining work and rollback
 

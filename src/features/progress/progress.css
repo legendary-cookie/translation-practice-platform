@@ -10,7 +10,7 @@
 .progress-overview p:not(.eyebrow) { color: #d9e9da; font-size: 13px; line-height: 1.6; margin: 0; max-width: 490px; }
 .progress-overview__score { align-items: center; display: flex; gap: 11px; margin-left: 25px; }
 .progress-overview__score strong { color: var(--warm); font-size: 55px; letter-spacing: -0.08em; }
-.progress-overview__score span { color: #b9d9bd; font-size: 11px; line-height: 1.4; }
+.progress-overview__score > span { color: #b9d9bd; font-size: 11px; line-height: 1.4; }
 
 .progress-stat-grid { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); margin-top: 15px; }
 .progress-stat { background: var(--surface); border: 1px solid var(--line); border-radius: 13px; display: grid; gap: 4px; padding: 17px; }

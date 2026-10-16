@@ -90,7 +90,7 @@ export function InterpretingSetup({
 }: {
   evaluationMode: EvaluationMode
   localStatus: LocalModelStatus
-  onStart: (selection: InterpretingStart) => void
+  onStart: (selection: InterpretingStart) => boolean | void
 }) {
   const [directionId, setDirectionId] = useState(CHINESE_DIRECTIONS[0].id)
   const [difficulty, setDifficulty] = useState<'all' | Difficulty>('all')
@@ -374,7 +374,7 @@ export function InterpretingSetup({
         </div>}
         {exercise?.sourceAudioDisclosure && <p className="interpreting-helper" role="note">{t("Source-audio limitation: ")}{exercise.sourceAudioDisclosure}</p>}
         <div className="interpreting-capability" role="status"><strong>{t("Target recognition")}</strong><span>{recognition?.status === 'available' ? t("On-device option available") : recognition?.status === 'downloadable' ? t("Language pack may be downloadable") : recognition?.status === 'downloading' ? t("Language pack downloading") : t("Manual transcript path")}</span><small>{recognition?.reason ?? 'Checking the browser capability…'}</small>{recognition?.status === 'downloadable' && <button className="button button--quiet interpreting-action" type="button" onClick={() => void installRecognitionPack()} disabled={isInstallingRecognition}>{t("Download on-device language pack")}</button>}</div>
-        <button className="button button--primary setup-card__start" type="button" disabled={!exercise || !['ready', 'available'].includes(assetStatus) || (!isImportedAudio && rightsStatus !== 'verified')} onClick={() => { if (!exercise || (!isImportedAudio && rightsStatus !== 'verified')) return; if (importedSource) transferredObjectUrl.current = importedSource.objectUrl; onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }) }}>{t("Open interpreting desk ")}<span aria-hidden="true">→</span></button>
+        <button className="button button--primary setup-card__start" type="button" disabled={!exercise || !['ready', 'available'].includes(assetStatus) || (!isImportedAudio && rightsStatus !== 'verified')} onClick={() => { if (!exercise || (!isImportedAudio && rightsStatus !== 'verified')) return; const started = onStart({ exercise, interpretingMode, sourceRecording: importedSource?.recording }); if (started !== false && importedSource) transferredObjectUrl.current = importedSource.objectUrl }}>{t("Open interpreting desk ")}<span aria-hidden="true">→</span></button>
         <p className="setup-card__note">{t("Content and delivery feedback are separate practice estimates. Recognition is never treated as official evidence, and unsupported languages remain usable through manual transcript entry. Imported source audio is never sent automatically.")}</p>
       </section>
     </div>

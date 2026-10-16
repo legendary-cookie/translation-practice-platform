@@ -4,7 +4,7 @@ The Windows and Android packages wrap the existing Vite production bundle. They 
 
 ## Build the Windows packages
 
-Requirements: Node.js 22 or newer on Windows. Electron and electron-builder create an x64 NSIS installer and a portable executable. The builder reuses the pinned Electron distribution installed by npm, avoiding an additional runtime download and the archive-directory rename that failed with local Windows permissions.
+Requirements: Node.js 22 or newer on Windows. Electron and electron-builder create an x64 NSIS installer and a portable executable. The canonical command explicitly runs the pinned Electron package's binary installer, then copies that distribution into the application. Electron 44's npm package has no postinstall script; assuming `npm ci` created `electron/dist` caused a reproduced CI failure. Reusing the installed distribution also avoids the archive-directory rename that failed with local Windows permissions.
 
 ```powershell
 npm ci

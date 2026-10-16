@@ -37,7 +37,9 @@ function getCompletionEndpoint(baseUrl: string): string {
     throw new Error('Cloud endpoints must use HTTPS; HTTP is allowed only for localhost or loopback addresses.')
   }
 
-  return `${normalized}/chat/completions`
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/chat/completions`
+  parsed.hash = ''
+  return parsed.href
 }
 
 export function validateCloudProviderPreferences(baseUrl: string, model: string): void {
@@ -264,7 +266,7 @@ async function buildCloudRequestBody(
 export function createCloudProvider(config: CloudProviderConfig): CloudProviderLike {
   const endpoint = getCompletionEndpoint(config.baseUrl)
   const model = config.model.trim()
-  const apiKey = config.apiKey
+  const apiKey = config.apiKey.trim()
   const supportsAudio = config.supportsAudio === true
 
   validateCloudProviderPreferences(config.baseUrl, model)

@@ -52,6 +52,8 @@ Home suggestions use real saved issues and practice frequency in the latest lang
 
 IndexedDB schema 7 preserves the earlier stores, including draft, learning-card, and feedback-rating stores. New audio is stored as standalone bytes with a strict transaction commit and reconstructed as a Blob for replay/export; readable legacy Blob records remain supported. Android appearance/language preferences use native Preferences with a WebView mirror hydrated before startup. JSON export version 5 includes local records, the current original catalog, detached snapshots for new written sessions, interpreting audio, exam snapshots, and appearance preferences. Legacy written sessions may not contain a historical passage snapshot; the exported current catalog is a reference for them. API keys remain absent. Export is reference-only; this release has no import/restore flow.
 
+Exports read persisted stores from one readonly database snapshot before encoding audio, while the data lock prevents deletion from crossing the operation. Unsaved exam recovery journals are not a backup snapshot. An interrupted deletion blocks new writes until an explicit deletion retry completes. Imported source audio is limited to 25 MiB and ten minutes before opening a practice desk.
+
 ## Browser verification
 
 Start a production preview on `127.0.0.1:4178`, then run the optional browser suite in another terminal:

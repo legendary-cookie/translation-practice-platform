@@ -1088,4 +1088,7 @@ export const zhCN: Record<string, string> = {
   "Chinese → Arabic": "中文 → 阿拉伯语",
   "Arabic → Chinese": "阿拉伯语 → 中文",
   "On-device recognition is disabled in Android WebView because its speech capability check can terminate the app. Enter a transcript manually; no remote recognition will be used.": "Android WebView 的语音能力检查可能导致应用关闭，因此已停用设备内语音识别。请手动输入转写文字；不会使用远程语音识别。",
+  "Choose an audio file of 25 MiB or less.": "请选择不超过 25 MiB 的音频文件。",
+  "Choose an audio clip of 10 minutes or less.": "请选择不超过 10 分钟的音频片段。",
+  "All saved cards are mastered; mark one active to schedule it again.": "所有已保存卡片均已掌握；将卡片标为未掌握后可重新安排复习。",
 }

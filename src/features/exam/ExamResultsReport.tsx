@@ -93,7 +93,7 @@ export function ExamResultsReport({
         <section
           className="notice-banner notice-banner--warning"
           role="note"
-          style={{ marginBottom: '1.5rem', backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}
+          style={{ marginBottom: '1.5rem', backgroundColor: 'var(--warning-surface)', color: 'var(--warning-ink)', borderColor: '#f59e0b' }}
         >
           <strong>{t(PROVISIONAL_DRAFT_LABEL)}: </strong>
           <span>{t(PROVISIONAL_DRAFT_NOTICE)}</span>
@@ -110,7 +110,7 @@ export function ExamResultsReport({
         <div className="progress-overview__score">
           <strong>
             {result.totalScore}
-            <span style={{ fontSize: '1.25rem', color: 'var(--muted)' }}> / {result.maxScore}</span>
+            <span style={{ fontSize: '1.25rem', color: 'inherit' }}> / {result.maxScore}</span>
           </strong>
           <span>
             {result.percentage}{t("% · Practice estimate · ")}<span className={`pill ${statusColorClass}`}>{t(statusLabel)}</span>
@@ -257,7 +257,7 @@ export function ExamResultsReport({
                             dir={targetLanguage?.direction ?? 'ltr'}
                             lang={passage.targetLanguage}
                             style={{
-                              backgroundColor: '#ffffff',
+                              backgroundColor: 'var(--surface)',
                               border: '1px solid #cbd5e1',
                               borderRadius: '6px',
                               padding: '0.75rem',
@@ -273,7 +273,7 @@ export function ExamResultsReport({
                         {/* Strengths */}
                         {passage.feedback.strengths.length > 0 && (
                           <div style={{ marginBottom: '1rem' }}>
-                            <span className="eyebrow" style={{ color: '#166534' }}>{t("Strengths")}</span>
+                            <span className="eyebrow" style={{ color: 'var(--accent-deep)' }}>{t("Strengths")}</span>
                             <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem' }}>
                               {passage.feedback.strengths.map((strength, idx) => (
                                 <li key={idx}>{strength}</li>
@@ -285,13 +285,13 @@ export function ExamResultsReport({
                         {/* Issues & Annotations */}
                         {passage.feedback.issues.length > 0 && (
                           <div>
-                            <span className="eyebrow" style={{ color: '#b45309' }}>{t("Revision Opportunities")}</span>
+                            <span className="eyebrow" style={{ color: 'var(--warning-ink)' }}>{t("Revision Opportunities")}</span>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
                               {passage.feedback.issues.map((issue, idx) => (
                                 <div
                                   key={idx}
                                   style={{
-                                    backgroundColor: '#ffffff',
+                                    backgroundColor: 'var(--surface)',
                                     border: '1px solid var(--line)',
                                     borderLeft: '4px solid #b45309',
                                     borderRadius: '4px',
@@ -314,7 +314,7 @@ export function ExamResultsReport({
                                   {issue.learnerQuote && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem' }}>
                                       <strong>{t("Your version: ")}</strong>
-                                      <span dir={targetLanguage?.direction} lang={passage.targetLanguage} style={{ backgroundColor: '#fee2e2', padding: '0.1rem 0.3rem' }}>
+                                      <span dir={targetLanguage?.direction} lang={passage.targetLanguage} style={{ backgroundColor: 'var(--error-surface)', color: 'var(--error-ink)', padding: '0.1rem 0.3rem' }}>
                                         {issue.learnerQuote}
                                       </span>
                                     </p>
@@ -323,7 +323,7 @@ export function ExamResultsReport({
                                     {issue.explanation}
                                   </p>
                                   {issue.suggestion && (
-                                    <p style={{ margin: '0.25rem 0', fontSize: '0.875rem', color: '#15803d' }}>
+                                    <p style={{ margin: '0.25rem 0', fontSize: '0.875rem', color: 'var(--accent-deep)' }}>
                                       <strong>{t("Suggested revision: ")}</strong>
                                       {issue.suggestion}
                                     </p>

@@ -15,7 +15,7 @@
     "test:desktop": "node scripts/desktop-checks.cjs",
     "test:desktop-model": "node scripts/desktop-model-check.cjs",
     "test:android": "node scripts/android-checks.cjs",
-    "package:windows": "npm run build && node scripts/prepare-native-assets.cjs windows && electron-builder --win nsis portable --x64",
+    "package:windows": "npm run build && node scripts/prepare-native-assets.cjs windows && node node_modules/electron/install.js && electron-builder --win nsis portable --x64",
     "package:android": "npm run build && cap sync android && node scripts/prepare-native-assets.cjs android && node scripts/build-android.cjs",
     "test:accessibility": "node scripts/browser-accessibility.cjs",
     "test:local-reliability": "node scripts/local-model-qualification.cjs"

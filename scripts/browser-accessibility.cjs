@@ -7,10 +7,10 @@ const output = path.resolve(process.env.BROWSER_QA_ARTIFACTS || '.browser-qa')
 fs.mkdirSync(output, { recursive: true })
 const report = { checks: [], scans: [], errors: [] }
 ;(async () => {
-  const browser = await chromium.launch({ channel: process.env.QA_BROWSER_CHANNEL || (process.platform === 'win32' ? 'chrome' : undefined) })
+  const browser = await chromium.launch({ channel: process.env.QA_BROWSER_CHANNEL || (process.platform === 'win32' ? 'chrome' : undefined), args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] })
   try {
     for (const language of ['en', 'zh-CN']) {
-      const context = await browser.newContext()
+      const context = await browser.newContext({ permissions: ['microphone'] })
       await context.addInitScript(language => localStorage.setItem('lingo-workspace-preferences-v1', JSON.stringify({ interfaceLanguage: language })), language)
       const page = await context.newPage()
       page.on('pageerror', error => report.errors.push(error.message))
@@ -81,6 +81,48 @@ const report = { checks: [], scans: [], errors: [] }
       await page.keyboard.press('Escape')
       await page.getByRole('dialog').waitFor({ state: 'detached' })
       report.checks.push(`${language}: exam dialogs focus their actions and cancel with Escape`)
+      await page.getByRole('button', { name: language === 'en' ? 'Save & Exit' : '保存并退出', exact: true }).click()
+      await nav(names[2])
+      await page.locator('#interpreting-mode').selectOption('simultaneous')
+      await page.getByRole('button', { name: language === 'en' ? 'Open interpreting desk' : '打开口译练习区' }).click()
+      await page.locator('.interpreting-transcript-block textarea').fill('Synthetic transcript retained when leaving is cancelled.')
+      page.once('dialog', dialog => dialog.dismiss())
+      await page.getByRole('button', { name: language === 'en' ? 'Leave desk' : '离开练习区', exact: true }).click()
+      assert.equal(await page.locator('.interpreting-transcript-block textarea').inputValue(), 'Synthetic transcript retained when leaving is cancelled.')
+      report.checks.push(`${language}: cancelling Leave desk retains the exact unsaved interpreting transcript`)
+      const scanVariants = async label => {
+        for (const theme of ['light', 'dark']) {
+          await page.evaluate(theme => { const key = 'lingo-workspace-preferences-v1'; localStorage.setItem(key, JSON.stringify({ ...JSON.parse(localStorage.getItem(key)), theme })); window.dispatchEvent(new Event('lingo-preferences-change')) }, theme)
+          for (const width of [390, 1440]) { await page.setViewportSize({ width, height: 950 }); await scan(`${language} ${theme} ${width} ${label}`) }
+        }
+      }
+      await scanVariants('active interpreting desk')
+      await page.getByRole('button', { name: language === 'en' ? 'Start recording' : '开始录音', exact: true }).click()
+      await page.getByRole('button', { name: language === 'en' ? 'Stop and save' : '停止并保存', exact: true }).waitFor()
+      await page.waitForTimeout(1200)
+      await page.getByRole('button', { name: language === 'en' ? 'Stop and save' : '停止并保存', exact: true }).click()
+      const selfReview = page.getByRole('button', { name: language === 'en' ? 'Save self-review without a score' : '保存自评（不评分）', exact: true })
+      await selfReview.waitFor()
+      await selfReview.click()
+      await page.locator('.interpreting-feedback-page').waitFor()
+      await scanVariants('interpreting self-review')
+      await page.evaluate(async () => {
+        const db = await new Promise((resolve, reject) => { const request = indexedDB.open('lingo-practice-local'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
+        const read = db.transaction('examProfiles', 'readonly').objectStore('examProfiles').getAll()
+        const profiles = await new Promise((resolve, reject) => { read.onsuccess = () => resolve(read.result); read.onerror = () => reject(read.error) })
+        const profile = profiles.find(profile => profile.id.includes('en-zh')) || profiles[0]
+        const dimensions = { accuracy: 70, terminology: 70, grammar: 70, fluency: 70, taskStyle: 70 }
+        const result = { id: 'synthetic-reader-report', runId: 'synthetic-reader-run', completedAt: new Date().toISOString(), profileId: profile.id, profileVersion: profile.version, profileSnapshot: profile, rubricVersion: 'synthetic', examTitle: 'Synthetic accessibility report', totalScore: 70, maxScore: 100, percentage: 70, passBenchmark: 60, estimatedStatus: 'above-benchmark', consolidatedDimensions: dimensions, disclaimer: 'Synthetic fixture', sectionResults: [{ sectionId: 'synthetic-section', sectionTitle: 'Synthetic section', score: 70, maxPoints: 100, passageFeedbacks: [{ passageId: 'synthetic-passage', passageTitle: 'Synthetic passage', answer: 'Synthetic answer', sourceText: 'Synthetic source', sourceLanguage: 'en', targetLanguage: 'zh', feedback: { summary: 'Synthetic summary', overallScore: 70, dimensions, strengths: ['Synthetic strength'], issues: [{ dimension: 'accuracy', sourceQuote: 'Synthetic source', learnerQuote: 'Synthetic answer', explanation: 'Synthetic issue', suggestion: 'Synthetic revision' }], alternatives: [], uncertainty: 'Synthetic fixture' } }] }] }
+        const transaction = db.transaction('examResults', 'readwrite'); transaction.objectStore('examResults').put(result)
+        await new Promise((resolve, reject) => { transaction.oncomplete = resolve; transaction.onabort = () => reject(transaction.error) })
+        db.close()
+      })
+      await page.reload()
+      await nav(names[4])
+      await page.getByRole('button', { name: language === 'en' ? /Mock Exam Simulations/ : /模拟考试（/ }).click()
+      await page.getByRole('button', { name: language === 'en' ? 'Open report for Synthetic accessibility report' : '打开Synthetic accessibility report的报告', exact: true }).click()
+      await page.locator('.exam-results-page').waitFor()
+      await scanVariants('expanded exam report')
       await context.close()
     }
     assert.deepEqual(report.errors, [])

@@ -15,7 +15,7 @@ let exited = false
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     if (!ready || exited) throw new Error('Production preview did not start; ensure port 4178 is available.')
-    for (const script of ['run-browser-checks.cjs', 'browser-localization.cjs', 'browser-startup-recovery.cjs']) {
+    for (const script of ['run-browser-checks.cjs', 'browser-localization.cjs', 'browser-startup-recovery.cjs', 'browser-accessibility.cjs']) {
       const result = spawnSync(process.execPath, [path.join(__dirname, script)], { stdio: 'inherit', env: process.env, windowsHide: true })
       if (result.status !== 0) throw new Error(`${script} failed with status ${result.status}`)
     }

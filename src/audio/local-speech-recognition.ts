@@ -58,11 +58,23 @@ export type LocalRecognitionResult = {
 }
 
 function getConstructor(): SpeechRecognitionStaticLike | undefined {
+  // WebView 154 exposes available() without its native Mojo binder; probing kills the renderer.
+  // A promise timeout or catch cannot recover from that process termination.
+  if (isAndroidWebView()) return undefined
   const recognitionWindow = window as RecognitionWindow
   return recognitionWindow.SpeechRecognition ?? recognitionWindow.webkitSpeechRecognition
 }
 
+function isAndroidWebView(): boolean {
+  const host = window as Window & { Capacitor?: { getPlatform?: () => string } }
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
+  return host.Capacitor?.getPlatform?.() === 'android' || (/Android/u.test(ua) && /\bwv\b/u.test(ua))
+}
+
 export async function getLocalRecognitionCapability(languageTag: string): Promise<LocalRecognitionCapability> {
+  if (isAndroidWebView()) {
+    return { status: 'unavailable', languageTag, reason: 'On-device recognition is disabled in Android WebView because its speech capability check can terminate the app. Enter a transcript manually; no remote recognition will be used.' }
+  }
   const constructor = getConstructor()
   if (!constructor) {
     return { status: 'unavailable', languageTag, reason: 'This browser does not expose speech recognition. Enter a transcript manually; no remote recognition will be used.' }

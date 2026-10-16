@@ -1,6 +1,7 @@
 import type { WebWorkerMLCEngine } from '@mlc-ai/web-llm'
 import { FeedbackValidationError, validateFeedback, validateInterpretingFeedback } from '../domain/scoring'
 import { DEFAULT_LOCAL_MODEL_ID, type EvaluationFeedback, type EvaluationRequest } from '../domain/types'
+import { buildLocalWrittenPrompt, localEvaluationSystemPrompt, localWrittenSchema, resolveLocalEvidence } from './local-evidence'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { ProviderUnavailableError, type EvaluationProvider, type LocalProviderLike } from './provider'
 import { parseJsonResponse } from './response-parsing'
@@ -419,6 +420,8 @@ export function createLocalProvider(
         if (!isAttemptEngineCurrent()) {
           throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
         }
+      const systemPrompt = 'learnerAnswer' in input ? localEvaluationSystemPrompt : evaluationSystemPrompt
+      const taskPrompt = 'learnerAnswer' in input ? buildLocalWrittenPrompt(input) : buildEvaluationPrompt(input)
       let lastError: unknown
       for (let attempt = 1; attempt <= LOCAL_EVALUATION_MAX_ATTEMPTS; attempt += 1) {
         evaluationAttempt.throwIfCancelled()
@@ -435,7 +438,7 @@ export function createLocalProvider(
             ? input.learnerAnswer.length
             : input.responseSegments.reduce((total, segment) => total + segment.transcript.length, 0),
           maxTokens: LOCAL_EVALUATION_MAX_TOKENS,
-          responseFormat: 'prompt-only-json',
+          responseFormat: 'learnerAnswer' in input ? 'json-schema' : 'prompt-only-json',
           thinking: false,
         })
         try {
@@ -451,14 +454,15 @@ export function createLocalProvider(
                   {
                     role: 'system',
                     content: attempt === 1
-                      ? evaluationSystemPrompt
-                      : `${evaluationSystemPrompt} Validation failure: ${lastError instanceof Error ? lastError.message : 'Invalid response.'} Regenerate a complete concise JSON object. Copy sourceQuote only from the original source language and learnerQuote only from the supplied answer, character for character. Leave a quote empty if unavailable; omit an issue without literal evidence. Empty issues is valid when no correction is justified. Return every required field without Markdown or commentary.`,
+                      ? systemPrompt
+                      : `${systemPrompt} Validation failure: ${lastError instanceof Error ? lastError.message : 'Invalid response.'} Regenerate a complete concise JSON object. For written tasks select only catalogue sourceId and learnerId values (or an empty string), never generated quote fields. For interpreting tasks copy literal transcript quotes. Omit an issue without evidence. Empty issues is valid when no correction is justified. Return every required field without Markdown or commentary.`,
                   },
-                  { role: 'user', content: buildEvaluationPrompt(input) },
+                  { role: 'user', content: taskPrompt },
                 ],
-                temperature: attempt === 1 ? 0.2 : 0,
-                top_p: attempt === 1 ? 0.9 : 0.8,
+                temperature: 0.7,
+                top_p: 0.8,
                 max_tokens: LOCAL_EVALUATION_MAX_TOKENS,
+                ...('learnerAnswer' in input ? { response_format: { type: 'json_object' as const, schema: localWrittenSchema(input) } } : {}),
                 stream: true,
                 extra_body: QWEN3_NON_THINKING_BODY,
               })
@@ -492,14 +496,14 @@ export function createLocalProvider(
             throw error
           }
           const feedback = 'learnerAnswer' in input
-            ? validateFeedback(raw, { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
+            ? validateFeedback(resolveLocalEvidence(raw, input), { sourceText: input.exercise.sourceText, learnerAnswer: input.learnerAnswer })
             : validateInterpretingFeedback(raw, input)
           evaluationAttempt.throwIfCancelled()
           if (!isAttemptEngineCurrent()) {
             throw new LocalEvaluationCancelledError('The local evaluation was superseded because its model worker changed.')
           }
           logLocalEvent('evaluation.validated', { attempt, elapsedMs: Math.round(performance.now() - evaluationStartedAt) })
-          return feedback
+          return { ...feedback, uncertainty: `Small local model: feedback and scores can be wrong, especially for omissions. Check the source yourself. ${feedback.uncertainty}` }
         } catch (error) {
           if (error instanceof LocalEvaluationCancelledError) throw error
           lastError = error

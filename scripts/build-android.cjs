@@ -41,7 +41,9 @@ const escapedSdk = sdkRoot.replace(/\\/gu, '\\\\')
 fs.writeFileSync(path.join(androidDirectory, 'local.properties'), `sdk.dir=${escapedSdk}\n`, 'utf8')
 
 const wrapper = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
-const result = spawnSync(wrapper, ['assembleDebug'], {
+const qa = process.env.ANDROID_QA_BUILD === '1'
+const variant = qa ? 'qa' : 'debug'
+const result = spawnSync(wrapper, [qa ? 'assembleQa' : 'assembleDebug'], {
   cwd: androidDirectory,
   env: { ...process.env, ANDROID_HOME: sdkRoot, ANDROID_SDK_ROOT: sdkRoot, JAVA_HOME: javaHome },
   stdio: 'inherit',
@@ -55,7 +57,7 @@ if (result.error) {
 }
 if (result.status !== 0) process.exit(result.status || 1)
 
-const apkPath = path.join(androidDirectory, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
+const apkPath = path.join(androidDirectory, 'app', 'build', 'outputs', 'apk', variant, `app-${variant}.apk`)
 if (!fs.existsSync(apkPath)) {
   console.error(`Gradle completed without producing ${apkPath}`)
   process.exit(1)
@@ -63,6 +65,7 @@ if (!fs.existsSync(apkPath)) {
 
 const outputDirectory = path.join(root, 'artifacts', 'android')
 fs.mkdirSync(outputDirectory, { recursive: true })
-const outputPath = path.join(outputDirectory, 'Lingo-Practice-0.1.0-debug.apk')
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version
+const outputPath = path.join(outputDirectory, `Lingo-Practice-${version}-${variant}.apk`)
 fs.copyFileSync(apkPath, outputPath)
 console.log(`Created ${path.relative(root, outputPath)}`)

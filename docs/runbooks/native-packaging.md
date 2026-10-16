@@ -4,7 +4,7 @@ The Windows and Android packages wrap the existing Vite production bundle. They 
 
 ## Build the Windows packages
 
-Requirements: Node.js 22 or newer on Windows. Electron and electron-builder create an x64 NSIS installer and a portable executable.
+Requirements: Node.js 22 or newer on Windows. Electron and electron-builder create an x64 NSIS installer and a portable executable. The builder reuses the pinned Electron distribution installed by npm, avoiding an additional runtime download and the archive-directory rename that failed with local Windows permissions.
 
 ```powershell
 npm ci
@@ -13,8 +13,8 @@ npm run package:windows
 
 Outputs:
 
-- `artifacts/windows/Lingo-Practice-Setup-0.1.0.exe`
-- `artifacts/windows/Lingo-Practice-Portable-0.1.0.exe`
+- `artifacts/windows/Lingo-Practice-Setup-0.1.1.exe`
+- `artifacts/windows/Lingo-Practice-Portable-0.1.1.exe`
 
 The executables are unsigned. Windows may show a SmartScreen warning. No update service or signing key is configured. The packaged app records its first loopback port in `desktop-origin.json` under Electron user data and reuses that origin across launches. If occupied, startup fails visibly instead of opening an empty workspace at another origin. One earlier IndexedDB origin is adopted automatically; several earlier origins require a selection while preserving all folders. A build hash on the launch URL prevents stale cached HTML after upgrades. The wrapper applies a restrictive Content Security Policy, denies navigation away from the app, and asks before granting microphone access.
 
@@ -41,7 +41,7 @@ npm run package:android
 
 Use it only when that specific loopback startup error occurs.
 
-The command creates `artifacts/android/Lingo-Practice-0.1.0-debug.apk`. It is signed with the machine's local Android debug key for sideload testing. It is not a Play Store release package. A production release needs a user-controlled signing key that must be backed up securely and kept out of GitHub.
+The command creates `artifacts/android/Lingo-Practice-0.1.1-debug.apk`. It is signed with the machine's local Android debug key for sideload testing. It is not a Play Store release package. A production release needs a user-controlled signing key that must be backed up securely and kept out of GitHub.
 
 The Android manifest requests microphone permission only for the interpreting recording flow and disables app data backup to preserve the local-only storage boundary. Browser audio recording still requires the Android permission prompt. Learner records remain in the app's local WebView storage. Hardware Back dismisses an open consent dialog, saves an active exam through its fenced save-and-exit path, confirms before discarding an interpreting take, or returns to Home. Back on Home minimizes the app.
 
@@ -61,4 +61,12 @@ The GitHub `Verify and package` workflow runs unit, production browser, Chinese 
 
 ## Qualification limits
 
-The Android emulator passed native Back, rotation, background/relaunch, draft recovery, recording/replay, and system-picker export checks. Physical phone keyboard, interruptions, accessibility, and real microphone quality remain unqualified. Android local-model evaluation remains gated as unsupported on mobile. Windows Electron model preparation and validated synthetic inference were observed on this desktop; they do not establish feedback accuracy or broad device support. Cloud evaluation continues to require the app's existing per-task consent step; no live cloud-provider request was used for qualification.
+The Android emulator passed native Back, rotation, background/relaunch, draft recovery, recording/replay, and system-picker export checks. A physical Galaxy S25 Ultra additionally passed lifecycle, exact draft recovery, Chinese interface, local microphone save/replay and cleanup checks. Full IME composition, calls/headset interruptions, recording quality and comprehensive reader acceptance remain unqualified. The human TalkBack check reported formatting announcements; no raw CSS was present in the inspected native or WebView accessibility trees. See the dated report below. Android local-model evaluation remains gated as unsupported on mobile. Windows Electron model preparation and validated synthetic inference were observed on this desktop; they do not establish broad device support or calibrated scores. Cloud evaluation continues to require the app's existing per-task consent step; no live cloud-provider request was used for qualification.
+
+## Isolated physical-device checks
+
+Set `ANDROID_QA_BUILD=1` before `npm run package:android` to create the separate `com.legendarycookie.lingopractice.qa` app. This variant uses a distinct name, storage and permissions. It does not replace the ordinary app. Clear the environment variable before building the distributable debug APK.
+
+The optional Android instrumentation runner targets only `.qa`, retains the real accessibility service, and inspects only the foreground QA package. Build it with `android/gradlew.bat -p android assembleQaAndroidTest`, then install `android/app/build/outputs/apk/androidTest/qa/app-qa-androidTest.apk`. Use `scripts/test-phone-screen-reader.ps1` with the explicit device serial and installed reader service component. It snapshots and restores the enabled services, accessibility and touch-exploration settings. An injected gesture failure is a failed check, not evidence of a successful human gesture. Do not run against the ordinary learner app.
+
+Physical and model evidence for 0.1.1 is in [the dated verification report](2026-10-16-phone-accessibility-and-local-ai.md).

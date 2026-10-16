@@ -1,4 +1,6 @@
-# Release verification
+# Release verification for 0.1.0
+
+Historical report. Current 0.1.1 phone, accessibility and AI results are in [the follow-up report](2026-10-16-phone-accessibility-and-local-ai.md).
 
 Verified on 2026-10-16 on the takeover branch. These results qualify an installable QA build, with the device and signing limits below.
 

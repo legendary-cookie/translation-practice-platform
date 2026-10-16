@@ -1,6 +1,7 @@
 import type { EvaluationRequest } from '../domain/types'
 import type { LanguageCode } from '../domain/languages'
 import { DEFAULT_LOCAL_MODEL_ID } from '../domain/types'
+import { buildLocalWrittenPrompt, localEvaluationSystemPrompt } from './local-evidence'
 import { buildEvaluationPrompt, evaluationSystemPrompt } from './evaluation-prompt'
 import { withCapabilityDeadline } from './capability-deadline'
 
@@ -79,14 +80,14 @@ type PerformanceSignals = Performance & {
 
 export const LOCAL_MODEL_REQUIREMENTS = {
   modelId: DEFAULT_LOCAL_MODEL_ID,
-  requiredMemoryMB: 2036.66,
-  estimatedDownloadBytes: 1_000_000_000,
+  requiredMemoryMB: 3867.82,
+  estimatedDownloadBytes: 2_600_000_000,
   contextWindowTokens: 4096,
 } as const
 
 export const WEAK_LOCAL_LANGUAGES: LanguageCode[] = ['hi', 'ar']
 
-const LOCAL_MODEL_STORAGE_RESERVE_BYTES = 1_250_000_000
+const LOCAL_MODEL_STORAGE_RESERVE_BYTES = 3_000_000_000
 const LOCAL_MODEL_OUTPUT_TOKEN_RESERVE = 1400
 const LOCAL_MODEL_CONTEXT_SAFETY_MARGIN = 256
 const CAPABILITY_CHECK_TIMEOUT_MS = 10_000
@@ -249,8 +250,8 @@ function modelStatusForTier(tier: CapabilityTier, deviceClass: DeviceClass, webG
 
   if (tier === 'L1') {
     const mobileReason = deviceClass === 'ios' || deviceClass.startsWith('android')
-      ? 'This mobile device needs real-device memory, throughput, cache-survival, and language-quality validation before the 1.7B model can be offered.'
-      : 'The available memory signal is not enough to offer the 1.7B model confidently.'
+      ? 'This mobile device needs real-device memory, throughput, cache-survival, and language-quality validation before the 4B model can be offered.'
+      : 'The available memory signal is not enough to offer the 4B model confidently.'
     return {
       ...LOCAL_MODEL_REQUIREMENTS,
       status: 'restricted',
@@ -261,7 +262,7 @@ function modelStatusForTier(tier: CapabilityTier, deviceClass: DeviceClass, webG
   return {
     ...LOCAL_MODEL_REQUIREMENTS,
     status: 'available',
-    reason: 'This device passes the conservative WebGPU, storage, and memory preflight for the 1.7B model. A real provider warm-up still remains necessary.',
+    reason: 'This device passes the conservative WebGPU, storage, and memory preflight for the 4B model. A real provider warm-up still remains necessary.',
   }
 }
 
@@ -340,7 +341,7 @@ export function getDirectionQualityDisclosure(sourceLanguage: LanguageCode, targ
     return undefined
   }
 
-  return 'Local Qwen3-1.7B critique is not offered for Hindi or Arabic directions yet. Language support is not the same as validated critique quality; use manual review or explicit cloud consent for this direction.'
+  return 'Local Qwen3.5-4B critique is not offered for Hindi or Arabic directions yet. Language support is not the same as validated critique quality; use manual review or explicit cloud consent for this direction.'
 }
 
 /**
@@ -349,7 +350,7 @@ export function getDirectionQualityDisclosure(sourceLanguage: LanguageCode, targ
  * complete system and task prompt, not only the learner's answer.
  */
 export function estimateEvaluationPromptTokens(input: EvaluationRequest): number {
-  const prompt = `${evaluationSystemPrompt}\n${buildEvaluationPrompt(input)}`
+  const prompt = 'learnerAnswer' in input ? `${localEvaluationSystemPrompt}\n${buildLocalWrittenPrompt(input)}` : `${evaluationSystemPrompt}\n${buildEvaluationPrompt(input)}`
   let hanCharacters = 0
   let otherCharacters = 0
   for (const character of prompt) {
@@ -376,7 +377,7 @@ export function getLocalEvaluationDecision(capability: CapabilityAssessment, inp
   }
 
   if (!hasAtLeastTier(capability, 'L2')) {
-    return { allowed: false, reason: capability.tier + ' detected on ' + capability.deviceLabel + '. The current 1.7B local model is offered only on L2 devices after a successful warm-up; no smaller fallback is bundled.' }
+    return { allowed: false, reason: capability.tier + ' detected on ' + capability.deviceLabel + '. The current 4B local model is offered only on L2 devices after a successful warm-up; no smaller fallback is bundled.' }
   }
 
   const directionDisclosure = getDirectionQualityDisclosure(input.exercise.sourceLanguage, input.exercise.targetLanguage)

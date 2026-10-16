@@ -40,7 +40,7 @@ export function DirectionQualityNotice({ capability }: { capability: CapabilityA
   return (
     <aside className="direction-quality-notice" role="note">
       <strong>{t("Direction quality gate")}</strong>
-      <p>{capability.tier}{t(" is detected for this device. Local Qwen3-1.7B critique is not offered for Hindi↔Chinese or Arabic↔Chinese yet; choose another direction for local feedback, or use manual review or explicit cloud consent.")}</p>
+      <p>{capability.tier}{t(" is detected for this device. Local Qwen3.5-4B critique is not offered for Hindi↔Chinese or Arabic↔Chinese yet; choose another direction for local feedback, or use manual review or explicit cloud consent.")}</p>
     </aside>
   )
 }

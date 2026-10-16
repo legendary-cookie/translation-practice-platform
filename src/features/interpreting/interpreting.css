@@ -343,7 +343,7 @@
   align-items: flex-start;
 }
 
-.interpreting-workspace__header h2,
+.interpreting-workspace__header h1,
 .interpreting-card-heading h3 {
   margin: 0;
 }
@@ -640,3 +640,6 @@
     width: 100%;
   }
 }
+
+:root[data-theme="dark"] .interpreting-capability { background: var(--surface-soft); }
+:root[data-theme="dark"] .interpreting-asset-status--ready { color: #9fe0bd; }

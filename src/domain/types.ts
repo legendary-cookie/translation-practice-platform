@@ -250,7 +250,7 @@ export type EvaluationMode = 'local-only' | 'local-first-cloud-fallback'
 
 export type LocalModelStatus = 'not-prepared' | 'preparing' | 'ready' | 'unavailable'
 
-export const DEFAULT_LOCAL_MODEL_ID = 'Qwen3-1.7B-q4f16_1-MLC'
+export const DEFAULT_LOCAL_MODEL_ID = 'Qwen3.5-4B-q4f16_1-MLC'
 
 export type StoredSettings = {
   id: 'default'

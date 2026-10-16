@@ -75,7 +75,7 @@ export function ExamResultsReport({
       : 'pill--muted'
 
   return (
-    <div className="exam-results-page" role="main">
+    <div className="exam-results-page">
       {/* Mandatory Practice Estimate Disclaimer Banner */}
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
         <strong>{t("✦ Practice Assessment Only: ")}</strong>

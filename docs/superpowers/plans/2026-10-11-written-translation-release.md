@@ -1,5 +1,7 @@
 # Translation Practice Platform — Written Translation Release Implementation Plan
 
+Historical implementation plan. See the [current README](../../../README.md) and [0.1.1 verification report](../../runbooks/2026-10-16-phone-accessibility-and-local-ai.md) for the current runtime, model, commands and observed results.
+
 > **For agentic workers:** Use the executing-plans workflow to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the first usable local-first release of the CATTI/MTI practice app, with written and news translation, structured AI feedback, local history, and laptop/phone layouts.

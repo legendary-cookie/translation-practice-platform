@@ -52,7 +52,7 @@ export function ExamCatalog({
   })
 
   return (
-    <div className="page-content" role="main">
+    <div className="page-content">
       {/* Active Run Resume Banner */}
       {activeRun && (
         <section

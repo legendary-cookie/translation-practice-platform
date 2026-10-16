@@ -1,3 +1,4 @@
+import { AccessibleModal } from '../../components/AccessibleModal'
 import { t } from '../../i18n'
 import { useNativeBack } from '../../native/lifecycle'
 import { useEffect, useRef, useState } from 'react'
@@ -427,7 +428,7 @@ export function ExamRunner({
   }
 
   return (
-    <div className="exam-runner" role="main">
+    <div className="exam-runner">
       <ExamHeader
         title={profile.title}
         sectionTitle={currentSection.title}
@@ -456,8 +457,8 @@ export function ExamRunner({
 
       {/* Allowed Aids Policy Modal */}
       {showAidsModal && (
-        <div className="exam-modal-backdrop" role="presentation">
-          <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="aids-heading">
+        <AccessibleModal open labelledBy="aids-heading" onCancel={() => setShowAidsModal(false)}>
+          <div>
             <h3 id="aids-heading" className="exam-modal__title">{t("Permitted Aids & Policy")}</h3>
             <div className="exam-modal__body">
               <p>
@@ -478,19 +479,19 @@ export function ExamRunner({
               >{t("Close")}</button>
             </div>
           </div>
-        </div>
+        </AccessibleModal>
       )}
 
       {/* Early / Final Submit Confirmation Modal */}
       {showSubmitModal && (
-        <div className="exam-modal-backdrop" role="presentation">
-          <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="submit-heading">
+        <AccessibleModal open labelledBy="submit-heading" onCancel={() => setShowSubmitModal(false)}>
+          <div>
             <h3 id="submit-heading" className="exam-modal__title">{t("Submit Examination?")}</h3>
             <div className="exam-modal__body">
               <p>{t("You have completed ")}<strong>{answeredPassages}</strong>{t(" of ")}<strong>{totalPassages}</strong>{t(" passages across all sections.")}</p>
               <p>{t("Once submitted, your translations will be evaluated against the rubric dimensions and consolidated into a practice assessment scorecard.")}</p>
               {answeredPassages < totalPassages && (
-                <p style={{ color: '#b45309', fontWeight: 600 }}>{t("Note: You have unanswered passages remaining. Unanswered passages will receive zero points.")}</p>
+                <p style={{ color: 'var(--warning-ink)', fontWeight: 600 }}>{t("Note: You have unanswered passages remaining. Unanswered passages will receive zero points.")}</p>
               )}
             </div>
             <div className="exam-modal__actions">
@@ -506,13 +507,13 @@ export function ExamRunner({
               >{t("Yes, Submit Now →")}</button>
             </div>
           </div>
-        </div>
+        </AccessibleModal>
       )}
 
       {/* Section Expired Alert Modal */}
       {sectionExpiredAlert && (
-        <div className="exam-modal-backdrop" role="presentation">
-          <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="expired-heading">
+        <AccessibleModal open labelledBy="expired-heading" onCancel={() => setSectionExpiredAlert(undefined)}>
+          <div>
             <h3 id="expired-heading" className="exam-modal__title">{t("Section Time Expired")}</h3>
             <div className="exam-modal__body">
               <p>{sectionExpiredAlert}</p>
@@ -525,7 +526,7 @@ export function ExamRunner({
               >{t("Continue →")}</button>
             </div>
           </div>
-        </div>
+        </AccessibleModal>
       )}
     </div>
   )

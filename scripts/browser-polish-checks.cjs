@@ -24,6 +24,7 @@ fs.mkdirSync(out, { recursive: true })
   }
   try {
     await page.goto('http://127.0.0.1:4178')
+    await page.getByRole('heading', { name: 'Translate with intention.' }).waitFor()
     await page.keyboard.press('Tab')
     assert.equal(await page.evaluate(() => document.activeElement.className), 'skip-link')
     await page.keyboard.press('Enter')

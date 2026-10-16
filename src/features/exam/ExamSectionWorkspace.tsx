@@ -71,6 +71,19 @@ export function ExamSectionWorkspace({
               <button
                 key={passage.id}
                 role="tab"
+                id={`passage-tab-${passage.id}`}
+                aria-controls={`passage-panel-${section.id}`}
+                tabIndex={isActive ? 0 : -1}
+                onKeyDown={(event) => {
+                  const count = section.passages.length
+                  const next = event.key === 'ArrowRight' ? (index + 1) % count
+                    : event.key === 'ArrowLeft' ? (index + count - 1) % count
+                    : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : undefined
+                  if (next === undefined) return
+                  event.preventDefault()
+                  setSelectedPassageIndex(next)
+                  document.getElementById(`passage-tab-${section.passages[next].id}`)?.focus()
+                }}
                 aria-selected={isActive}
                 className={`exam-passage-tab ${isActive ? 'exam-passage-tab--active' : ''}`}
                 type="button"
@@ -85,7 +98,7 @@ export function ExamSectionWorkspace({
       )}
 
       {/* Main Workspace (Split Pane) */}
-      <div className="exam-workspace">
+      <div className="exam-workspace" role={section.passages.length > 1 ? 'tabpanel' : undefined} id={`passage-panel-${section.id}`} aria-labelledby={section.passages.length > 1 ? `passage-tab-${activePassage.id}` : undefined}>
         {/* Left Pane: Source Text */}
         <section className="exam-source-pane" aria-labelledby="source-heading">
           <div className="exam-source-pane__header">
@@ -99,6 +112,9 @@ export function ExamSectionWorkspace({
           </div>
           <div
             className="exam-source-pane__body"
+            tabIndex={0}
+            role="region"
+            aria-labelledby="source-heading"
             dir={isSourceArabic ? 'rtl' : 'ltr'}
             onCopy={(e) => {
               e.preventDefault()

@@ -80,9 +80,9 @@
 .field-help { color: var(--muted); font-size: 11px; line-height: 1.55; margin: -4px 0 0; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .button--danger { background: var(--error-surface); border: 1px solid #eed1c7; color: var(--error-ink); }
-.delete-confirmation { background: #fff5f0; border: 1px solid #eed1c7; border-radius: 10px; margin-top: 17px; padding: 14px; }
+.delete-confirmation { background: var(--error-surface); border: 1px solid var(--line); border-radius: 10px; margin-top: 17px; padding: 14px; }
 .delete-confirmation strong { color: var(--error-ink); display: block; font-size: 13px; }
-.delete-confirmation p { color: #8d6257; font-size: 11px; line-height: 1.5; margin: 6px 0 12px; }
+.delete-confirmation p { color: var(--error-ink); font-size: 11px; line-height: 1.5; margin: 6px 0 12px; }
 
 @media (max-width: 900px) {
   .progress-panels { grid-template-columns: 1fr; }

@@ -1,5 +1,7 @@
 # Translation Practice Platform — Product Design
 
+Historical design. The local runtime/model and verification boundaries were superseded by [the 0.1.1 verification report](../../runbooks/2026-10-16-phone-accessibility-and-local-ai.md). In particular, the older prompt-only JSON restriction below does not apply to the qualified WebLLM 0.2.85 / Qwen3.5 4B written path.
+
 **Status:** Design prepared for user review
 **Date:** 2026-10-11
 

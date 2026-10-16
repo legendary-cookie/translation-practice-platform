@@ -2,6 +2,19 @@
 
 Lingo Practice is a local-first PWA for written, news, and audio interpreting practice across seven languages: Chinese, English, Russian, French, Hindi, Spanish, and Arabic. The first release includes the twelve Chinese-centered directions and works without an account.
 
+## Download 0.1.1
+
+| Platform | Download |
+| --- | --- |
+| Windows x64 installer | [Setup EXE](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-Setup-0.1.1.exe) |
+| Windows x64 portable | [Portable EXE](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-Portable-0.1.1.exe) |
+| Android | [Debug APK](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-0.1.1-debug.apk) |
+| Integrity | [SHA256SUMS.txt](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/SHA256SUMS.txt) |
+
+These are QA builds: Windows executables are unsigned and the APK uses an Android debug signing key. Android local AI remains disabled; recording, manual transcripts and local study tools work without it. A compatible Windows GPU can prepare the optional local model in Settings. [Release notes](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.1.1).
+
+See the [current verification report](docs/runbooks/2026-10-16-phone-accessibility-and-local-ai.md), [packaging instructions](docs/runbooks/native-packaging.md), and [CI builds](https://github.com/legendary-cookie/translation-practice-platform/actions/workflows/verify-and-package.yml). Export important existing data before changing experimental builds. JSON exports currently have no import/restore flow.
+
 ## Run locally
 
 Use Node.js 22 or newer, then install dependencies and start Vite:
@@ -53,7 +66,7 @@ npm run preview -- --host 127.0.0.1 --port 4178 --strictPort
 npm run test:browser
 ```
 
-Alternatively, `node scripts/verify-browser.cjs` starts and stops its own production preview and runs both the English suite and Chinese interface checks. Port 4178 must be free.
+Alternatively, `npm run verify:browser` starts and stops its own production preview and runs English journeys, Chinese interface checks, controlled startup recovery, and axe/keyboard accessibility checks. Port 4178 must be free. Finish all builds before running it so the production files stay stable during the checks.
 
 The project includes `playwright-core`; the suite uses installed Chrome and does not download a browser. Set `QA_BROWSER_CHANNEL` to an installed supported channel when needed. Each suite creates disposable browser data, synthetic fixtures, and loopback-only mock evaluation. It never uses an existing browser profile or real API key. Generated evidence is under ignored `.browser-qa/` (override `BROWSER_QA_ARTIFACTS` if desired). It checks draft recovery/ownership, migration, consent/cancellation/mock feedback, local learning/review/export/deletion, synthetic microphone self-review, denied storage, and offline boot. Mobile viewport checks are browser simulations, not physical Android acceptance.
 
@@ -63,28 +76,25 @@ Build a Windows x64 installer and a portable executable with `npm run package:wi
 
 ## Platform support boundary
 
-The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Native packages reuse the same web assets: Electron provides the Windows wrapper and Capacitor provides the Android WebView. Desktop storage keeps one loopback origin across launches and upgrades. Android handles Back navigation and exports JSON through the system document picker. Android 16 emulator checks cover rotation, backgrounding, process relaunch, draft recovery, recording/replay, and exports. Physical phone and screen-reader acceptance remain unqualified. Android local-model evaluation remains restricted by the existing mobile capability gate. No silent analytics, account, synchronization, or cloud inference is introduced.
+The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Native packages reuse the same web assets: Electron provides the Windows wrapper and Capacitor provides the Android WebView. Desktop storage keeps one loopback origin across launches and upgrades. Android handles Back navigation and exports JSON through the system document picker. Android 16 emulator checks cover rotation, backgrounding, process relaunch, draft recovery, recording/replay, and exports. The physical Galaxy S25 Ultra passed core lifecycle, draft, Chinese UI and recording/replay checks; reader qualification and remaining limits are recorded in the verification report. Android local-model evaluation remains restricted by the existing mobile capability gate. No silent analytics, account, synchronization, or cloud inference is introduced.
 
 ## Local evaluation
 
-Open Settings and choose **Prepare local model** to download and cache the pinned WebLLM runtime/model combination:
+Open Settings and choose **Prepare local model**. The app downloads the optional model once and runs it in its worker. No separate AI server is required.
 
-- `@mlc-ai/web-llm` `0.2.82`
-- `Qwen3-1.7B-q4f16_1-MLC`
+- Runtime: `@mlc-ai/web-llm` `0.2.85`
+- Model: `Qwen3.5-4B-q4f16_1-MLC`
+- Approximate download: 2.6 GB; registry GPU memory estimate: 3867.82 MB with the 4096-token context.
 
-Preparation requires a browser with WebGPU and enough memory for the model. The model runs in a web worker. Preparation progress, cache state, ready state, and recoverable errors are shown in Settings. Device support, browser policy, available memory, and integrated-GPU limits can still make local inference unavailable.
+Smaller 0.5B, 0.6B, 0.8B, 1.5B and 2B candidates produced rejected JSON, copied examples, invented corrections, or missed omissions in synthetic trials. The compact 4B candidate passed the current 14-case English/Chinese written check, including repeated cases, valid alternative phrasing and an instruction embedded in the learner answer. The check disables networking after preparation. These results cover basic task discrimination and structural reliability on one Windows GPU; they do not calibrate scores or qualify every exercise, language or device.
 
-The app detects a runtime capability tier before offering local evaluation. Devices without WebGPU or enough storage are L0 and unavailable; iOS, Android, and devices without a strong memory signal remain restricted at L1 until real-device validation proves the model safe and useful; supported desktop-class devices can reach L2 after preflight. Hindi and Arabic directions remain manual-review or explicit-cloud-consent tasks because Qwen3's listed language support does not establish useful 1.7B critique quality. If a previously prepared model disappears from browser storage, Settings reports the missing cache instead of silently falling back.
+Written evaluation uses constrained JSON, a coverage check for every source clause, and evidence IDs resolved to unchanged input text. Unknown IDs, invented quotes, missing coverage, inconsistent omission scores, malformed output, truncation and deadline failures are rejected before saving feedback. One repair attempt shares the same 120-second evaluation deadline. The existing domain validator still checks the resolved literal evidence. Quoted text can be correct while the explanation or suggested revision is wrong; the UI includes an explicit small-model warning.
 
-On 2026-10-12, standalone external Chrome reported WebGPU available, an L2 desktop capability, a 32 GiB coarse device-memory signal, and 10.0 GiB estimated origin headroom. With the pinned `0.2.82` build, an unconstrained control completed in about 355 ms and a prompt-only JSON control in about 1.03 s after the model was ready. A realistic 91-character Chinese source and 55-word English answer completed with visible feedback in 53.4 s on one run and 74.2 s on a clean rerun. A later warm-cache run completed in 24.8 s. This spread is material: these are measurements on one strong desktop, not a latency promise; phone viability remains unproven.
+The local worker remains optional. Devices without WebGPU/storage are unavailable; mobile and weak-memory devices remain restricted until qualified. Hindi and Arabic local critique remain disabled. Interpreting uses verified transcripts and never infers speech quality from audio amplitude. Its model critique quality remains outside the written matrix. Cloud fallback still requires exact-task, payload and destination consent.
 
-The local evaluator uses streamed, prompt-only JSON rather than WebLLM `response_format: { type: "json_object" }`: on this pinned build the constrained request reached stream initialization but stalled before its first token, while prompt-only generation streamed normally. The response is parsed as one complete JSON document and validated before any score is displayed or saved. A malformed, semantically invalid, or `finish_reason: "length"` response gets one bounded deterministic retry; if that also fails, the learner sees an explicit no-score error and can review manually or choose the existing per-task cloud-consent path. The output cap is 1,400 tokens, above the observed rubric response, but longer inputs can still exceed the model's context budget.
+On Android WebView, on-device speech-recognition probing is disabled. WebView 154 on the physical Samsung phone exposed the API but terminated its renderer when the native speech binder was missing. Manual transcripts and local recording/replay remain available; the default remote speech service is never used.
 
-Qwen3 non-thinking mode is sent explicitly on every local request as WebLLM's `extra_body.enable_thinking: false`. WebLLM exposes that field in the chat-completion generation configuration and maps it from `request.extra_body`; Qwen's model card says `enable_thinking=False` disables reasoning. This pinned runtime still emitted an empty `<think>` wrapper in the observed response, so the parser removes that wrapper defensively. See the [WebLLM API reference](https://github.com/mlc-ai/web-llm/blob/main/docs/user/api_reference.rst), [WebLLM engine mapping](https://github.com/mlc-ai/web-llm/blob/main/src/engine.ts), and [Qwen3 model card](https://huggingface.co/Qwen/Qwen3-8B#switching-between-thinking-and-non-thinking-mode), all checked 2026-10-12.
-
-The 2026-10-16 Windows Electron check also reached model-ready and generated validated feedback for a synthetic Chinese-to-English task. The repair prompt now includes the validation failure and explicitly requires literal quotations. Several runs passed on repair after malformed JSON, but the latest qualification attempt rejected source evidence twice and saved no score. Local execution is demonstrated; reliable acceptance and critique quality remain unqualified. AO's older Electron-based preview stalled during model initialization. The `0.2.86` upgrade remains unvalidated, not refuted; `0.2.82` stays pinned. The earlier `0.2.83`/`0.2.84` long-prompt regression still requires a controlled comparison: <https://github.com/mlc-ai/web-llm/issues/844> (checked 2026-10-12).
-
-When local-only mode is selected, an unavailable local model stops evaluation with an explanation. The app does not send practice text or answers to a cloud service in that mode.
+Run `npm run test:local-reliability` for the optional GPU/model matrix. It starts an owned loopback development server and isolated Electron qualification host. It downloads weights into a disposable profile and reports results in `.browser-qa/local-reliability-results.json`. Standard CI does not claim GPU inference or physical-device acceptance. See [the verification report](docs/runbooks/2026-10-16-phone-accessibility-and-local-ai.md) for current evidence and limits.
 
 ## Cloud opt-in
 

@@ -38,7 +38,7 @@ export function ExamHeader({
     <header className="exam-header" aria-label={t("Exam Simulation Header")}>
       <div className="exam-header__title-group">
         <div className="exam-header__title-row">
-          <h2 className="exam-header__title">{title}</h2>
+          <h1 className="exam-header__title">{title}</h1>
           <span className="exam-header__section-badge">{t("Section ")}{sectionIndex + 1}{t(" of ")}{totalSections}
           </span>
           {isProvisional && (
@@ -62,7 +62,7 @@ export function ExamHeader({
               ? 'exam-timer--warning'
               : ''
           }`}
-          aria-live="polite"
+          role="timer" aria-live="off"
         >
           <span className="exam-timer__label">{t("Section timer")}</span>
           <span className="exam-timer__digits">{formatSeconds(sectionSeconds)}</span>
@@ -76,7 +76,7 @@ export function ExamHeader({
               ? 'exam-timer--warning'
               : ''
           }`}
-          aria-live="polite"
+          role="timer" aria-live="off"
         >
           <span className="exam-timer__label">{t("Total time left")}</span>
           <span className="exam-timer__digits">{formatSeconds(overallSeconds)}</span>

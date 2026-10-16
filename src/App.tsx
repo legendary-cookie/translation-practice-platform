@@ -1873,6 +1873,20 @@ export default function App() {
     }
   }
 
+  // Move to the new workspace after a view change, never after typing or timer ticks.
+  const workspaceView = `${currentPage}:${activeExercise?.id ?? ''}:${Boolean(feedback)}:${activeInterpretingExercise?.id ?? ''}:${Boolean(interpretingFeedback)}:${examView}`
+  const previousWorkspaceView = useRef(workspaceView)
+  useEffect(() => {
+    if (previousWorkspaceView.current === workspaceView) return
+    previousWorkspaceView.current = workspaceView
+    const main = document.getElementById('main-workspace')
+    const heading = main?.querySelector<HTMLElement>('.feedback-summary h2, .interpreting-feedback-page h2')
+      ?? main?.querySelector<HTMLElement>('.workspace-heading h2')
+      ?? main?.querySelector<HTMLElement>('h1, h2')
+    if (heading) { heading.tabIndex = -1; heading.focus() }
+    else main?.focus()
+  }, [workspaceView])
+
   useNativeBack(() => {
     if (isTakingExam || isTakingInterpreting || currentPage === 'home') return false
     if (currentPage === 'exam' && examView !== 'catalog') navigateToPage('exam')

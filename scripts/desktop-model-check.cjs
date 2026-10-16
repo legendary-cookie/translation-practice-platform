@@ -55,6 +55,9 @@ const report = { profile, checks: [], posts: [], errors: [], diagnostics: [] }
     assert.ok(hasFeedback, hasFeedback ? undefined : await page.locator('.form-message').innerText().catch(() => 'Missing feedback'))
     report.evaluationMs = Date.now() - evaluationStarted
     report.feedback = await page.locator('main').innerText()
+    report.practiceEstimate = Number(await page.locator('.estimate-badge strong').innerText())
+    assert.ok(report.practiceEstimate >= 60, 'The accurate synthetic translation must not receive an unsuccessful score')
+    assert.doesNotMatch(report.feedback, /specific strength|short evidence-based summary|limits of this small model.s practice estimate/u)
     assert.equal(report.posts.length, 0)
     assert.deepEqual(report.errors, [])
     report.checks.push('Synthetic written task produces validated local feedback with networking disabled after preparation')

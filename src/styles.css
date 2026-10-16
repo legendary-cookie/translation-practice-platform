@@ -81,7 +81,7 @@ button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-
 
 .navigation__item { align-items: center; background: transparent; border: 0; border-radius: 11px; color: var(--muted); display: flex; font-size: 14px; gap: 13px; min-height: 44px; padding: 10px 13px; text-align: left; transition: background 160ms ease, color 160ms ease, transform 160ms ease; width: 100%; }
 
-.navigation__item:hover { background: rgba(255, 255, 255, 0.66); color: var(--accent-deep); transform: translateX(2px); }
+.navigation__item:hover { background: var(--surface-soft); color: var(--accent-deep); transform: translateX(2px); }
 
 .navigation__item--active { background: var(--surface); box-shadow: 0 4px 16px rgba(44, 74, 57, 0.08); color: var(--accent-deep); font-weight: 700; }
 
@@ -160,7 +160,7 @@ button.mode-card:hover { border-color: #9dbda5; box-shadow: 0 8px 24px rgba(44, 
 
 .pill, .status-badge { border-radius: 99px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: 0.05em; padding: 5px 8px; text-transform: uppercase; white-space: nowrap; }
 
-.pill { background: var(--surface-soft); color: #8a948b; }
+.pill { background: var(--surface-soft); color: var(--muted); }
 
 .home-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 47px; }
 

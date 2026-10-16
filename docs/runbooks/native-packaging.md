@@ -13,6 +13,8 @@ npm run package:windows
 
 Outputs:
 
+The command sets `--publish never` explicitly. Electron-builder 26 otherwise attempts implicit publishing on a main-branch CI run and requires a token even after creating the packages. GitHub releases are published explicitly after verification.
+
 - `artifacts/windows/Lingo-Practice-Setup-0.1.1.exe`
 - `artifacts/windows/Lingo-Practice-Portable-0.1.1.exe`
 

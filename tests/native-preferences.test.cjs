@@ -35,15 +35,25 @@ test('native preferences recover the durable value before rendering and preserve
   assert.equal(f.memory.get(f.WORKSPACE_PREFERENCE_KEY), '{"interfaceLanguage":"zh-CN"}')
 })
 
-test('native preference removal is ordered after writes and a failed write cannot poison deletion', async context => {
+test('native preference reset is ordered after writes and a failed write cannot poison deletion', async context => {
   const f = fixture(context)
   f.fail()
   await assert.rejects(f.persistNativeWorkspace('{}'), /disk failure/)
   const writing = f.persistNativeWorkspace('{"theme":"dark"}')
   const clearing = f.persistNativeWorkspace(null)
   await Promise.all([writing, clearing])
-  assert.equal(f.native.has(f.WORKSPACE_PREFERENCE_KEY), false)
-  assert.equal(f.calls.at(-1)[0], 'remove')
+  assert.equal(f.native.get(f.WORKSPACE_PREFERENCE_KEY), '{}')
+  assert.deepEqual(f.calls.at(-1), ['set', '{}'])
+})
+
+test('cleared native preferences cannot migrate a stale WebView snapshot back after restart', async context => {
+  const f = fixture(context)
+  const stale = '{"interfaceLanguage":"zh-CN","theme":"dark"}'
+  await f.persistNativeWorkspace(stale)
+  await f.persistNativeWorkspace(null)
+  f.memory.set(f.WORKSPACE_PREFERENCE_KEY, stale)
+  await f.hydrateNativeWorkspace()
+  assert.deepEqual(JSON.parse(f.memory.get(f.WORKSPACE_PREFERENCE_KEY)), {})
 })
 
 test('web preferences require no native plugin or migration', async context => {

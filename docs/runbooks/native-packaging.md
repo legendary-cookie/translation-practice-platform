@@ -47,7 +47,9 @@ The Android manifest requests microphone permission only for the interpreting re
 
 JSON exports use Android's system document picker without storage permissions or a shared temporary archive. The archive stays in memory while choosing a destination, outside Android's size-limited saved-state bundle. If Android kills the process during export, retry the export; the saved workspace remains unchanged. Exports are reference-only, without import/restore.
 
-Language and appearance preferences use native Android Preferences and hydrate the WebView mirror before React mounts. Writes/removal are serialized, and local data deletion removes the native copy too. New audio records store inline bytes in IndexedDB schema 7 with strict durability, avoiding external Blob backing files. The exact source/response audio hashes and Chinese preference survived a full emulator reboot. Readable legacy Blob records are supported, but already-unreadable old files cannot be reconstructed by this change; export earlier experimental builds before updating when possible.
+Language and appearance preferences use native Android Preferences and hydrate the WebView mirror before React mounts. Writes/reset are serialized. Local data deletion replaces the native value with an empty object, preventing stale WebView preferences from being migrated back after restart. New audio records store inline bytes in IndexedDB schema 7 with strict durability, avoiding external Blob backing files. The exact source/response audio hashes and Chinese preference survived a full emulator reboot. Readable legacy Blob records are supported, but already-unreadable old files cannot be reconstructed by this change; export earlier experimental builds before updating when possible.
+
+The Android asset-preparation step adds a hash of the bundled HTML to `server.appStartPath` in the generated native configuration. This keeps the same storage origin while bypassing stale service-worker HTML after APK updates. Use the canonical packaging command, which runs Capacitor sync before adding that build-specific path.
 
 ## Repeat native checks
 

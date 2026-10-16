@@ -6,9 +6,9 @@ let writes: Promise<void> = Promise.resolve()
 
 export function persistNativeWorkspace(value: string | null): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return Promise.resolve()
-  const operation = writes.catch(() => undefined).then(() => value === null
-    ? Preferences.remove({ key: WORKSPACE_PREFERENCE_KEY })
-    : Preferences.set({ key: WORKSPACE_PREFERENCE_KEY, value }))
+  // An empty native value marks an intentional reset. Removing the key would let
+  // a stale WebView snapshot be mistaken for a first-install migration on restart.
+  const operation = writes.catch(() => undefined).then(() => Preferences.set({ key: WORKSPACE_PREFERENCE_KEY, value: value ?? '{}' }))
   writes = operation
   return operation
 }

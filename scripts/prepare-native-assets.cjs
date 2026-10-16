@@ -1,9 +1,17 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const sharp = require('sharp')
+const { createHash } = require('node:crypto')
 
 const root = path.resolve(__dirname, '..')
 const sourceIcon = path.join(root, 'public', 'icons', 'icon-512.png')
+
+async function setAndroidStartPath(configPath, indexPath) {
+  const config = JSON.parse(await fs.readFile(configPath, 'utf8'))
+  const build = createHash('sha256').update(await fs.readFile(indexPath)).digest('hex').slice(0, 16)
+  config.server = { ...config.server, appStartPath: `/?build=${build}` }
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2))
+}
 
 async function makeWindowsIcon() {
   const png = await sharp(sourceIcon).resize(256, 256).png().toBuffer()
@@ -72,6 +80,10 @@ async function makeAndroidIcons() {
     `<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="lingo_launcher_background">#175ac0</color></resources>\n`,
   )
   console.log('Created Android launcher icons in android/app/src/main/res')
+  await setAndroidStartPath(
+    path.join(root, 'android', 'app', 'src', 'main', 'assets', 'capacitor.config.json'),
+    path.join(root, 'dist', 'index.html'),
+  )
 }
 
 async function main() {
@@ -81,7 +93,9 @@ async function main() {
   throw new Error('Choose one target: windows or android.')
 }
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   console.error(error)
   process.exitCode = 1
 })
+
+module.exports = { setAndroidStartPath }

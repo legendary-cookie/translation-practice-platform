@@ -44,8 +44,9 @@ async function hideKeyboard() {
     const answer = 'Android lifecycle fixture 中文 العربية हिन्दी exact whitespace  '
     await page.locator('#translation-answer').fill(answer)
     await page.getByText('Draft saved on this device', { exact: false }).waitFor()
-    report.renderer = await page.evaluate(() => ({ ua: navigator.userAgent, width: innerWidth, height: innerHeight, webgpu: !!navigator.gpu, platform: window.Capacitor.getPlatform() }))
+    report.renderer = await page.evaluate(() => ({ url: location.href, ua: navigator.userAgent, width: innerWidth, height: innerHeight, webgpu: !!navigator.gpu, platform: window.Capacitor.getPlatform() }))
     assert.equal(report.renderer.platform, 'android')
+    assert.match(report.renderer.url, /\?build=[a-f0-9]{16}/u)
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     await hideKeyboard()
     back()

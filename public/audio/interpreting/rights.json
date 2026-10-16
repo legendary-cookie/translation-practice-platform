@@ -1,0 +1,72 @@
+{
+  "audio.zh.community-garden.v1": {
+    "assetPath": "/audio/interpreting/zh-community-garden.wav",
+    "sha256": "133fdb351f698481b94bd14f69f60bc525ea9d19bf1c95a1f21e03412919e445",
+    "mimeType": "audio/wav",
+    "durationMs": 8795,
+    "origin": "Platform-authored Mandarin script synthesized locally with Microsoft Huihui Desktop; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export."
+  },
+  "audio.en.library.v1": {
+    "assetPath": "/audio/interpreting/en-library.wav",
+    "sha256": "c67f29e98733762626326917aa6936cb84bec2f0da235c63c2dab4bab57c9234",
+    "mimeType": "audio/wav",
+    "durationMs": 8983,
+    "origin": "Platform-authored English script synthesized locally with Microsoft David Desktop; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export."
+  },
+  "audio.ru.repair.v1": {
+    "assetPath": "/audio/interpreting/ru-repair.wav",
+    "sha256": "fed70f23d758e0da3acc52317b19c8ee41ed3f90f8131f5ea4350a4f04f02998",
+    "mimeType": "audio/wav",
+    "durationMs": 10828,
+    "origin": "Platform-authored Russian script synthesized locally with Microsoft Irina Desktop; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export."
+  },
+  "audio.fr.rooftop.v1": {
+    "assetPath": "/audio/interpreting/fr-rooftop.wav",
+    "sha256": "289fed6d8e25d75f22c6db32ae8dd39773029c83929ba011e7931a6e195b2f5e",
+    "mimeType": "audio/wav",
+    "durationMs": 8442,
+    "origin": "Platform-authored French script rendered locally with an installed desktop synthetic voice because a French voice was unavailable on the build machine; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export; pronunciation is a demonstration, not a native-speaker claim."
+  },
+  "audio.hi.seeds.v1": {
+    "assetPath": "/audio/interpreting/hi-seeds.wav",
+    "sha256": "5d88a3d4a86664b7517e5bf810e2bba88b7fccfe8693e3f4c19f65bac709de47",
+    "mimeType": "audio/wav",
+    "durationMs": 10871,
+    "origin": "Platform-authored Hindi script represented in romanized text and synthesized locally with an installed desktop synthetic voice because a Hindi voice was unavailable on the build machine; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export; pronunciation is a demonstration, not a native-speaker claim."
+  },
+  "audio.es.notebook.v1": {
+    "assetPath": "/audio/interpreting/es-notebook.wav",
+    "sha256": "65638f1b94041fb9b4ac43816a3b2e659a5b6fdd250291c8bdd7148d9635377e",
+    "mimeType": "audio/wav",
+    "durationMs": 9827,
+    "origin": "Platform-authored Spanish script synthesized locally with an installed desktop synthetic voice; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export; pronunciation is a demonstration, not a native-speaker claim."
+  },
+  "audio.ar.map.v1": {
+    "assetPath": "/audio/interpreting/ar-map.wav",
+    "sha256": "d63e1b34b88f893ee2ffa8c7346cc46f19154c261e3df983c6d090a64a82ca5b",
+    "mimeType": "audio/wav",
+    "durationMs": 11197,
+    "origin": "Platform-authored Arabic script represented in romanized text and synthesized locally with an installed desktop synthetic voice because an Arabic voice was unavailable on the build machine; no external recording or remote speech service.",
+    "licenseOrPermission": "Original platform script and locally synthesized demonstration audio; permitted for this project.",
+    "speakerPermission": "Synthetic voice; no human speaker recording.",
+    "allowedUse": "Offline interpreting practice within Lingo Practice and local learner export; pronunciation is a demonstration, not a native-speaker claim."
+  }
+}

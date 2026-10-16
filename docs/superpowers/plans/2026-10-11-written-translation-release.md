@@ -1,5 +1,7 @@
 # Translation Practice Platform — Written Translation Release Implementation Plan
 
+Historical implementation plan. See the [current README](../../../README.md) and [0.1.1 verification report](../../runbooks/2026-10-16-phone-accessibility-and-local-ai.md) for the current runtime, model, commands and observed results.
+
 > **For agentic workers:** Use the executing-plans workflow to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the first usable local-first release of the CATTI/MTI practice app, with written and news translation, structured AI feedback, local history, and laptop/phone layouts.
@@ -52,12 +54,12 @@
 - `App` owns the current top-level page (`home`, `practice`, `progress`, or `settings`) and passes page-change callbacks to the navigation and feature panels.
 - The app shell exposes written translation and news translation as available modes; interpreting and exam simulation appear as planned modes with their scope clearly labeled.
 
-- [ ] Scaffold Vite React TypeScript without overwriting `docs/` or `.git/`.
-- [ ] Add a left navigation rail on desktop and a compact touch navigation on phones.
-- [ ] Implement a consistent visual system with system fonts and local SVG/CSS icons only.
-- [ ] Add the PWA manifest and a versioned service worker cache for the app shell.
-- [ ] Add `dev`, `build`, and `preview` scripts; run `npm run build` after the foundation is in place.
-- [ ] Commit the foundation as `feat: scaffold responsive local-first app`.
+- [x] Scaffold Vite React TypeScript without overwriting `docs/` or `.git/`.
+- [x] Add a left navigation rail on desktop and a compact touch navigation on phones.
+- [x] Implement a consistent visual system with system fonts and local SVG/CSS icons only.
+- [x] Add the PWA manifest and a versioned service worker cache for the app shell.
+- [x] Add `dev`, `build`, and `preview` scripts; run `npm run build` after the foundation is in place.
+- [x] Commit the foundation as `feat: scaffold responsive local-first app`.
 
 ### Task 2: Define language, exercise, feedback, and local-storage contracts
 
@@ -75,11 +77,11 @@
 - `evaluationProvider.evaluate(input)` returns `Promise<TranslationFeedback>`; all provider results pass through `validateFeedback` before storage or display.
 - `database` exposes `listSessions()`, `saveSession(session)`, `getSettings()`, `saveSettings(settings)`, `exportData()`, and `clearData()`.
 
-- [ ] Add the seven language labels, script direction metadata, and the 12 Chinese-centered directions.
-- [ ] Add seven short original practice passages, one authored in each source language, with news-style and general translation tags.
-- [ ] Add IndexedDB stores for settings and sessions; keep secrets out of this database.
-- [ ] Implement feedback normalization: clamp each dimension score to 0–100, reject missing required fields, and discard annotations whose quoted evidence does not occur in the source or answer.
-- [ ] Run `npm run build` and commit as `feat: add local practice data model`.
+- [x] Add the seven language labels, script direction metadata, and the 12 Chinese-centered directions.
+- [x] Add seven short original practice passages, one authored in each source language, with news-style and general translation tags.
+- [x] Add IndexedDB stores for settings and sessions; keep secrets out of this database.
+- [x] Implement feedback normalization: clamp each dimension score to 0–100, reject missing required fields, and discard annotations whose quoted evidence does not occur in the source or answer.
+- [x] Run `npm run build` and commit as `feat: add local practice data model`.
 
 ### Task 3: Implement local and consent-based cloud evaluation providers
 
@@ -93,12 +95,12 @@
 - `createCloudProvider(config)` accepts `{ baseUrl, model, apiKey }`, sends an OpenAI-compatible chat-completion request, and never persists `apiKey`.
 - The router uses local evaluation when selected and ready. If cloud is enabled and local evaluation is unavailable, it returns a `needs-consent` result containing the exact exercise text and answer; only an explicit confirmation may call the cloud provider.
 
-- [ ] Pin `@mlc-ai/web-llm` to version `0.2.82` and use its web-worker API so generation does not block the UI.
-- [ ] Add explicit model preparation, download progress, cached/ready state, and recoverable error handling.
-- [ ] Request a JSON-shaped rubric response without treating model output as calibrated or official scoring.
-- [ ] Add a cloud settings form for an OpenAI-compatible URL, model, and session-only key; require a per-session consent dialog before sending exercise text or a learner answer.
-- [ ] Make the local-only setting disable all evaluation network requests, including when local model support is unavailable.
-- [ ] Run `npm run build` and commit as `feat: add privacy-aware AI evaluation providers`.
+- [x] Pin `@mlc-ai/web-llm` to version `0.2.82` and use its web-worker API so generation does not block the UI.
+- [x] Add explicit model preparation, download progress, cached/ready state, and recoverable error handling.
+- [x] Request a JSON-shaped rubric response without treating model output as calibrated or official scoring.
+- [x] Add a cloud settings form for an OpenAI-compatible URL, model, and session-only key; require a per-session consent dialog before sending exercise text or a learner answer.
+- [x] Make the local-only setting disable all evaluation network requests, including when local model support is unavailable.
+- [x] Run `npm run build` and commit as `feat: add privacy-aware AI evaluation providers`.
 
 ### Task 4: Build the written and news translation learning loop
 
@@ -113,11 +115,11 @@
 - `FeedbackPanel` renders validated rubric scores, exact evidence quotes, explanations, alternatives, uncertainty, and a revise action.
 - A completed session is saved through `database.saveSession` only after feedback has passed validation.
 
-- [ ] Add dashboard cards for continue practice, written translation, news translation, local AI status, and recent skill activity.
-- [ ] Add an accessible source/answer workspace with a glossary, word count, timer, and submit/revise flow.
-- [ ] Support the 12 initial directions and correct left-to-right/right-to-left text rendering.
-- [ ] Display an explicit practice-estimate label and explain when a task cannot be evaluated locally.
-- [ ] Run `npm run build` and commit as `feat: add translation practice and feedback`.
+- [x] Add dashboard cards for continue practice, written translation, news translation, local AI status, and recent skill activity.
+- [x] Add an accessible source/answer workspace with a glossary, word count, timer, and submit/revise flow.
+- [x] Support the 12 initial directions and correct left-to-right/right-to-left text rendering.
+- [x] Display an explicit practice-estimate label and explain when a task cannot be evaluated locally.
+- [x] Run `npm run build` and commit as `feat: add translation practice and feedback`.
 
 ### Task 5: Add progress, privacy controls, export, and deletion
 
@@ -131,28 +133,28 @@
 - `database.exportData()` returns a versioned JSON object containing learner settings and session history, excluding transient API keys.
 - `database.clearData()` removes local sessions and settings after an explicit confirmation.
 
-- [ ] Show sessions, score trends, and dimension averages without inventing data for a new learner.
-- [ ] Add export to a user-selected JSON download and confirmed local-data deletion.
-- [ ] Add privacy mode selection, model status, cloud endpoint fields, transient API-key entry, and per-task consent copy.
-- [ ] Show clearly that data is stored per browser/device and is not synchronized.
-- [ ] Run `npm run build` and commit as `feat: add learner progress and privacy settings`.
+- [x] Show sessions, score trends, and dimension averages without inventing data for a new learner.
+- [x] Add export to a user-selected JSON download and confirmed local-data deletion.
+- [x] Add privacy mode selection, model status, cloud endpoint fields, transient API-key entry, and per-task consent copy.
+- [x] Show clearly that data is stored per browser/device and is not synchronized.
+- [x] Run `npm run build` and commit as `feat: add learner progress and privacy settings`.
 
 ### Task 6: Finish responsive details and project handoff
 
 **Files:**
 - Modify: `src/styles.css`, feature CSS files, PWA assets, and `README.md`.
 
-- [ ] Refine keyboard focus, labels, contrast, touch target size, reduced-motion handling, Arabic direction, and narrow-screen layouts.
-- [ ] Ensure the service worker caches same-origin app assets only; never cache evaluation requests or cloud responses.
-- [ ] Document setup, `npm run dev`, `npm run build`, first-time local-model download, cloud opt-in, offline boundaries, and current planned modes.
-- [ ] Produce the final production build with `npm run build` and commit as `docs: document local-first practice app`.
+- [x] Refine keyboard focus, labels, contrast, touch target size, reduced-motion handling, Arabic direction, and narrow-screen layouts.
+- [x] Ensure the service worker caches same-origin app assets only; never cache evaluation requests or cloud responses.
+- [x] Document setup, `npm run dev`, `npm run build`, first-time local-model download, cloud opt-in, offline boundaries, and current planned modes.
+- [x] Produce the final production build with `npm run build` and commit as `docs: document local-first practice app`.
 
 ## Research Notes
 
 - Vite's official guide currently documents the React TypeScript template and requires Node.js 20.19+ or 22.12+; the available Node runtime is 26.8.1: <https://vite.dev/guide/>.
 - WebLLM documents in-browser WebGPU inference, worker support, and supported-model registration: <https://github.com/mlc-ai/web-llm>.
 - Qwen's official Qwen3 announcement lists Chinese, English, Russian, French, Hindi, Spanish, and Arabic among its supported languages: <https://qwenlm.github.io/blog/qwen3/>.
-- WebLLM 0.2.82 is pinned because an open WebLLM issue reports a regression on 0.2.83/0.2.84 with longer prompts on an integrated GPU; 0.2.82 is reported unaffected in that issue: <https://github.com/mlc-ai/web-llm/issues/844>. The local model remains optional and capability-dependent.
+- WebLLM `0.2.82` remains pinned as a precaution because an open issue reports a `0.2.83`/`0.2.84` regression on longer prompts on an integrated GPU, with `0.2.82` reported unaffected: <https://github.com/mlc-ai/web-llm/issues/844>. On 2026-10-12, the local Chrome context reported WebGPU available, L2 desktop capability, a 32 GiB coarse device-memory signal, and 10.0 GiB estimated origin headroom. `0.2.86` downloaded the Qwen3 model, populated the cache, and reached worker-ready state, but both a 1,008-word / 5,163-character prompt and a 58-word / 270-raw-character control failed. This does not isolate a `0.2.86` regression. Re-running pinned `0.2.82` in the same browser/hardware also reached worker-ready state, but an equivalent 58-word / 270-raw-character control remained `Evaluating…` for 2m15s without returning. No working local inference run was obtained, so the version comparison is inconclusive: `0.2.86` is unvalidated, not refuted. Change the pin only after a controlled 0.2.82-versus-0.2.86 comparison has a passing control on target hardware.
 - IndexedDB and service workers support browser-local structured storage and offline app-shell behavior: <https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB> and <https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers>.
 
 ## Handoff Notes

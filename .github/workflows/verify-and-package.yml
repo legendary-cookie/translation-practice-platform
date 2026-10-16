@@ -1,0 +1,72 @@
+name: Verify and package
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-and-android:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm test
+      - run: npm run package:windows
+      - name: Browser journeys and English/Chinese interface
+        run: node scripts/verify-browser.cjs
+      - name: Packaged Windows persistence
+        env:
+          DESKTOP_QA_EXECUTABLE: ${{ github.workspace }}\artifacts\windows\win-unpacked\Lingo Practice.exe
+        run: node scripts/desktop-checks.cjs
+      - name: Install Android platform
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" 'platforms;android-36' 'build-tools;36.0.0'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: npm run package:android
+      - name: Hash packages
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/windows/*.exe, artifacts/android/*.apk | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+            "$hash  $($_.Name)" | Add-Content artifacts/SHA256SUMS.txt
+          }
+      - name: Upload installable QA packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lingo-practice-qa-${{ github.sha }}
+          path: |
+            artifacts/windows/*.exe
+            artifacts/android/*.apk
+            artifacts/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verification-${{ github.sha }}
+          path: |
+            .browser-qa/*results.json
+            .browser-qa/*.png
+          include-hidden-files: true
+          retention-days: 7

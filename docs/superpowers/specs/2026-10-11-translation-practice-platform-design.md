@@ -1,5 +1,7 @@
 # Translation Practice Platform — Product Design
 
+Historical design. The local runtime/model and verification boundaries were superseded by [the 0.1.1 verification report](../../runbooks/2026-10-16-phone-accessibility-and-local-ai.md). In particular, the older prompt-only JSON restriction below does not apply to the qualified WebLLM 0.2.85 / Qwen3.5 4B written path.
+
 **Status:** Design prepared for user review
 **Date:** 2026-10-11
 
@@ -82,6 +84,14 @@ The product is divided into focused modules:
 - recommendation service that turns local error history into drills.
 
 For a session, the app loads an exercise locally, records the learner's response in the local store, sends an evaluation request through the router, validates and displays the result, then updates the local learner profile. A cloud adapter receives only the selected task payload after task-specific consent. No background sync or analytics service is part of this design.
+
+## Validated local-inference constraint
+
+The local-first promise has a measured desktop latency cost. On 2026-10-12, standalone external Chrome with WebGPU available, an L2 desktop capability, 32 GiB coarse device memory, and 10.0 GiB estimated origin headroom produced a short unconstrained control in about 355 ms and a prompt-only JSON control in about 1.03 s after model readiness. A realistic 91-character Chinese source and 55-word English answer took 53.4 s in one run and 74.2 s in a clean rerun, including streamed rubric output; a later warm-cache run took 24.8 s. These are measurements on one strong desktop, not a service-level target; the variance is material, phone viability remains unproven, and a roughly one-minute wait is a product design constraint.
+
+The shipped local path must not use WebLLM `response_format: { type: "json_object" }` on the pinned `0.2.82` build: the request reached stream initialization but stalled before its first token in standalone Chrome. It instead requests streamed JSON by prompt, rejects malformed, semantically invalid, or length-truncated output, retries once with a deterministic repair instruction, and shows an explicit no-score error if the retry fails. No fallback score may be fabricated. The local request explicitly sends `extra_body.enable_thinking: false`; WebLLM exposes and forwards that chat-completion field, while Qwen's model card defines false as the hard no-thinking switch. This pinned runtime nevertheless emitted an empty `<think>` wrapper in the observed response, so it is stripped defensively before validation. References checked 2026-10-12: [WebLLM API reference](https://github.com/mlc-ai/web-llm/blob/main/docs/user/api_reference.rst), [WebLLM engine mapping](https://github.com/mlc-ai/web-llm/blob/main/src/engine.ts), [Qwen3 model card](https://huggingface.co/Qwen/Qwen3-8B#switching-between-thinking-and-non-thinking-mode).
+
+The model reached ready state and generated feedback only in standalone external Chrome during this investigation. AO's Electron-based preview stalled in WebLLM reload/model initialization before engine-ready; it is a known diagnostic limitation, not a supported-browser result. WebLLM `0.2.86` remains unvalidated, not refuted, so the phase 1 pin stays at `0.2.82` pending controlled target-device testing. The reported `0.2.83`/`0.2.84` regression remains tracked at [WebLLM issue #844](https://github.com/mlc-ai/web-llm/issues/844) (checked 2026-10-12).
 
 ## Phased delivery
 

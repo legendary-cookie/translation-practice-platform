@@ -1,6 +1,10 @@
 .worktrees/
 node_modules/
 dist/
+artifacts/
+android/.gradle/
+android/local.properties
+android/app/build/
 .env*
 !.env.example
 

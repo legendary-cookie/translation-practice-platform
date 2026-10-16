@@ -44,21 +44,24 @@ IndexedDB schema 6 preserves the earlier stores and adds draft, learning-card, a
 Start a production preview on `127.0.0.1:4178`, then run the optional browser suite in another terminal:
 
 ```powershell
+npm ci
 npm run build
 npm run preview -- --host 127.0.0.1 --port 4178 --strictPort
 ```
 
 ```powershell
-# Use an existing Playwright installation; no test-runner dependency is added.
-$env:PLAYWRIGHT_MODULE_PATH = '<absolute path to the installed playwright module>'
 npm run test:browser
 ```
 
-On Windows the suite uses installed Chrome. Set `QA_BROWSER_CHANNEL` to an installed supported channel when needed. Each suite creates disposable browser data, synthetic fixtures, and loopback-only mock evaluation. It never uses an existing browser profile or real API key. Generated evidence is under ignored `.browser-qa/` (override `BROWSER_QA_ARTIFACTS` if desired). It checks draft recovery/ownership, migration, consent/cancellation/mock feedback, local learning/review/export/deletion, synthetic microphone self-review, denied storage, and offline boot. Mobile viewport checks are browser simulations, not physical Android acceptance.
+The project includes `playwright-core`; the suite uses installed Chrome and does not download a browser. Set `QA_BROWSER_CHANNEL` to an installed supported channel when needed. Each suite creates disposable browser data, synthetic fixtures, and loopback-only mock evaluation. It never uses an existing browser profile or real API key. Generated evidence is under ignored `.browser-qa/` (override `BROWSER_QA_ARTIFACTS` if desired). It checks draft recovery/ownership, migration, consent/cancellation/mock feedback, local learning/review/export/deletion, synthetic microphone self-review, denied storage, and offline boot. Mobile viewport checks are browser simulations, not physical Android acceptance.
+
+## Native desktop and Android packages
+
+Build a Windows x64 installer and a portable executable with `npm run package:windows`. Build an Android debug APK with `npm run package:android`; both commands rebuild the same production web app first. See [`docs/runbooks/native-packaging.md`](docs/runbooks/native-packaging.md) for SDK setup, artifact names, signing limits, and device-qualification boundaries.
 
 ## Platform support boundary
 
-The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Windows Chrome browser behavior is testable here; native Windows packages, APK distribution, physical Android back/keyboard/rotation behavior, screen-reader qualification, real microphone behavior, and refreshed real-device/model performance are not certified by these tests. A wrapper is deferred until its WebGPU, storage, and audio behavior can be measured. No silent analytics, account, synchronization, or cloud inference is introduced.
+The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Native packages reuse the same web assets: Electron provides the Windows wrapper and Capacitor provides the Android WebView. Android local-model evaluation remains restricted by the existing mobile capability gate. Windows local-model inference inside Electron, physical Android back/keyboard/rotation behavior, screen-reader qualification, real microphone behavior, and refreshed real-device/model performance remain unqualified. No silent analytics, account, synchronization, or cloud inference is introduced.
 
 ## Local evaluation
 
@@ -77,7 +80,7 @@ The local evaluator uses streamed, prompt-only JSON rather than WebLLM `response
 
 Qwen3 non-thinking mode is sent explicitly on every local request as WebLLM's `extra_body.enable_thinking: false`. WebLLM exposes that field in the chat-completion generation configuration and maps it from `request.extra_body`; Qwen's model card says `enable_thinking=False` disables reasoning. This pinned runtime still emitted an empty `<think>` wrapper in the observed response, so the parser removes that wrapper defensively. See the [WebLLM API reference](https://github.com/mlc-ai/web-llm/blob/main/docs/user/api_reference.rst), [WebLLM engine mapping](https://github.com/mlc-ai/web-llm/blob/main/src/engine.ts), and [Qwen3 model card](https://huggingface.co/Qwen/Qwen3-8B#switching-between-thinking-and-non-thinking-mode), all checked 2026-10-12.
 
-The model reached ready state and produced results only in standalone external Chrome during this investigation. AO's Electron-based preview stalled during WebLLM reload/model initialization before engine-ready, so that preview is not evidence that the local path works or fails in a supported browser. The `0.2.86` upgrade remains unvalidated, not refuted; `0.2.82` stays pinned. The earlier `0.2.83`/`0.2.84` long-prompt regression still requires a controlled comparison: <https://github.com/mlc-ai/web-llm/issues/844> (checked 2026-10-12).
+The model reached ready state and produced results only in standalone external Chrome during this investigation. AO's Electron-based preview stalled during WebLLM reload/model initialization before engine-ready. The packaged Windows wrapper is a separate runtime and its local-model path remains unqualified until a fresh inference completes there. The `0.2.86` upgrade remains unvalidated, not refuted; `0.2.82` stays pinned. The earlier `0.2.83`/`0.2.84` long-prompt regression still requires a controlled comparison: <https://github.com/mlc-ai/web-llm/issues/844> (checked 2026-10-12).
 
 When local-only mode is selected, an unavailable local model stops evaluation with an explanation. The app does not send practice text or answers to a cloud service in that mode.
 

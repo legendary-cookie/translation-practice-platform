@@ -1,15 +1,17 @@
 # Browser release verification
 
-Verified on 2026-10-14 against the takeover source descended from `518c842`.
-These results qualify a browser release; they do not complete native or physical
-Android acceptance.
+Verified on 2026-10-16 against the takeover source descended from `518c842`.
+These results qualify the browser release and record native package builds; they
+do not complete physical Android acceptance.
 
 | Gate | Command | Result |
 | --- | --- | --- |
-| Behavior regression | `npm test` | Exit 0; 109 passed, none failed or skipped |
+| Behavior regression | `npm test` | Exit 0; 111 passed, none failed or skipped |
 | TypeScript and production bundle | `npm run build` | Exit 0; 119 modules |
-| Production browser journeys | `npm run test:browser` | Exit 0; 108 assertions in installed Chrome 155.0.8059.40 |
+| Production browser journeys | `npm run test:browser` | Exit 0; 108 assertions in installed Chrome 155.0.8059.82 |
 | Independent draft review | Focused Node tests and separate Chrome harness | Exit 0; 21 focused tests and six browser assertions |
+| Windows desktop packages | `npm run package:windows` | Exit 0; x64 installer and portable EXE; portable smoke process exited 0 |
+| Android package | `npm run package:android` | Exit 0; debug APK built and verified with `apksigner`; no emulator or phone was connected |
 | Whitespace check | `git diff --check` | Exit 0 |
 
 For setup, use the README's browser-verification commands. The canonical runner
@@ -43,9 +45,11 @@ multilingual word-count helper was added to the final bundle.
 
 Remaining requirements: interface language selection/translated UI; physical
 Android keyboard, back, rotation and interruptions; screen-reader testing;
-native Windows/Android packaging compatibility; actual microphone and cloud
-behavior; refreshed model download/inference/device performance; optional
-generated drills and unqualified model tiers. Interface copy remains English.
+Android on-device compatibility; actual microphone and cloud behavior; Windows
+Electron local-model inference; refreshed model download/inference/device
+performance; optional generated drills and unqualified model tiers. Interface
+copy remains English. The Windows EXEs are unsigned, and the APK is debug-signed
+for sideload testing rather than Play Store distribution.
 The local model remains pinned and optional. Lazy loading reduces the initial
 entry, but the large model runtime/worker chunks are still precached; Vite emits
 a chunk-size warning. Export is reference-only, without import/restore.

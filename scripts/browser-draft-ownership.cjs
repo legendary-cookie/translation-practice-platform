@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright')
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright-core')
 
 const out = path.resolve(process.env.BROWSER_QA_ARTIFACTS || '.browser-qa')
 fs.mkdirSync(out, { recursive: true })

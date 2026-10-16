@@ -14,11 +14,13 @@ export function PracticeSetup({
   initialMode = 'written',
   evaluationMode,
   localStatus,
+  isCheckingSavedDraft = false,
   onStart,
 }: {
   initialMode?: WrittenPracticeMode
   evaluationMode: EvaluationMode
   localStatus: LocalModelStatus
+  isCheckingSavedDraft?: boolean
   onStart: (selection: PracticeStart) => void
 }) {
   const { preferences } = useWorkspacePreferences()
@@ -72,7 +74,8 @@ export function PracticeSetup({
         </div>
         <label className="field-label passage-picker">{t("Passage")}<select value={selectedExercise?.id ?? ''} onChange={(event) => setExerciseId(event.target.value)} disabled={!filteredExercises.length}>{filteredExercises.map((exercise) => <option key={exercise.id} value={exercise.id}>{exercise.title} · {t(exercise.difficulty)}</option>)}</select></label>
         {selectedExercise ? <div className="selected-exercise"><div><span className="eyebrow">{t("Selected passage")}</span><h3>{selectedExercise.title}</h3><p>{getLanguage(selectedExercise.sourceLanguage).nativeLabel} → {getLanguage(selectedExercise.targetLanguage).nativeLabel} · {t(selectedExercise.difficulty)}</p></div><span className="selected-exercise__tag">{mode === 'news' ? t("News style") : t("General")}</span></div> : <p className="form-message" role="status">{t("No passage matches these filters. Choose another difficulty or topic.")}</p>}
-        <button className="button button--primary setup-card__start" type="button" disabled={!selectedExercise} onClick={() => selectedExercise && onStart({ exercise: selectedExercise, timeLimitSeconds: timing === 'untimed' ? undefined : Number(timing) * 60 })}>{t("Open translation desk ")}<span aria-hidden="true">→</span></button>
+        {isCheckingSavedDraft && <p role="status">{t('Checking saved drafts. Try again when the check finishes.')}</p>}
+        <button className="button button--primary setup-card__start" type="button" disabled={!selectedExercise || isCheckingSavedDraft} aria-busy={isCheckingSavedDraft} onClick={() => selectedExercise && onStart({ exercise: selectedExercise, timeLimitSeconds: timing === 'untimed' ? undefined : Number(timing) * 60 })}>{t("Open translation desk ")}<span aria-hidden="true">→</span></button>
         <p className="setup-card__note">{t("Feedback is always labeled a practice estimate, never an official CATTI or MTI result.")}</p>
       </section>
     </div>

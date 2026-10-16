@@ -50,7 +50,10 @@ const pass = (name) => { checks.push(name); console.log('PASS', name) }
     console.log(JSON.stringify(capability))
   } catch (error) {
     console.error(error)
-    fs.writeFileSync(path.join(output, 'desktop-results.json'), JSON.stringify({ checks, failure: error.message, profile }, null, 2))
+    const page = application ? await application.firstWindow().catch(() => undefined) : undefined
+    const visibleFailure = await page?.locator('body').innerText().catch(() => '')
+    await page?.screenshot({ path: path.join(output, 'desktop-failure.png') }).catch(() => {})
+    fs.writeFileSync(path.join(output, 'desktop-results.json'), JSON.stringify({ checks, failure: error.message, visibleFailure, profile }, null, 2))
     process.exitCode = 1
   } finally {
     await application?.close().catch(() => {})

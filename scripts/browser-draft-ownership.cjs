@@ -80,7 +80,10 @@ async function readDraft(page) {
     assert.equal((await readDraft(fresh)).answer, 'Synthetic new post-delete draft')
     pass('Successful deletion releases the old owner and fresh-tab saving works')
     await stale.locator('.sidebar').getByRole('button', { name: 'Practice', exact: true }).click()
-    await stale.getByRole('button', { name: 'Open translation desk' }).click()
+    const staleStart = stale.getByRole('button', { name: 'Open translation desk' })
+    // A stale tab may still have a cancelled startup recovery read. Both the
+    // disabled control and the existing start guard must preserve the new owner.
+    if (!await staleStart.isDisabled()) await staleStart.click()
     assert.equal(await stale.locator('#translation-answer').count(), 0)
     assert.equal((await readDraft(fresh)).answer, 'Synthetic new post-delete draft')
     pass('Stale pre-delete tab cannot resurrect its old answer')

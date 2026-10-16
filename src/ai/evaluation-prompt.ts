@@ -26,6 +26,8 @@ Return this JSON shape:
 
 Use exactly these five dimension keys: ${dimensionList}. Use a higher-is-better scale for every dimension: 100 means fully successful performance with no consequential errors for that dimension; lower scores mean more frequent or severe shortcomings. Keep all scores between 0 and 100. This is practice feedback only; do not call it a CATTI or MTI result.
 
+Keep the response concise: at most two strengths, two issues, and one alternative. Empty lists are valid when there is nothing justified to report. The shape above is a schema example, not evidence to copy. Each sourceQuote must be an exact substring of SOURCE TEXT in its original language (${sourceLanguage.label}); never translate, paraphrase, normalize, or reconstruct it. Each learnerQuote must be an exact substring of LEARNER ANSWER. If only one side has literal evidence, leave the other quote empty. If neither side has literal evidence, do not invent an issue; explain the limitation in uncertainty.
+
 SOURCE TEXT (${sourceLanguage.label}):
 <<<SOURCE>>>
 ${input.exercise.sourceText}

@@ -1,3 +1,5 @@
+import { t } from '../../i18n'
+import { exportJson } from '../../native/export-json'
 import { useState } from 'react'
 import type { ConsolidatedExamResult, ScoreDimension } from '../../domain/types'
 import { getLanguage } from '../../domain/languages'
@@ -36,6 +38,7 @@ export function ExamResultsReport({
   onRetake,
   onBackToDashboard,
 }: ExamResultsReportProps) {
+  const [exportError, setExportError] = useState<string>()
   const [expandedPassageIds, setExpandedPassageIds] = useState<Record<string, boolean>>(() => {
     // Default open first passage of each section
     const initial: Record<string, boolean> = {}
@@ -51,17 +54,10 @@ export function ExamResultsReport({
     setExpandedPassageIds((prev) => ({ ...prev, [passageId]: !prev[passageId] }))
   }
 
-  const handleExportJson = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(result, null, 2))
-    const downloadAnchor = document.createElement('a')
-    downloadAnchor.setAttribute('href', dataStr)
-    downloadAnchor.setAttribute(
-      'download',
-      `exam-practice-report-${result.profileId}-${result.completedAt.slice(0, 10)}.json`,
-    )
-    document.body.appendChild(downloadAnchor)
-    downloadAnchor.click()
-    downloadAnchor.remove()
+  const handleExportJson = async () => {
+    setExportError(undefined)
+    try { await exportJson(result, `exam-practice-report-${result.profileId}-${result.completedAt.slice(0, 10)}.json`) }
+    catch { setExportError('The exam report could not be exported. Your saved result is still on this device.') }
   }
 
   const statusLabel =
@@ -82,13 +78,13 @@ export function ExamResultsReport({
     <div className="exam-results-page" role="main">
       {/* Mandatory Practice Estimate Disclaimer Banner */}
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
-        <strong>✦ Practice Assessment Only: </strong>
-        <span>{PRACTICE_ESTIMATE_DISCLAIMER}</span>
+        <strong>{t("✦ Practice Assessment Only: ")}</strong>
+        <span>{t(PRACTICE_ESTIMATE_DISCLAIMER)}</span>
       </section>
 
       {result.authorityNote && (
         <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
-          <strong>Profile authority: </strong>
+          <strong>{t("Profile authority: ")}</strong>
           <span>{result.authorityNote}</span>
         </section>
       )}
@@ -99,17 +95,17 @@ export function ExamResultsReport({
           role="note"
           style={{ marginBottom: '1.5rem', backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}
         >
-          <strong>{PROVISIONAL_DRAFT_LABEL}: </strong>
-          <span>{PROVISIONAL_DRAFT_NOTICE}</span>
+          <strong>{t(PROVISIONAL_DRAFT_LABEL)}: </strong>
+          <span>{t(PROVISIONAL_DRAFT_NOTICE)}</span>
         </section>
       )}
 
       {/* Topline Header & Score Overview */}
       <header className="progress-overview">
         <div>
-          <p className="eyebrow">Exam Simulation Report</p>
+          <p className="eyebrow">{t("Exam Simulation Report")}</p>
           <h2>{result.examTitle}</h2>
-          <p className="muted-label">Completed on {new Date(result.completedAt).toLocaleString()}</p>
+          <p className="muted-label">{t("Completed on ")}{new Date(result.completedAt).toLocaleString()}</p>
         </div>
         <div className="progress-overview__score">
           <strong>
@@ -117,7 +113,7 @@ export function ExamResultsReport({
             <span style={{ fontSize: '1.25rem', color: 'var(--muted)' }}> / {result.maxScore}</span>
           </strong>
           <span>
-            {result.percentage}% · Practice estimate · <span className={`pill ${statusColorClass}`}>{statusLabel}</span>
+            {result.percentage}{t("% · Practice estimate · ")}<span className={`pill ${statusColorClass}`}>{t(statusLabel)}</span>
           </span>
         </div>
       </header>
@@ -125,21 +121,21 @@ export function ExamResultsReport({
       {/* Benchmark Comparison & Quick Stats */}
       <section className="progress-stat-grid">
         <article className="progress-stat">
-          <span className="eyebrow">Your Practice Estimate</span>
-          <strong>{result.totalScore} pts</strong>
-          <span>out of {result.maxScore} max</span>
+          <span className="eyebrow">{t("Your Practice Estimate")}</span>
+          <strong>{result.totalScore}{t(" pts")}</strong>
+          <span>{t("out of ")}{result.maxScore}{t(" max")}</span>
         </article>
         <article className="progress-stat">
-          <span className="eyebrow">Practice Benchmark</span>
-          <strong>{result.passBenchmark} pts</strong>
+          <span className="eyebrow">{t("Practice Benchmark")}</span>
+          <strong>{result.passBenchmark}{t(" pts")}</strong>
           <span>{result.benchmarkLabel ?? 'Practice benchmark estimate'}</span>
-          <small style={{ display: 'block', marginTop: '0.35rem' }}>{result.benchmarkNote ?? CATTI_THRESHOLD_NOTICE}</small>
+          <small style={{ display: 'block', marginTop: '0.35rem' }}>{t(result.benchmarkNote ?? CATTI_THRESHOLD_NOTICE)}</small>
         </article>
         <article className="progress-stat">
-          <span className="eyebrow">Estimated Status</span>
-          <strong style={{ fontSize: '1.25rem' }}>{statusLabel}</strong>
+          <span className="eyebrow">{t("Estimated Status")}</span>
+          <strong style={{ fontSize: '1.25rem' }}>{t(statusLabel)}</strong>
           <span>
-            {result.totalScore >= result.passBenchmark ? 'Meets practice threshold' : 'Focus on highlighted areas'}
+            {result.totalScore >= result.passBenchmark ? t("Meets practice threshold") : t("Focus on highlighted areas")}
           </span>
         </article>
       </section>
@@ -148,11 +144,11 @@ export function ExamResultsReport({
       <section className="progress-card" style={{ marginTop: '1.5rem' }}>
         <div className="progress-card__heading">
           <div>
-            <p className="eyebrow">Rubric Analysis</p>
-            <h3>Core Competency Breakdown</h3>
-            <p className="muted-label" style={{ margin: '0.35rem 0 0' }}>{PLATFORM_AUTHORED_RUBRIC_NOTICE}</p>
+            <p className="eyebrow">{t("Rubric Analysis")}</p>
+            <h3>{t("Core Competency Breakdown")}</h3>
+            <p className="muted-label" style={{ margin: '0.35rem 0 0' }}>{t(PLATFORM_AUTHORED_RUBRIC_NOTICE)}</p>
           </div>
-          <span className="section-heading__note">Average across answered passages</span>
+          <span className="section-heading__note">{t("Average across answered passages")}</span>
         </div>
         <div className="skill-list">
           {dimensionsList.map((dimension) => {
@@ -160,7 +156,7 @@ export function ExamResultsReport({
             return (
               <div className="skill-row" key={dimension}>
                 <div>
-                  <span>{dimensionLabels[dimension]}</span>
+                  <span>{t(dimensionLabels[dimension])}</span>
                   <strong>{score} / 100</strong>
                 </div>
                 <div className="trend-row__track">
@@ -176,12 +172,11 @@ export function ExamResultsReport({
       <section style={{ marginTop: '2rem' }}>
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Evidence & Annotations</p>
-            <h2>Section-by-Section Breakdown</h2>
+            <p className="eyebrow">{t("Evidence & Annotations")}</p>
+            <h2>{t("Section-by-Section Breakdown")}</h2>
           </div>
-          <button className="button button--quiet" type="button" onClick={handleExportJson}>
-            Export Report (JSON) ↓
-          </button>
+          <button className="button button--quiet" type="button" onClick={() => void handleExportJson()}>{t("Export Report (JSON) ↓")}</button>
+          {exportError && <p role="alert">{t(exportError)}</p>}
         </div>
 
         {result.sectionResults.map((section, sIndex) => (
@@ -192,14 +187,13 @@ export function ExamResultsReport({
           >
             <div className="progress-card__heading" style={{ borderBottom: '1px solid var(--line)', paddingBottom: '0.75rem' }}>
               <div>
-                <span className="eyebrow">Section {sIndex + 1}</span>
+                <span className="eyebrow">{t("Section ")}{sIndex + 1}</span>
                 <h3 style={{ margin: '0.25rem 0' }}>{section.sectionTitle}</h3>
               </div>
               <div>
                 <strong style={{ fontSize: '1.25rem' }}>
-                  {section.score} / {section.maxPoints} pts
-                </strong>
-                <small className="muted-label" style={{ display: 'block', textAlign: 'right' }}>Practice estimate</small>
+                  {section.score} / {section.maxPoints}{t(" pts")}</strong>
+                <small className="muted-label" style={{ display: 'block', textAlign: 'right' }}>{t("Practice estimate")}</small>
               </div>
             </div>
 
@@ -240,25 +234,25 @@ export function ExamResultsReport({
                       <div>
                         <strong>{passage.passageTitle}</strong>
                         <span className="muted-label" style={{ marginLeft: '0.5rem' }}>
-                          {hasAnswer ? `Practice estimate: ${passage.feedback.overallScore}/100` : 'Practice estimate: 0 pts'}
+                          {hasAnswer ? t("Practice estimate: {0}/100", passage.feedback.overallScore) : t("Practice estimate: 0 pts")}
                         </span>
                       </div>
-                      <span className="text-button">{isExpanded ? 'Hide Details ▲' : 'Show Details ▼'}</span>
+                      <span className="text-button">{isExpanded ? t("Hide Details ▲") : t("Show Details ▼")}</span>
                     </div>
 
                     {isExpanded && (
                       <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
                         {/* Summary & Uncertainty */}
                         <div style={{ marginBottom: '1rem' }}>
-                          <p><strong>Evaluation Summary: </strong>{passage.feedback.summary}</p>
+                          <p><strong>{t("Evaluation Summary: ")}</strong>{passage.feedback.summary}</p>
                           {passage.feedback.uncertainty && (
-                            <p className="muted-label"><em>Note: {passage.feedback.uncertainty}</em></p>
+                            <p className="muted-label"><em>{t("Note: ")}{passage.feedback.uncertainty}</em></p>
                           )}
                         </div>
 
                         {/* Candidate Answer */}
                         <div style={{ marginBottom: '1rem' }}>
-                          <span className="eyebrow">Your Submitted Translation</span>
+                          <span className="eyebrow">{t("Your Submitted Translation")}</span>
                           <div
                             dir={targetLanguage?.direction ?? 'ltr'}
                             lang={passage.targetLanguage}
@@ -272,14 +266,14 @@ export function ExamResultsReport({
                               fontFamily: 'inherit',
                             }}
                           >
-                            {hasAnswer ? passage.answer : <em>(No translation entered)</em>}
+                            {hasAnswer ? passage.answer : <em>{t("(No translation entered)")}</em>}
                           </div>
                         </div>
 
                         {/* Strengths */}
                         {passage.feedback.strengths.length > 0 && (
                           <div style={{ marginBottom: '1rem' }}>
-                            <span className="eyebrow" style={{ color: '#166534' }}>Strengths</span>
+                            <span className="eyebrow" style={{ color: '#166534' }}>{t("Strengths")}</span>
                             <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem' }}>
                               {passage.feedback.strengths.map((strength, idx) => (
                                 <li key={idx}>{strength}</li>
@@ -291,7 +285,7 @@ export function ExamResultsReport({
                         {/* Issues & Annotations */}
                         {passage.feedback.issues.length > 0 && (
                           <div>
-                            <span className="eyebrow" style={{ color: '#b45309' }}>Revision Opportunities</span>
+                            <span className="eyebrow" style={{ color: '#b45309' }}>{t("Revision Opportunities")}</span>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
                               {passage.feedback.issues.map((issue, idx) => (
                                 <div
@@ -306,12 +300,12 @@ export function ExamResultsReport({
                                 >
                                   <div>
                                     <span className="pill" style={{ textTransform: 'capitalize' }}>
-                                      {issue.dimension}
+                                      {t(issue.dimension)}
                                     </span>
                                   </div>
                                   {issue.sourceQuote && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem' }}>
-                                      <strong>Source: </strong>
+                                      <strong>{t("Source: ")}</strong>
                                       <span dir={sourceLanguage?.direction} lang={passage.sourceLanguage} style={{ backgroundColor: 'var(--surface-soft)', padding: '0.1rem 0.3rem' }}>
                                         {issue.sourceQuote}
                                       </span>
@@ -319,7 +313,7 @@ export function ExamResultsReport({
                                   )}
                                   {issue.learnerQuote && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem' }}>
-                                      <strong>Your version: </strong>
+                                      <strong>{t("Your version: ")}</strong>
                                       <span dir={targetLanguage?.direction} lang={passage.targetLanguage} style={{ backgroundColor: '#fee2e2', padding: '0.1rem 0.3rem' }}>
                                         {issue.learnerQuote}
                                       </span>
@@ -330,7 +324,7 @@ export function ExamResultsReport({
                                   </p>
                                   {issue.suggestion && (
                                     <p style={{ margin: '0.25rem 0', fontSize: '0.875rem', color: '#15803d' }}>
-                                      <strong>Suggested revision: </strong>
+                                      <strong>{t("Suggested revision: ")}</strong>
                                       {issue.suggestion}
                                     </p>
                                   )}
@@ -351,12 +345,8 @@ export function ExamResultsReport({
 
       {/* Action Footer */}
       <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2.5rem' }}>
-        <button className="button button--quiet" type="button" onClick={onBackToDashboard}>
-          Return to Home
-        </button>
-        <button className="button button--primary" type="button" onClick={onRetake}>
-          Take Another Exam Simulation
-        </button>
+        <button className="button button--quiet" type="button" onClick={onBackToDashboard}>{t("Return to Home")}</button>
+        <button className="button button--primary" type="button" onClick={onRetake}>{t("Take Another Exam Simulation")}</button>
       </footer>
     </div>
   )

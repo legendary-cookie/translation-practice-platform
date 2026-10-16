@@ -43,7 +43,9 @@ type CollectedStream = {
 }
 
 function logLocalEvent(event: string, details: Record<string, unknown> = {}): void {
-  if (import.meta.env.DEV) {
+  let diagnostics = false
+  try { diagnostics = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('lingo-local-diagnostics') === 'metadata' } catch { /* Optional diagnostics do not require storage. */ }
+  if (import.meta.env.DEV || diagnostics) {
     console.info(`[local-provider] ${event} ${JSON.stringify(details)}`)
   }
 }
@@ -450,7 +452,7 @@ export function createLocalProvider(
                     role: 'system',
                     content: attempt === 1
                       ? evaluationSystemPrompt
-                      : `${evaluationSystemPrompt} The previous response was invalid or truncated. Return one complete JSON object with every required field and no Markdown, commentary, or extra text.`,
+                      : `${evaluationSystemPrompt} Validation failure: ${lastError instanceof Error ? lastError.message : 'Invalid response.'} Regenerate a complete concise JSON object. Copy sourceQuote only from the original source language and learnerQuote only from the supplied answer, character for character. Leave a quote empty if unavailable; omit an issue without literal evidence. Empty issues is valid when no correction is justified. Return every required field without Markdown or commentary.`,
                   },
                   { role: 'user', content: buildEvaluationPrompt(input) },
                 ],

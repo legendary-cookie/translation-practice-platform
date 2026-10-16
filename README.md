@@ -4,7 +4,7 @@ Lingo Practice is a local-first PWA for written, news, and audio interpreting pr
 
 ## Run locally
 
-Use Node.js 20.19+ (or a current compatible release), then install dependencies and start Vite:
+Use Node.js 22 or newer, then install dependencies and start Vite:
 
 ```powershell
 npm ci
@@ -23,7 +23,7 @@ Run the behavior regression suite with `npm test`. `npm run build` checks TypeSc
 ## Adaptive study desk
 
 - Desktop uses a compact collapsible navigation rail and paired source/answer panes. Phones use five primary destinations and explicit source/answer switching; interpreting is available from Home.
-- First launch can choose a default language direction, practice level, and learning goal without an account. Interface copy is currently English; source/answer content supports all seven scripts.
+- First launch can choose a default language direction, practice level, and learning goal without an account. Settings offers English and Simplified Chinese interfaces; source/answer content supports all seven scripts. Authored passage text, exam-profile names, and model-generated feedback remain in their original languages.
 - Light, dark, and device themes, editor text size, and line spacing are saved locally. Ctrl/Command + Enter submits written work; native text editing provides undo/redo. The timer can pause independently of the editor. Exam clocks keep their strict timing rules.
 - Written drafts save exact answer text, elapsed time, and an exercise snapshot. A successfully read recovery state and an origin-wide Web Lock protect the singleton draft. A second tab cannot autosave over its owner. A tab claims ownership and reads the latest stored draft before resuming or replacing it. Unsupported or unreadable storage leaves a clearly labeled in-tab practice; it does not overwrite unknown saved work.
 - Opening News setup preserves an owned draft. Replacement/discard confirms before losing meaningful work, including unsaved input. Successfully saved completed feedback retires the unfinished draft; failed session saves preserve recovery. All writes are fenced against data deletion, including writes queued by the deleting tab itself.
@@ -53,6 +53,8 @@ npm run preview -- --host 127.0.0.1 --port 4178 --strictPort
 npm run test:browser
 ```
 
+Alternatively, `node scripts/verify-browser.cjs` starts and stops its own production preview and runs both the English suite and Chinese interface checks. Port 4178 must be free.
+
 The project includes `playwright-core`; the suite uses installed Chrome and does not download a browser. Set `QA_BROWSER_CHANNEL` to an installed supported channel when needed. Each suite creates disposable browser data, synthetic fixtures, and loopback-only mock evaluation. It never uses an existing browser profile or real API key. Generated evidence is under ignored `.browser-qa/` (override `BROWSER_QA_ARTIFACTS` if desired). It checks draft recovery/ownership, migration, consent/cancellation/mock feedback, local learning/review/export/deletion, synthetic microphone self-review, denied storage, and offline boot. Mobile viewport checks are browser simulations, not physical Android acceptance.
 
 ## Native desktop and Android packages
@@ -61,7 +63,7 @@ Build a Windows x64 installer and a portable executable with `npm run package:wi
 
 ## Platform support boundary
 
-The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Native packages reuse the same web assets: Electron provides the Windows wrapper and Capacitor provides the Android WebView. Android local-model evaluation remains restricted by the existing mobile capability gate. Windows local-model inference inside Electron, physical Android back/keyboard/rotation behavior, screen-reader qualification, real microphone behavior, and refreshed real-device/model performance remain unqualified. No silent analytics, account, synchronization, or cloud inference is introduced.
+The release retains the browser PWA, with PNG 192/512px install icons and same-origin offline shell/audio caching. Native packages reuse the same web assets: Electron provides the Windows wrapper and Capacitor provides the Android WebView. Desktop storage keeps one loopback origin across launches and upgrades. Android handles Back navigation and exports JSON through the system document picker. Android 16 emulator checks cover rotation, backgrounding, process relaunch, draft recovery, recording/replay, and exports. Physical phone and screen-reader acceptance remain unqualified. Android local-model evaluation remains restricted by the existing mobile capability gate. No silent analytics, account, synchronization, or cloud inference is introduced.
 
 ## Local evaluation
 
@@ -80,7 +82,7 @@ The local evaluator uses streamed, prompt-only JSON rather than WebLLM `response
 
 Qwen3 non-thinking mode is sent explicitly on every local request as WebLLM's `extra_body.enable_thinking: false`. WebLLM exposes that field in the chat-completion generation configuration and maps it from `request.extra_body`; Qwen's model card says `enable_thinking=False` disables reasoning. This pinned runtime still emitted an empty `<think>` wrapper in the observed response, so the parser removes that wrapper defensively. See the [WebLLM API reference](https://github.com/mlc-ai/web-llm/blob/main/docs/user/api_reference.rst), [WebLLM engine mapping](https://github.com/mlc-ai/web-llm/blob/main/src/engine.ts), and [Qwen3 model card](https://huggingface.co/Qwen/Qwen3-8B#switching-between-thinking-and-non-thinking-mode), all checked 2026-10-12.
 
-The model reached ready state and produced results only in standalone external Chrome during this investigation. AO's Electron-based preview stalled during WebLLM reload/model initialization before engine-ready. The packaged Windows wrapper is a separate runtime and its local-model path remains unqualified until a fresh inference completes there. The `0.2.86` upgrade remains unvalidated, not refuted; `0.2.82` stays pinned. The earlier `0.2.83`/`0.2.84` long-prompt regression still requires a controlled comparison: <https://github.com/mlc-ai/web-llm/issues/844> (checked 2026-10-12).
+The 2026-10-16 Windows Electron check also reached model-ready and generated validated feedback for a synthetic Chinese-to-English task. Initial runs rejected paraphrased evidence; the repair prompt now includes the validation failure and explicitly requires literal quotations. A subsequent run passed on its second attempt after malformed JSON on the first. This qualifies execution on this desktop, not critique quality or reliability across tasks and devices. AO's older Electron-based preview stalled during model initialization. The `0.2.86` upgrade remains unvalidated, not refuted; `0.2.82` stays pinned. The earlier `0.2.83`/`0.2.84` long-prompt regression still requires a controlled comparison: <https://github.com/mlc-ai/web-llm/issues/844> (checked 2026-10-12).
 
 When local-only mode is selected, an unavailable local model stops evaluation with an explanation. The app does not send practice text or answers to a cloud service in that mode.
 

@@ -1,3 +1,5 @@
+import { t } from '../../i18n'
+
 export const EXAM_DRAFT_DISCARD_CONFIRMATION =
   'Permanently discard this saved exam attempt and its answers? Cancel keeps the draft on this device.'
 
@@ -5,7 +7,7 @@ export const EXAM_DRAFT_DISCARD_CONFIRMATION =
 export async function confirmAndDiscardExamRun(
   runId: string,
   onDiscardRun: (id: string) => void | Promise<void>,
-  confirmAction: (message: string) => boolean = (message) => window.confirm(message),
+  confirmAction: (message: string) => boolean = (message) => window.confirm(t(message)),
 ): Promise<boolean> {
   if (!runId || !confirmAction(EXAM_DRAFT_DISCARD_CONFIRMATION)) return false
   await onDiscardRun(runId)

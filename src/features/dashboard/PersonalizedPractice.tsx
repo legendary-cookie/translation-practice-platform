@@ -1,3 +1,4 @@
+import { t } from '../../i18n'
 import { useEffect, useState } from 'react'
 import { EXERCISES } from '../../data/exercises'
 import { database, subscribeToDataCleared } from '../../storage/database'
@@ -17,5 +18,5 @@ export function PersonalizedPractice({ sessions, onStart, onReview }: { sessions
   const recommendation = ready ? recommendCatalogPractice(sessions, ratings, EXERCISES) : undefined
   const profile = buildLearnerProfile(sessions, ratings)
   if (!recommendation && !due) return null
-  return <section className="personalized-practice home-grid">{recommendation && <article className="info-card"><p className="eyebrow">A useful next step</p><h3>{recommendation.exercise.title}</h3><p>{recommendation.reason}</p>{profile.focus && <p className="muted-copy">Focus: {DIMENSION_LABELS[profile.focus]}. Mark incorrect feedback to refine these suggestions.</p>}<button className="text-button" type="button" onClick={() => onStart(recommendation.exercise)}>Practice this passage →</button></article>}{Boolean(due) && <article className="info-card info-card--accent"><p className="eyebrow">Spaced review</p><h3>{due} card{due === 1 ? '' : 's'} ready to revisit.</h3><p>Recall your terms and revision notes before revealing the answer.</p><button className="text-button" type="button" onClick={onReview}>Open your learning library →</button></article>}</section>
+  return <section className="personalized-practice home-grid">{recommendation && <article className="info-card"><p className="eyebrow">{t("A useful next step")}</p><h3>{recommendation.exercise.title}</h3><p>{t(recommendation.reason)}</p>{profile.focus && <p className="muted-copy">{t("Focus: ")}{DIMENSION_LABELS[profile.focus]}{t(". Mark incorrect feedback to refine these suggestions.")}</p>}<button className="text-button" type="button" onClick={() => onStart(recommendation.exercise)}>{t("Practice this passage →")}</button></article>}{Boolean(due) && <article className="info-card info-card--accent"><p className="eyebrow">{t("Spaced review")}</p><h3>{due}{t(" card")}{due === 1 ? '' : 's'}{t(" ready to revisit.")}</h3><p>{t("Recall your terms and revision notes before revealing the answer.")}</p><button className="text-button" type="button" onClick={onReview}>{t("Open your learning library →")}</button></article>}</section>
 }

@@ -16,7 +16,7 @@ Outputs:
 - `artifacts/windows/Lingo-Practice-Setup-0.1.0.exe`
 - `artifacts/windows/Lingo-Practice-Portable-0.1.0.exe`
 
-The executables are unsigned. Windows may show a SmartScreen warning. No update service or signing key is configured. The packaged app serves its bundled files from a random loopback port, applies a restrictive Content Security Policy, denies navigation away from the app, and asks before granting microphone access.
+The executables are unsigned. Windows may show a SmartScreen warning. No update service or signing key is configured. The packaged app records its first loopback port in `desktop-origin.json` under Electron user data and reuses that origin across launches. If occupied, startup fails visibly instead of opening an empty workspace at another origin. One earlier IndexedDB origin is adopted automatically; several earlier origins require a selection while preserving all folders. A build hash on the launch URL prevents stale cached HTML after upgrades. The wrapper applies a restrictive Content Security Policy, denies navigation away from the app, and asks before granting microphone access.
 
 ## Build the Android APK
 
@@ -43,8 +43,18 @@ Use it only when that specific loopback startup error occurs.
 
 The command creates `artifacts/android/Lingo-Practice-0.1.0-debug.apk`. It is signed with the machine's local Android debug key for sideload testing. It is not a Play Store release package. A production release needs a user-controlled signing key that must be backed up securely and kept out of GitHub.
 
-The Android manifest requests microphone permission only for the interpreting recording flow and disables app data backup to preserve the local-only storage boundary. Browser audio recording still requires the Android permission prompt. Learner records remain in the app's local WebView storage; this wrapper adds no migration or sync path.
+The Android manifest requests microphone permission only for the interpreting recording flow and disables app data backup to preserve the local-only storage boundary. Browser audio recording still requires the Android permission prompt. Learner records remain in the app's local WebView storage. Hardware Back dismisses an open consent dialog, saves an active exam through its fenced save-and-exit path, confirms before discarding an interpreting take, or returns to Home. Back on Home minimizes the app.
+
+JSON exports use Android's system document picker without storage permissions or a shared temporary archive. The archive stays in memory while choosing a destination, outside Android's size-limited saved-state bundle. If Android kills the process during export, retry the export; the saved workspace remains unchanged. Exports are reference-only, without import/restore.
+
+## Repeat native checks
+
+`node scripts/desktop-checks.cjs` uses a disposable Electron profile and checks exact draft recovery after a full app relaunch. Set `DESKTOP_QA_EXECUTABLE` to the absolute unpacked `Lingo Practice.exe` path to check the packaged runtime. `node scripts/desktop-model-check.cjs` downloads the optional model into a separate QA profile and performs a real synthetic inference; this needs a compatible GPU, sufficient memory, and internet for initial preparation. Set `DESKTOP_QA_PROFILE` to reuse that QA cache.
+
+Install the APK on an isolated Android emulator, launch it, and set `ANDROID_QA_SERIAL` to its `emulator-NNNN` serial before running `node scripts/android-checks.cjs`. This changes only the selected emulator's app, grants its synthetic microphone permission, and writes a synthetic export into Downloads. It must never target a learner device. The 2026-10-16 run used Android 16 / API 36 and WebView 133.0.6943.137; recording/replay used WebM/Opus and packaged WAV sources.
+
+The GitHub `Verify and package` workflow runs unit, production browser, Chinese interface, packaged Windows persistence, and build checks on PRs and main pushes. It uploads unsigned Windows installers/portable EXEs and debug APKs with SHA256 hashes for 14 days. It does not publish a release or run model/physical-device qualification.
 
 ## Qualification limits
 
-The browser suite validates the shared web experience, not native WebView behavior. The APK has not been qualified on a physical phone for keyboard, back navigation, rotation, interruptions, accessibility, or microphone codecs. Android local-model evaluation remains gated as unsupported on mobile. The packaged Windows shell is smoke-tested separately, but Electron local-model inference and real microphone behavior are not release claims. Cloud evaluation continues to require the app's existing per-task consent step.
+The Android emulator passed native Back, rotation, background/relaunch, draft recovery, recording/replay, and system-picker export checks. Physical phone keyboard, interruptions, accessibility, and real microphone quality remain unqualified. Android local-model evaluation remains gated as unsupported on mobile. Windows Electron model preparation and validated synthetic inference were observed on this desktop; they do not establish feedback accuracy or broad device support. Cloud evaluation continues to require the app's existing per-task consent step; no live cloud-provider request was used for qualification.

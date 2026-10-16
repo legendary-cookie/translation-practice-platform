@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { activateModalDialog } from './modal-dialog'
@@ -46,8 +47,8 @@ export function AccessibleModal({ open, labelledBy, describedBy, onCancel, child
   if (activationError) {
     return createPortal(
       <div className="accessible-modal-failure" role="alert">
-        <p>{activationError}</p>
-        <button type="button" onClick={() => onCancelRef.current()}>Cancel</button>
+        <p>{t(activationError)}</p>
+        <button type="button" onClick={() => onCancelRef.current()}>{t("Cancel")}</button>
       </div>,
       host,
     )

@@ -8,11 +8,24 @@ function emitPrecacheManifest(): Plugin {
   return {
     name: 'emit-precache-manifest',
     generateBundle(_options, bundle) {
-      const assets = Object.keys(bundle).filter((fileName) => /\.(?:js|css)$/u.test(fileName))
+      const assets = new Set<string>()
+      function addEntry(fileName: string) {
+        if (assets.has(fileName)) return
+        const entry = bundle[fileName]
+        if (!entry) return
+        assets.add(fileName)
+        if (entry.type === 'chunk') {
+          entry.imports.forEach(addEntry)
+          entry.viteMetadata?.importedCss.forEach((css) => assets.add(css))
+        }
+      }
+      // Model runtimes and workers are cached on demand, after explicit model preparation.
+      Object.values(bundle).filter((entry) => entry.type === 'chunk' && entry.isEntry).forEach((entry) => addEntry(entry.fileName))
+      Object.keys(bundle).filter((fileName) => fileName.endsWith('.css')).forEach((fileName) => assets.add(fileName))
       this.emitFile({
         type: 'asset',
         fileName: 'precache-manifest.json',
-        source: JSON.stringify({ assets }, null, 2),
+        source: JSON.stringify({ assets: [...assets].sort() }, null, 2),
       })
     },
   }

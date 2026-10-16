@@ -1,3 +1,5 @@
+import { t, useInterfaceLanguage } from './i18n'
+import { useNativeBack, useNativeLifecycle } from './native/lifecycle'
 import { acquireWrittenDraftEditor, type WrittenDraftEditor } from './storage/written-draft-editor'
 import { readWrittenDraft, type WrittenDraft } from './domain/learning'
 import { useWorkspacePreferences, clearWorkspacePreferences } from './features/settings/AppearanceSettings'
@@ -145,20 +147,20 @@ type PendingInterpretingPersistence = {
 
 function Navigation({ currentPage, onNavigate }: { currentPage: Page; onNavigate: (page: Page) => void }) {
   return (
-    <nav className="navigation" aria-label="Primary navigation">
-      <div className="brand-mark" aria-label="Lingo Practice">
+    <nav className="navigation" aria-label={t("Primary navigation")}>
+      <div className="brand-mark" aria-label={t("Lingo Practice")}>
         <span className="brand-mark__symbol">文</span>
-        <span className="brand-mark__name">Lingo Practice</span>
+        <span className="brand-mark__name">{t("Lingo Practice")}</span>
       </div>
       <div className="navigation__items">
         {navigationItems.map((item) => (
-          <button className={`navigation__item ${currentPage === item.id ? 'navigation__item--active' : ''}`} key={item.id} type="button" aria-label={item.label} aria-current={currentPage === item.id ? 'page' : undefined} onClick={() => onNavigate(item.id)}>
+          <button className={`navigation__item ${currentPage === item.id ? 'navigation__item--active' : ''}`} key={item.id} type="button" aria-label={t(item.label)} aria-current={currentPage === item.id ? 'page' : undefined} onClick={() => onNavigate(item.id)}>
             <span className="navigation__icon" aria-hidden="true">{item.icon}</span>
-            <span>{item.label}</span>
+            <span>{t(item.label)}</span>
           </button>
         ))}
       </div>
-      <div className="navigation__footer"><span className="status-dot" aria-hidden="true" /><span>Local-first mode</span></div>
+      <div className="navigation__footer"><span className="status-dot" aria-hidden="true" /><span>{t("Local-first mode")}</span></div>
     </nav>
   )
 }
@@ -185,43 +187,45 @@ function ConsentDialog({
   return (
     <AccessibleModal open labelledBy={headingId} describedBy={descriptionId} onCancel={onCancel}>
       <div className="consent-dialog">
-        <p className="eyebrow">One task · explicit consent</p>
-        <h2 id={headingId}>Send this task to the cloud?</h2>
-        <p id={descriptionId}>The local evaluator is not available for this task. Review the exact provider, model, text, audio metadata, and derived metrics below before making a one-time decision.</p>
-        {!isWritten && <p className="consent-warning">Source clip audio stays on this device. Only the text and learner-audio parts listed below are sent after you confirm.</p>}
-        <p className="consent-warning">Provider: {request.payloadPreview.providerUrl} · Model: {request.payloadPreview.model}</p>
+        <p className="eyebrow">{t("One task · explicit consent")}</p>
+        <h2 id={headingId}>{t("Send this task to the cloud?")}</h2>
+        <p id={descriptionId}>{t("The local evaluator is not available for this task. Review the exact provider, model, text, audio metadata, and derived metrics below before making a one-time decision.")}</p>
+        {!isWritten && <p className="consent-warning">{t("Source clip audio stays on this device. Only the text and learner-audio parts listed below are sent after you confirm.")}</p>}
+        <p className="consent-warning">{t("Provider: ")}{request.payloadPreview.providerUrl}{t(" · Model: ")}{request.payloadPreview.model}</p>
         <div className="consent-evidence">
           {isWritten ? (
             <>
-              <section><h3>Exact source · {sourceLanguage.nativeLabel}</h3><p className="consent-quote" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{request.sourceText}</p></section>
-              <section><h3>Exact answer · {targetLanguage.nativeLabel}</h3><p className="consent-quote" dir={targetLanguage.direction} lang={exercise.targetLanguage}>{request.learnerAnswer}</p></section>
+              <section><h3>{t("Exact source · ")}{sourceLanguage.nativeLabel}</h3><p className="consent-quote" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{request.sourceText}</p></section>
+              <section><h3>{t("Exact answer · ")}{targetLanguage.nativeLabel}</h3><p className="consent-quote" dir={targetLanguage.direction} lang={exercise.targetLanguage}>{request.learnerAnswer}</p></section>
             </>
           ) : request.payloadPreview.parts.map((part, index) => {
             const partLanguage = part.language ? getLanguage(part.language) : undefined
             return (
               <section key={`${part.kind}-${index}`}>
-                <h3>{part.label}</h3>
+                <h3>{t(part.label)}</h3>
                 {part.text && <p className="consent-quote" dir={partLanguage?.direction} lang={partLanguage?.code}>{part.text}</p>}
                 {part.kind === 'learner-audio' && part.responseSegments && (
                   <p className="consent-quote">
                     {part.responseSegments.length > 0
-                      ? `Attachment ${part.attachmentIndex ?? index}: ${part.responseSegments.map((segment) => `${segment.responseSegmentId} from ${segment.sourceSegmentId}, ${(segment.responseStartMs / 1000).toFixed(3)}–${(segment.responseEndMs / 1000).toFixed(3)} s`).join('; ')}`
-                      : `Attachment ${part.attachmentIndex ?? index} has no mapped response range and will not be used as delivery evidence.`}
+                      ? t("Attachment {0}: {1}", part.attachmentIndex ?? index, part.responseSegments.map((segment) => `${segment.responseSegmentId} from ${segment.sourceSegmentId}, ${(segment.responseStartMs / 1000).toFixed(3)}–${(segment.responseEndMs / 1000).toFixed(3)} s`).join('; '))
+                      : t("Attachment {0} has no mapped response range and will not be used as delivery evidence.", part.attachmentIndex ?? index)}
                   </p>
                 )}
-                {part.previewUrl && <><audio controls preload="metadata" src={part.previewUrl}>Audio preview is unavailable.</audio><p className="consent-quote">{part.mimeType} · {part.durationMs} ms · {part.byteLength} bytes</p></>}
+                {part.previewUrl && <><audio controls preload="metadata" src={part.previewUrl}>{t("Audio preview is unavailable.")}</audio><p className="consent-quote">{part.mimeType} · {part.durationMs}{t(" ms · ")}{part.byteLength}{t(" bytes")}</p></>}
               </section>
             )
           })}
         </div>
-        <p className="consent-warning">This is a one-time decision for this task. The API key remains session-only, and the service worker does not cache this request or response.</p>
-        <div className="consent-actions"><button className="button button--quiet" type="button" data-modal-cancel onClick={onCancel} disabled={isSubmitting}>Keep local-only</button><button className="button button--primary" type="button" onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? 'Sending…' : 'Consent and evaluate'} <span aria-hidden="true">→</span></button></div>
+        <p className="consent-warning">{t("This is a one-time decision for this task. The API key remains session-only, and the service worker does not cache this request or response.")}</p>
+        <div className="consent-actions"><button className="button button--quiet" type="button" data-modal-cancel onClick={onCancel} disabled={isSubmitting}>{t("Keep local-only")}</button><button className="button button--primary" type="button" onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? t("Sending…") : t("Consent and evaluate")} <span aria-hidden="true">→</span></button></div>
       </div>
     </AccessibleModal>
   )
 }
 
 export default function App() {
+  useInterfaceLanguage()
+  useNativeLifecycle()
   const { preferences } = useWorkspacePreferences()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [recoveredDraft, setRecoveredDraft] = useState<WrittenDraft>()
@@ -1181,7 +1185,7 @@ export default function App() {
         if (value && !latest) throw new Error('The saved draft is malformed; export local data before deleting it.')
         if (!heldEditor) setRecoveredDraft(latest)
         const hasMeaningfulDraft = Boolean(latest?.answer.trim() || (heldEditor && ((!feedback && draftAnswer.trim()) || recoveredDraft?.answer.trim())))
-        if (hasMeaningfulDraft && !window.confirm('Starting a new passage replaces your current or saved written draft. Continue?')) { abandon(); return }
+        if (hasMeaningfulDraft && !window.confirm(t('Starting a new passage replaces your current or saved written draft. Continue?'))) { abandon(); return }
       } catch (error) {
         abandon()
         setDraftRecoveryStatus('failed')
@@ -1189,7 +1193,7 @@ export default function App() {
         return
       }
     }
-    if (!editor && activeExercise && !feedback && draftAnswer.trim() && !window.confirm('Your current draft stays only in this tab. Replace it with a new passage?')) return
+    if (!editor && activeExercise && !feedback && draftAnswer.trim() && !window.confirm(t('Your current draft stays only in this tab. Replace it with a new passage?'))) return
     writtenDraftEditorRef.current = editor
     setWrittenDraftOwned(Boolean(editor))
     if (!editor) setDraftSaveStatus('Draft not saved. Recovery or browser ownership is unavailable; this practice stays in this tab.')
@@ -1232,7 +1236,7 @@ export default function App() {
   }
 
   function resetPractice() {
-    if (currentPage === 'practice' && activeExercise && !feedback && draftAnswer.trim() && !window.confirm('Discard this written draft? Your saved draft will also be removed.')) return
+    if (currentPage === 'practice' && activeExercise && !feedback && draftAnswer.trim() && !window.confirm(t('Discard this written draft? Your saved draft will also be removed.'))) return
     if (currentPage === 'practice') {
       draftRecoveryEligible.current = false
       void retireWrittenDraft().catch(() => setPracticeNotice('The saved draft could not be removed. It remains available after reload.'))
@@ -1266,7 +1270,7 @@ export default function App() {
   function startNewsPractice() {
     if (activeExercise && !feedback) {
       if (writtenDraftEditorRef.current) setRecoveredDraft({ exercise: activeExercise, answer: draftAnswer, elapsedSeconds: draftElapsedSeconds, timeLimitSeconds, updatedAt: new Date().toISOString() })
-      else if (draftAnswer.trim() && !window.confirm('This draft has not been saved. Opening News setup discards its in-tab answer. Continue?')) return
+      else if (draftAnswer.trim() && !window.confirm(t('This draft has not been saved. Opening News setup discards its in-tab answer. Continue?'))) return
     }
     localProvider.cancelEvaluation()
     writtenEvaluationGuardRef.current.activate(undefined)
@@ -1786,7 +1790,7 @@ export default function App() {
       const candidate = readWrittenDraft(value)
       if (value && !candidate) throw new Error('The saved draft is malformed. Export local data before deleting it.')
       if (activeExercise && candidate?.answer.trim() && (activeExercise.id !== candidate.exercise.id || draftAnswer !== candidate.answer)) {
-        if (!window.confirm('A different saved draft was recovered. Replace it with the practice currently in this tab?')) {
+        if (!window.confirm(t('A different saved draft was recovered. Replace it with the practice currently in this tab?'))) {
           abandon()
           setRecoveredDraft(candidate)
           setDraftRecoveryStatus('failed')
@@ -1869,35 +1873,42 @@ export default function App() {
     }
   }
 
+  useNativeBack(() => {
+    if (isTakingExam || isTakingInterpreting || currentPage === 'home') return false
+    if (currentPage === 'exam' && examView !== 'catalog') navigateToPage('exam')
+    else navigateToPage('home')
+    return true
+  })
+
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--collapsed' : ''}`}>
-      <a className="skip-link" href="#main-workspace">Skip to workspace</a>
+      <a className="skip-link" href="#main-workspace">{t("Skip to workspace")}</a>
       {!isTakingExam && !isTakingInterpreting && <aside className="sidebar"><Navigation currentPage={currentPage} onNavigate={navigateToPage} /></aside>}
       <main className="main-content" id="main-workspace" tabIndex={-1}>
         {firstPendingInterpretingSave && !currentPendingSaveVisibleInPanel && (
           <section className="notice-banner notice-banner--warning pending-interpreting-save" role="alert">
-            <span>{pendingInterpretingSaves.length === 1 ? 'One interpreting self-review is still only in memory.' : `${pendingInterpretingSaves.length} interpreting self-reviews are still only in memory.`} Retry local storage when it is available.</span>
+            <span>{pendingInterpretingSaves.length === 1 ? t("One interpreting self-review is still only in memory.") : t("{0} interpreting self-reviews are still only in memory.", pendingInterpretingSaves.length)}{t(" Retry local storage when it is available.")}</span>
             <button className="button button--quiet interpreting-action" type="button" onClick={() => void retryPendingInterpretingSave(firstPendingInterpretingSave.id)} disabled={savingInterpretingSaveIds.has(firstPendingInterpretingSave.id)}>
-              {savingInterpretingSaveIds.has(firstPendingInterpretingSave.id) ? 'Saving locally…' : 'Retry local save'}
+              {savingInterpretingSaveIds.has(firstPendingInterpretingSave.id) ? t("Saving locally…") : t("Retry local save")}
             </button>
           </section>
         )}
-        {draftRecoveryStatus === 'failed' && <section className="notice-banner" role="alert"><p>{draftSaveStatus}</p><button className="button button--quiet" type="button" onClick={() => void loadWrittenDraftRecovery()}>Retry saved draft recovery</button></section>}
-        {practiceNotice && !activeExercise && currentPage === 'practice' && <p className="form-message" role="status">{practiceNotice}</p>}
-        {practiceNotice && currentPage === 'home' && <p className="form-message" role="status">{practiceNotice}</p>}
-        {databaseNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{databaseNotice}</section>}
-        {remoteDataNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{remoteDataNotice}</section>}
+        {draftRecoveryStatus === 'failed' && <section className="notice-banner" role="alert"><p>{t(draftSaveStatus)}</p><button className="button button--quiet" type="button" onClick={() => void loadWrittenDraftRecovery()}>{t("Retry saved draft recovery")}</button></section>}
+        {practiceNotice && !activeExercise && currentPage === 'practice' && <p className="form-message" role="status">{t(practiceNotice)}</p>}
+        {practiceNotice && currentPage === 'home' && <p className="form-message" role="status">{t(practiceNotice)}</p>}
+        {databaseNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{t(databaseNotice)}</section>}
+        {remoteDataNotice && <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>{t(remoteDataNotice)}</section>}
         {sessionHistoryStatus === 'failed' && <SessionHistoryNotice onRetry={() => void loadWrittenSessionHistory()} />}
         {!isTakingExam && !isTakingInterpreting && (
           <header className="topbar">
-            <button className="rail-toggle button button--quiet" type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>☰</button>
+            <button className="rail-toggle button button--quiet" type="button" aria-label={sidebarCollapsed ? t("Expand navigation") : t("Collapse navigation")} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>☰</button>
             <div>
-              <p className="eyebrow">{pageCopyForCurrentPage.eyebrow}</p>
-              <h1>{pageCopyForCurrentPage.title}</h1>
+              <p className="eyebrow">{t(pageCopyForCurrentPage.eyebrow)}</p>
+              <h1>{t(pageCopyForCurrentPage.title)}</h1>
             </div>
             <div className="topbar__meta">
               <span className="status-dot" aria-hidden="true" />
-              <span>{settings.evaluationMode === 'local-only' ? 'Local-only feedback' : 'Cloud asks first'}</span>
+              <span>{settings.evaluationMode === 'local-only' ? t("Local-only feedback") : t("Cloud asks first")}</span>
             </div>
           </header>
         )}
@@ -1924,18 +1935,16 @@ export default function App() {
         {currentPage === 'interpreting' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} pendingSave={currentPendingInterpretingSave !== undefined} isSaving={currentPendingInterpretingSave ? savingInterpretingSaveIds.has(currentPendingInterpretingSave.id) : false} onRetrySave={() => currentPendingInterpretingSave && void retryPendingInterpretingSave(currentPendingInterpretingSave.id)} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'exam' && !isEvaluatingExam && examEvaluationNotice && (
           <section className="notice-banner notice-banner--warning" role="alert" style={{ marginBottom: '1.5rem' }}>
-            {examEvaluationNotice}
+            {t(examEvaluationNotice)}
           </section>
         )}
-        {currentPage === 'exam' && !isEvaluatingExam && <details className="capability-details"><summary>Local AI availability</summary><ModelCapabilityStatus capability={capability} /></details>}
+        {currentPage === 'exam' && !isEvaluatingExam && <details className="capability-details"><summary>{t("Local AI availability")}</summary><ModelCapabilityStatus capability={capability} /></details>}
         {currentPage === 'exam' && isEvaluatingExam && (
           <div className="exam-modal-backdrop" role="presentation">
             <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="eval-heading">
-              <h3 id="eval-heading" className="exam-modal__title">Evaluating Exam Submissions…</h3>
-              <p className="exam-modal__body">
-                Assessing answered passages against the rubric dimensions.
-                {examEvaluationProgress && (
-                  <span> Completed {examEvaluationProgress.completed} of {examEvaluationProgress.total} tasks.</span>
+              <h3 id="eval-heading" className="exam-modal__title">{t("Evaluating Exam Submissions…")}</h3>
+              <p className="exam-modal__body">{t("Assessing answered passages against the rubric dimensions.")}{examEvaluationProgress && (
+                  <span>{t(" Completed ")}{examEvaluationProgress.completed}{t(" of ")}{examEvaluationProgress.total}{t(" tasks.")}</span>
                 )}
               </p>
               <div style={{ height: '8px', background: 'var(--line)', borderRadius: '4px', overflow: 'hidden' }}>

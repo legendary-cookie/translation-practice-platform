@@ -1,3 +1,4 @@
+import { t } from '../../i18n'
 import { useState } from 'react'
 import type { ActiveExamRun, ExamProfile, ExamType, LanguageCode } from '../../domain/types'
 import { CATTI_LEVEL_2_SYLLABUS_BASELINES } from '../../data/catti-syllabus-baselines'
@@ -58,18 +59,15 @@ export function ExamCatalog({
           className="info-card info-card--accent"
           style={{ marginBottom: '1.5rem', borderLeft: '4px solid #175ac0' }}
           role="region"
-          aria-label="Active Exam Recovery"
+          aria-label={t("Active Exam Recovery")}
         >
           <div className="info-card__topline">
-            <span className="eyebrow">Crash & Session Recovery</span>
-            <span className="pill pill--warning">In Progress</span>
+            <span className="eyebrow">{t("Crash & Session Recovery")}</span>
+            <span className="pill pill--warning">{t("In Progress")}</span>
           </div>
-          <h3>In-Progress Exam Saved on This Device</h3>
-          <p>
-            You have an unfinished attempt for{' '}
-            <strong>{activeRunProfile ? activeRunProfile.title : activeRun.profileId}</strong>.
-            Remaining time: <strong>{formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}</strong>.
-            Last saved: {new Date(activeRun.lastSavedAt).toLocaleTimeString()}.
+          <h3>{t("In-Progress Exam Saved on This Device")}</h3>
+          <p>{t("You have an unfinished attempt for")}{' '}
+            <strong>{activeRunProfile ? activeRunProfile.title : activeRun.profileId}</strong>{t(". Remaining time: ")}<strong>{formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}</strong>{t(". Last saved: ")}{new Date(activeRun.lastSavedAt).toLocaleTimeString()}.
           </p>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button
@@ -77,16 +75,13 @@ export function ExamCatalog({
               type="button"
               disabled={!examEditingAvailable}
               onClick={() => onResumeRun(activeRun)}
-            >
-              Resume Exam ({formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}) →
+            >{t("Resume Exam (")}{formatSeconds(activeRemainingSeconds ?? activeRun.overallRemainingSeconds)}) →
             </button>
             <button
               className="button button--quiet"
               type="button"
               onClick={() => void confirmAndDiscardExamRun(activeRun.id, onDiscardRun)}
-            >
-              Discard Draft
-            </button>
+            >{t("Discard Draft")}</button>
           </div>
         </section>
       )}
@@ -95,38 +90,34 @@ export function ExamCatalog({
       {recoveryStatus !== 'ready' && (
         <section className="notice-banner" role={recoveryStatus === 'loading' ? 'status' : 'alert'} style={{ marginBottom: '1.5rem' }}>
           {recoveryStatus === 'loading'
-            ? 'Checking this device for a saved exam attempt. New simulations will be available when recovery finishes.'
-            : 'Saved exam recovery could not be checked. Reload this page before starting another simulation.'}
+            ? t("Checking this device for a saved exam attempt. New simulations will be available when recovery finishes.")
+            : t("Saved exam recovery could not be checked. Reload this page before starting another simulation.")}
         </section>
       )}
       {!examEditingAvailable && (
-        <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
-          Exam simulations require browser Web Locks to prevent two tabs from editing the same attempt. Use a browser with Web Locks support to start or resume an exam; written and interpreting practice remain available.
-        </section>
+        <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>{t("Exam simulations require browser Web Locks to prevent two tabs from editing the same attempt. Use a browser with Web Locks support to start or resume an exam; written and interpreting practice remain available.")}</section>
       )}
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
-        <strong>Practice estimate: </strong>
+        <strong>{t("Practice estimate: ")}</strong>
         <span>
-          {PRACTICE_ESTIMATE_DISCLAIMER} No official endorsement or certification by CIPG, ATICICG, CPTA, or any MTI university is implied.
-        </span>
+          {t(PRACTICE_ESTIMATE_DISCLAIMER)}{t(" No official endorsement or certification by CIPG, ATICICG, CPTA, or any MTI university is implied.")}</span>
       </section>
 
-      <details className="exam-profile-notes"><summary>Read dated syllabus references and profile boundaries</summary>
+      <details className="exam-profile-notes"><summary>{t("Read dated syllabus references and profile boundaries")}</summary>
       <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
-        <strong>2023-12-25 CATTI syllabus references: </strong>
-        <span>These are dated official syllabus baselines, not timeless administration promises. The simulator's rubric and scores remain platform-authored practice estimates.</span>
+        <strong>{t("2023-12-25 CATTI syllabus references: ")}</strong>
+        <span>{t("These are dated official syllabus baselines, not timeless administration promises. The simulator's rubric and scores remain platform-authored practice estimates.")}</span>
         <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
           {CATTI_LEVEL_2_SYLLABUS_BASELINES.map((baseline) => (
             <li key={baseline.language}>
-              {baseline.languageLabel}: {baseline.foreignToChinese} ({baseline.foreignToChinesePoints} pts) → {baseline.chineseToForeign} ({baseline.chineseToForeignPoints} pts), {baseline.durationMinutes} min
-            </li>
+              {t(baseline.languageLabel)}: {baseline.foreignToChinese} ({baseline.foreignToChinesePoints}{t(" pts) → ")}{baseline.chineseToForeign} ({baseline.chineseToForeignPoints}{t(" pts), ")}{baseline.durationMinutes}{t(" min")}</li>
           ))}
         </ul>
       </section>
 
       <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
-        <strong>Profile boundaries: </strong>
-        <span>MTI 357 varies by admitting university and admission year, so no generic national MTI profile is presented here. {MATERIALS_POLICY_NOTICE}</span>
+        <strong>{t("Profile boundaries: ")}</strong>
+        <span>{t("MTI 357 varies by admitting university and admission year, so no generic national MTI profile is presented here. ")}{t(MATERIALS_POLICY_NOTICE)}</span>
       </section>
 
       </details>
@@ -134,79 +125,64 @@ export function ExamCatalog({
       {/* Catalog Header */}
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Exam Simulation Profiles</p>
-          <h2>Dated syllabus references and practice profiles</h2>
+          <p className="eyebrow">{t("Exam Simulation Profiles")}</p>
+          <h2>{t("Dated syllabus references and practice profiles")}</h2>
         </div>
         <span className="section-heading__note">
-          {filteredProfiles.length} profile{filteredProfiles.length === 1 ? '' : 's'} available
-        </span>
+          {filteredProfiles.length}{t(" profile")}{filteredProfiles.length === 1 ? '' : 's'}{t(" available")}</span>
       </div>
 
       {/* Filter Controls */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
-          <span className="muted-label">Type:</span>
+          <span className="muted-label">{t("Type:")}</span>
           <button
             className={`button ${selectedType === 'all' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedType('all')}
-          >
-            All
-          </button>
+          >{t("All")}</button>
           <button
             className={`button ${selectedType === 'CATTI' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedType('CATTI')}
-          >
-            CATTI
-          </button>
+          >{t("CATTI")}</button>
           <button
             className={`button ${selectedType === 'MTI' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedType('MTI')}
-          >
-            MTI
-          </button>
+          >{t("MTI")}</button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
-          <span className="muted-label">Language:</span>
+          <span className="muted-label">{t("Language:")}</span>
           <button
             className={`button ${selectedLanguage === 'all' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedLanguage('all')}
-          >
-            All Pairs
-          </button>
+          >{t("All Pairs")}</button>
           <button
             className={`button ${selectedLanguage === 'en' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedLanguage('en')}
-          >
-            English
-          </button>
+          >{t("English")}</button>
           <button
             className={`button ${selectedLanguage === 'fr' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedLanguage('fr')}
-          >
-            French
-          </button>
+          >{t("French")}</button>
           <button
             className={`button ${selectedLanguage === 'ar' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedLanguage('ar')}
-          >
-            Arabic
-          </button>
+          >{t("Arabic")}</button>
         </div>
       </div>
 
       {/* Profile Cards Grid */}
       {filteredProfiles.length === 0 && (
         <section className="progress-empty" style={{ marginBottom: '1.5rem' }}>
-          <h3>No profile is bundled for this filter.</h3>
-          <p>MTI 357 practice requires a named university and admission year. A generic national task-count or benchmark profile is intentionally not offered.</p>
+          <h3>{t("No profile is bundled for this filter.")}</h3>
+          <p>{t("MTI 357 practice requires a named university and admission year. A generic national task-count or benchmark profile is intentionally not offered.")}</p>
         </section>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '1.5rem' }}>
@@ -226,10 +202,10 @@ export function ExamCatalog({
                     {profile.examType} · {profile.level}
                   </span>
                   {isProvisional ? (
-                    <span className="pill pill--warning">{PROVISIONAL_DRAFT_LABEL}</span>
+                    <span className="pill pill--warning">{t(PROVISIONAL_DRAFT_LABEL)}</span>
                   ) : (
                     <span className="pill pill--success">
-                      {profile.authoritySourceDate ? `${profile.authoritySourceDate} syllabus baseline` : 'Verified Syllabus'}
+                      {profile.authoritySourceDate ? t("{0} syllabus baseline", profile.authoritySourceDate) : t("Verified Syllabus")}
                     </span>
                   )}
                 </div>
@@ -241,14 +217,13 @@ export function ExamCatalog({
 
                 {/* Meta details */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <span className="pill">⏱️ {profile.totalDurationMinutes} min</span>
+                  <span className="pill">⏱️ {profile.totalDurationMinutes}{t(" min")}</span>
                   <span className="pill">
-                    🏆 {profile.maxTotalPoints} pts (Practice benchmark: {profile.passBenchmarkPoints} pts)
-                  </span>
+                    🏆 {profile.maxTotalPoints}{t(" pts (Practice benchmark: ")}{profile.passBenchmarkPoints}{t(" pts)")}</span>
                   <span className="pill">
-                    📖 {profile.allowedAids.paperDictionaryAllowed ? 'Paper Dictionaries' : 'Closed Book'}
+                    📖 {profile.allowedAids.paperDictionaryAllowed ? t("Paper Dictionaries") : t("Closed Book")}
                   </span>
-                  <span className="pill">📝 {totalPassages} passage tasks</span>
+                  <span className="pill">📝 {totalPassages}{t(" passage tasks")}</span>
                 </div>
 
                 {profile.authorityNote && (
@@ -256,7 +231,7 @@ export function ExamCatalog({
                 )}
 
                 {profile.benchmarkNote && (
-                  <p className="muted-label" style={{ marginBottom: '1rem' }}>{CATTI_THRESHOLD_NOTICE}</p>
+                  <p className="muted-label" style={{ marginBottom: '1rem' }}>{t(CATTI_THRESHOLD_NOTICE)}</p>
                 )}
 
                 {/* Section Outline */}
@@ -270,17 +245,14 @@ export function ExamCatalog({
                     marginBottom: '1rem',
                   }}
                 >
-                  <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--ink)' }}>
-                    Paper Structure:
-                  </strong>
+                  <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--ink)' }}>{t("Paper Structure:")}</strong>
                   {profile.sections.map((sec, idx) => (
                     <div key={sec.id} style={{ display: 'flex', justifyContent: 'space-between', margin: '0.2rem 0' }}>
                       <span>
                         {idx + 1}. {sec.title}
                       </span>
                       <span className="muted-label">
-                        {sec.passages.length} task{sec.passages.length === 1 ? '' : 's'} · {sec.maxPoints} pts
-                      </span>
+                        {sec.passages.length}{t(" task")}{sec.passages.length === 1 ? '' : 's'} · {sec.maxPoints}{t(" pts")}</span>
                     </div>
                   ))}
                 </div>
@@ -298,10 +270,10 @@ export function ExamCatalog({
                       marginBottom: '1rem',
                     }}
                   >
-                    <strong>待核实说明 (Provisional Notes):</strong>
+                    <strong>{t("待核实说明 (Provisional Notes):")}</strong>
                     <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1rem' }}>
                       {profile.provisionalDetails.notes.map((note, idx) => (
-                        <li key={idx}>{note}</li>
+                        <li key={idx}>{t(note)}</li>
                       ))}
                     </ul>
                   </div>
@@ -315,8 +287,7 @@ export function ExamCatalog({
                   disabled={!examEditingAvailable || recoveryStatus !== 'ready' || Boolean(activeRun)}
                   style={{ width: '100%' }}
                   onClick={() => onSelectProfile(profile)}
-                >
-                  Start Exam Simulation <span aria-hidden="true">→</span>
+                >{t("Start Exam Simulation ")}<span aria-hidden="true">→</span>
                 </button>
               </div>
             </article>

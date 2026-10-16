@@ -1,3 +1,4 @@
+import { t } from '../../i18n'
 import { PersonalizedPractice } from './PersonalizedPractice'
 import type { WrittenDraft } from '../../domain/learning'
 import { WelcomeCard } from './WelcomeCard'
@@ -39,7 +40,7 @@ export function Dashboard({
   const localStatusLabel = localProgress.status === 'ready'
     ? 'Ready on this device'
     : localProgress.status === 'preparing'
-      ? `${Math.round((localProgress.progress ?? 0) * 100)}% preparing`
+      ? t('{0}% preparing', Math.round((localProgress.progress ?? 0) * 100))
       : localProgress.status === 'unavailable'
         ? 'Unavailable on this device'
         : 'Not prepared yet'
@@ -47,41 +48,36 @@ export function Dashboard({
   return (
     <div className="page-content">
       <WelcomeCard onStart={() => onNavigate('practice')} />
-      {savedDraft && <section className="continue-card"><div><p className="eyebrow">Continue where you left off</p><h2>{savedDraft.exercise.title}</h2><p>{getLanguage(savedDraft.exercise.sourceLanguage).nativeLabel} → {getLanguage(savedDraft.exercise.targetLanguage).nativeLabel} · {savedDraft.answer.length} characters in draft</p></div><button className="button button--primary" type="button" onClick={onContinueDraft}>Continue translation →</button></section>}
+      {savedDraft && <section className="continue-card"><div><p className="eyebrow">{t("Continue where you left off")}</p><h2>{savedDraft.exercise.title}</h2><p>{getLanguage(savedDraft.exercise.sourceLanguage).nativeLabel} → {getLanguage(savedDraft.exercise.targetLanguage).nativeLabel} · {savedDraft.answer.length}{t(" characters in draft")}</p></div><button className="button button--primary" type="button" onClick={onContinueDraft}>{t("Continue translation →")}</button></section>}
       {activeExamRun && (
         <section
           className="info-card info-card--accent"
           style={{ marginBottom: '1.5rem', borderLeft: '4px solid #175ac0' }}
           role="region"
-          aria-label="Active Exam Recovery"
+          aria-label={t("Active Exam Recovery")}
         >
           <div className="info-card__topline">
-            <span className="eyebrow">Exam in progress</span>
-            <span className="pill pill--warning">Resume available</span>
+            <span className="eyebrow">{t("Exam in progress")}</span>
+            <span className="pill pill--warning">{t("Resume available")}</span>
           </div>
-          <h3>You have an unfinished examination attempt</h3>
-          <p>
-            Remaining time: <strong>{formatSeconds(activeExamRemainingSeconds ?? activeExamRun.overallRemainingSeconds)}</strong>.
-            All your drafted answers were saved safely on this device.
-          </p>
+          <h3>{t("You have an unfinished examination attempt")}</h3>
+          <p>{t("Remaining time: ")}<strong>{formatSeconds(activeExamRemainingSeconds ?? activeExamRun.overallRemainingSeconds)}</strong>{t(". All your drafted answers were saved safely on this device.")}</p>
           <button
             className="button button--primary"
             type="button"
             style={{ marginTop: '0.75rem' }}
             onClick={() => onNavigate('exam')}
-          >
-            Resume Exam Simulation ({formatSeconds(activeExamRemainingSeconds ?? activeExamRun.overallRemainingSeconds)}) →
+          >{t("Resume Exam Simulation (")}{formatSeconds(activeExamRemainingSeconds ?? activeExamRun.overallRemainingSeconds)}) →
           </button>
         </section>
       )}
 
       <section className="hero-card">
         <div>
-          <p className="eyebrow">Ready when you are</p>
-          <h2>One thoughtful paragraph<br />at a time.</h2>
-          <p className="hero-card__copy">Start with an original passage, make your best translation, and learn from evidence-based practice feedback.</p>
-          <button className="button button--primary" type="button" onClick={() => onNavigate('practice')}>
-            Start a practice session <span aria-hidden="true">→</span>
+          <p className="eyebrow">{t("Ready when you are")}</p>
+          <h2>{t("One thoughtful paragraph")}<br />{t("at a time.")}</h2>
+          <p className="hero-card__copy">{t("Start with an original passage, make your best translation, and learn from evidence-based practice feedback.")}</p>
+          <button className="button button--primary" type="button" onClick={() => onNavigate('practice')}>{t("Start a practice session ")}<span aria-hidden="true">→</span>
           </button>
         </div>
         <div className="hero-card__shape" aria-hidden="true">
@@ -95,41 +91,41 @@ export function Dashboard({
       <section className="section-block" aria-labelledby="modes-heading">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Choose your mode</p>
-            <h2 id="modes-heading">Practice that fits today.</h2>
+            <p className="eyebrow">{t("Choose your mode")}</p>
+            <h2 id="modes-heading">{t("Practice that fits today.")}</h2>
           </div>
-          <span className="section-heading__note">4 available now</span>
+          <span className="section-heading__note">{t("4 available now")}</span>
         </div>
         <div className="mode-grid">
           <button className="mode-card mode-card--active" type="button" onClick={() => onNavigate('practice')}>
             <span className="mode-card__icon">文</span>
             <span className="mode-card__content">
-              <strong>Written translation</strong>
-              <span>Build accuracy, meaning, and natural expression.</span>
+              <strong>{t("Written translation")}</strong>
+              <span>{t("Build accuracy, meaning, and natural expression.")}</span>
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
           <button className="mode-card mode-card--active" type="button" onClick={onStartNews ?? (() => onNavigate('practice'))}>
             <span className="mode-card__icon">▤</span>
             <span className="mode-card__content">
-              <strong>News translation</strong>
-              <span>Work with original, topic-tagged current-affairs style passages.</span>
+              <strong>{t("News translation")}</strong>
+              <span>{t("Work with original, topic-tagged current-affairs style passages.")}</span>
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
           <button className="mode-card mode-card--active" type="button" onClick={() => onNavigate('exam')}>
             <span className="mode-card__icon">◷</span>
             <span className="mode-card__content">
-              <strong>Exam simulation</strong>
-              <span>CATTI and named-university MTI timed practice with strict test conditions.</span>
+              <strong>{t("Exam simulation")}</strong>
+              <span>{t("CATTI and named-university MTI timed practice with strict test conditions.")}</span>
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
           <button className="mode-card mode-card--active" type="button" onClick={onStartInterpreting ?? (() => onNavigate('practice'))}>
             <span className="mode-card__icon">◌</span>
             <span className="mode-card__content">
-              <strong>Interpreting</strong>
-              <span>Listen, record, replay, and review delivery from local audio.</span>
+              <strong>{t("Interpreting")}</strong>
+              <span>{t("Listen, record, replay, and review delivery from local audio.")}</span>
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>
@@ -138,14 +134,14 @@ export function Dashboard({
 
       <section className="home-grid">
         <article className="info-card info-card--accent">
-          <div className="info-card__topline"><span className="eyebrow">Evaluation</span><span className="status-badge">{localStatusLabel}</span></div>
-          <h3>Local AI is optional.</h3>
-          <p>Prepare a local model in Settings for private, offline-capable practice. Cloud fallback always asks first.</p>
-          <button className="text-button" type="button" onClick={() => onNavigate('settings')}>Review privacy settings <span aria-hidden="true">→</span></button>
+          <div className="info-card__topline"><span className="eyebrow">{t("Evaluation")}</span><span className="status-badge">{t(localStatusLabel)}</span></div>
+          <h3>{t("Local AI is optional.")}</h3>
+          <p>{t("Prepare a local model in Settings for private, offline-capable practice. Cloud fallback always asks first.")}</p>
+          <button className="text-button" type="button" onClick={() => onNavigate('settings')}>{t("Review privacy settings ")}<span aria-hidden="true">→</span></button>
         </article>
         <article className="info-card">
-          <div className="info-card__topline"><span className="eyebrow">Your activity</span><span className="muted-label">{recentSessions.length ? `${recentSessions.length} saved session${recentSessions.length === 1 ? '' : 's'}` : sessionHistoryStatus === 'loading' ? 'Checking local history' : sessionHistoryStatus === 'failed' ? 'History unavailable' : 'No sessions yet'}</span></div>
-          <h3>{recentSessions.length ? 'Keep your translation habit moving.' : sessionHistoryStatus === 'failed' ? 'Saved activity could not be loaded.' : sessionHistoryStatus === 'loading' ? 'Checking your saved activity.' : 'Your first session starts here.'}</h3>
+          <div className="info-card__topline"><span className="eyebrow">{t("Your activity")}</span><span className="muted-label">{recentSessions.length ? t("{0} saved session{1}", recentSessions.length, recentSessions.length === 1 ? '' : 's') : sessionHistoryStatus === 'loading' ? t("Checking local history") : sessionHistoryStatus === 'failed' ? t("History unavailable") : t("No sessions yet")}</span></div>
+          <h3>{recentSessions.length ? t("Keep your translation habit moving.") : sessionHistoryStatus === 'failed' ? t("Saved activity could not be loaded.") : sessionHistoryStatus === 'loading' ? t("Checking your saved activity.") : t("Your first session starts here.")}</h3>
           {recentSessions.length ? (
             <div className="activity-list">
               {recentSessions.slice(0, 3).map((session) => (
@@ -153,30 +149,29 @@ export function Dashboard({
                   <span>{getLanguage(session.sourceLanguage).nativeLabel} → {getLanguage(session.targetLanguage).nativeLabel}</span>
                   <strong>
                     {session.feedback.overallScore}/100
-                    <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
+                    <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>{t("Practice estimate")}</small>
                   </strong>
                 </div>
               ))}
             </div>
-          ) : <p>{sessionHistoryStatus === 'failed' ? 'Local history could not be read; saved work may still be present on this device.' : sessionHistoryStatus === 'loading' ? 'Saved sessions are being checked on this device.' : 'Completed work, practice estimates, and dimension trends will appear in Progress.'}</p>}
-          <button className="text-button" type="button" onClick={() => onNavigate(recentSessions.length || sessionHistoryStatus !== 'ready' ? 'progress' : 'practice')}>{recentSessions.length || sessionHistoryStatus !== 'ready' ? 'Open progress' : 'Start practicing'} <span aria-hidden="true">→</span></button>
+          ) : <p>{sessionHistoryStatus === 'failed' ? t("Local history could not be read; saved work may still be present on this device.") : sessionHistoryStatus === 'loading' ? t("Saved sessions are being checked on this device.") : t("Completed work, practice estimates, and dimension trends will appear in Progress.")}</p>}
+          <button className="text-button" type="button" onClick={() => onNavigate(recentSessions.length || sessionHistoryStatus !== 'ready' ? 'progress' : 'practice')}>{recentSessions.length || sessionHistoryStatus !== 'ready' ? t("Open progress") : t("Start practicing")} <span aria-hidden="true">→</span></button>
         </article>
         {recentExamResults.length > 0 && (
           <article className="info-card">
             <div className="info-card__topline">
-              <span className="eyebrow">Exam Simulation</span>
-              <span className="muted-label">{recentExamResults.length} practice estimate{recentExamResults.length === 1 ? '' : 's'}</span>
+              <span className="eyebrow">{t("Exam Simulation")}</span>
+              <span className="muted-label">{recentExamResults.length}{t(" practice estimate")}{recentExamResults.length === 1 ? '' : 's'}</span>
             </div>
-            <h3>Latest Mock Exam</h3>
+            <h3>{t("Latest Mock Exam")}</h3>
             <div className="activity-row">
               <span>{recentExamResults[0].examTitle}</span>
               <strong>
                 {recentExamResults[0].totalScore} / {recentExamResults[0].maxScore}
-                <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>Practice estimate</small>
+                <small className="muted-label" style={{ display: 'block', fontSize: '0.65rem' }}>{t("Practice estimate")}</small>
               </strong>
             </div>
-            <button className="text-button" type="button" onClick={() => onNavigate('exam')}>
-              Open exam catalog <span aria-hidden="true">→</span>
+            <button className="text-button" type="button" onClick={() => onNavigate('exam')}>{t("Open exam catalog ")}<span aria-hidden="true">→</span>
             </button>
           </article>
         )}

@@ -46,6 +46,29 @@ function localFixture(t) {
   t.after(() => provider.dispose())
   return { provider, workers, resolveCache: () => resolveCache(true), generations: () => generations, advance: (ms) => { now += ms }, evaluationDelays }
 }
+
+test('local evidence rejection retries with the validation cause and accepts only corrected literal evidence', async (t) => {
+  setGlobal(t, 'localStorage', storage())
+  setGlobal(t, 'Worker', class { addEventListener() {} postMessage() {} terminate() {} })
+  const requests = []
+  const input = { mode: 'written', exercise: { sourceLanguage: 'zh', targetLanguage: 'en', sourceText: '居民共同维护花园。' }, learnerAnswer: 'Residents care for the garden together.' }
+  const feedback = { summary: 'Synthetic feedback', dimensions: { accuracy: 90, terminology: 90, grammar: 90, fluency: 90, taskStyle: 90 }, strengths: [], alternatives: [], uncertainty: 'Synthetic fixture', issues: [{ dimension: 'accuracy', sourceQuote: 'Residents maintain a garden', learnerQuote: '', explanation: 'Synthetic evidence note', suggestion: 'Synthetic revision' }] }
+  const provider = load('../src/ai/local-provider.ts', {
+    './provider': { ProviderUnavailableError: class ProviderUnavailableError extends Error {} },
+    '@mlc-ai/web-llm': { prebuiltAppConfig: {}, hasModelInCache: async () => true, CreateWebWorkerMLCEngine: async () => ({ interruptGenerate() {}, chat: { completions: { create: async (request) => {
+      requests.push(request)
+      const content = structuredClone(feedback)
+      if (requests.length === 2) content.issues[0].sourceQuote = '居民共同维护'
+      return (async function* () { yield { choices: [{ delta: { content: JSON.stringify(content) }, finish_reason: 'stop' }] } })()
+    } } } }) },
+  }).createLocalProvider()
+  t.after(() => provider.dispose())
+  await provider.prepare()
+  const result = await provider.evaluate(input)
+  assert.equal(requests.length, 2)
+  assert.match(requests[1].messages[0].content, /Validation failure: Feedback annotation source evidence must be copied literally/u)
+  assert.equal(result.issues[0].sourceQuote, '居民共同维护')
+})
 test('hung cache preflight reaches the evaluation deadline and releases the serialized slot', async (t) => {
   const f = localFixture(t)
   await f.provider.prepare()

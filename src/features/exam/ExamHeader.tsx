@@ -1,3 +1,4 @@
+import { t } from '../../i18n'
 import type { ExamAidPolicy } from '../../domain/types'
 import { formatSeconds, PROVISIONAL_DRAFT_LABEL } from '../../domain/exam'
 
@@ -34,19 +35,18 @@ export function ExamHeader({
   const isSectionCritical = sectionSeconds <= 60
 
   return (
-    <header className="exam-header" aria-label="Exam Simulation Header">
+    <header className="exam-header" aria-label={t("Exam Simulation Header")}>
       <div className="exam-header__title-group">
         <div className="exam-header__title-row">
           <h2 className="exam-header__title">{title}</h2>
-          <span className="exam-header__section-badge">
-            Section {sectionIndex + 1} of {totalSections}
+          <span className="exam-header__section-badge">{t("Section ")}{sectionIndex + 1}{t(" of ")}{totalSections}
           </span>
           {isProvisional && (
             <span
               className="exam-header__provisional-badge"
-              title="This profile contains provisional parameters pending authoritative confirmation"
+              title={t("This profile contains provisional parameters pending authoritative confirmation")}
             >
-              {PROVISIONAL_DRAFT_LABEL}
+              {t(PROVISIONAL_DRAFT_LABEL)}
             </span>
           )}
         </div>
@@ -64,7 +64,7 @@ export function ExamHeader({
           }`}
           aria-live="polite"
         >
-          <span className="exam-timer__label">Section timer</span>
+          <span className="exam-timer__label">{t("Section timer")}</span>
           <span className="exam-timer__digits">{formatSeconds(sectionSeconds)}</span>
         </div>
 
@@ -78,7 +78,7 @@ export function ExamHeader({
           }`}
           aria-live="polite"
         >
-          <span className="exam-timer__label">Total time left</span>
+          <span className="exam-timer__label">{t("Total time left")}</span>
           <span className="exam-timer__digits">{formatSeconds(overallSeconds)}</span>
         </div>
       </div>
@@ -88,26 +88,22 @@ export function ExamHeader({
           className="exam-header__aid-button"
           type="button"
           onClick={onOpenAidsModal}
-          title="View permitted aids policy for this exam"
+          title={t("View permitted aids policy for this exam")}
         >
           <span>📖</span>
-          <span>{aidPolicy.paperDictionaryAllowed ? 'Paper Dictionaries' : 'Closed Book'}</span>
+          <span>{aidPolicy.paperDictionaryAllowed ? t("Paper Dictionaries") : t("Closed Book")}</span>
         </button>
         <button
           className="button button--quiet"
           type="button"
           onClick={onExit}
-          title="Exit and save progress locally to resume later"
-        >
-          Save & Exit
-        </button>
+          title={t("Exit and save progress locally to resume later")}
+        >{t("Save & Exit")}</button>
         <button
           className="button button--primary"
           type="button"
           onClick={onSubmitEarly}
-        >
-          Submit Exam
-        </button>
+        >{t("Submit Exam")}</button>
       </div>
     </header>
   )

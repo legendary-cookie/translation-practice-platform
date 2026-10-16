@@ -42,12 +42,14 @@ test('desktop static server serves only the bundled app over a secure local orig
 
   const home = await request(local.origin, '/')
   assert.equal(home.status, 200)
+  assert.equal(home.headers['cache-control'], 'no-cache')
   assert.match(home.body, /Lingo Practice/u)
   assert.equal(home.headers['x-content-type-options'], 'nosniff')
   assert.match(home.headers['content-security-policy'], /worker-src 'self' blob:/u)
 
   const asset = await request(local.origin, '/assets/app.js')
   assert.equal(asset.status, 200)
+  assert.equal(asset.headers['cache-control'], 'no-cache')
   assert.equal(asset.headers['content-type'], 'text/javascript; charset=utf-8')
 
   const appRoute = await request(local.origin, '/practice')

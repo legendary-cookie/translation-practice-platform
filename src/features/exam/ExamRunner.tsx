@@ -1,3 +1,5 @@
+import { t } from '../../i18n'
+import { useNativeBack } from '../../native/lifecycle'
 import { useEffect, useRef, useState } from 'react'
 import type { ActiveExamRun, ExamProfile } from '../../domain/types'
 import {
@@ -405,6 +407,13 @@ export function ExamRunner({
     }
   }
 
+  useNativeBack(() => {
+    if (showAidsModal) setShowAidsModal(false)
+    else if (showSubmitModal) setShowSubmitModal(false)
+    else if (sectionExpiredAlert) setSectionExpiredAlert(undefined)
+    else void handleSaveAndExit()
+  })
+
   // Count answered passages
   let totalPassages = 0
   let answeredPassages = 0
@@ -449,20 +458,16 @@ export function ExamRunner({
       {showAidsModal && (
         <div className="exam-modal-backdrop" role="presentation">
           <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="aids-heading">
-            <h3 id="aids-heading" className="exam-modal__title">
-              Permitted Aids & Policy
-            </h3>
+            <h3 id="aids-heading" className="exam-modal__title">{t("Permitted Aids & Policy")}</h3>
             <div className="exam-modal__body">
               <p>
-                <strong>Paper Dictionaries: </strong>
+                <strong>{t("Paper Dictionaries: ")}</strong>
                 {profile.allowedAids.paperDictionaryAllowed
-                  ? 'Permitted (up to 2 printed bilingual general dictionaries in real CATTI exam).'
-                  : 'Strictly Prohibited (Closed-book exam).'}
+                  ? t("Permitted (up to 2 printed bilingual general dictionaries in real CATTI exam).")
+                  : t("Strictly Prohibited (Closed-book exam).")}
               </p>
               <p>
-                <strong>Online & Electronic Aids: </strong>
-                Strictly prohibited. All machine translation, browser lookups, electronic dictionaries, and mobile phones are banned.
-              </p>
+                <strong>{t("Online & Electronic Aids: ")}</strong>{t("Strictly prohibited. All machine translation, browser lookups, electronic dictionaries, and mobile phones are banned.")}</p>
               <p>{profile.allowedAids.notes}</p>
             </div>
             <div className="exam-modal__actions">
@@ -470,9 +475,7 @@ export function ExamRunner({
                 className="button button--primary"
                 type="button"
                 onClick={() => setShowAidsModal(false)}
-              >
-                Close
-              </button>
+              >{t("Close")}</button>
             </div>
           </div>
         </div>
@@ -482,20 +485,12 @@ export function ExamRunner({
       {showSubmitModal && (
         <div className="exam-modal-backdrop" role="presentation">
           <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="submit-heading">
-            <h3 id="submit-heading" className="exam-modal__title">
-              Submit Examination?
-            </h3>
+            <h3 id="submit-heading" className="exam-modal__title">{t("Submit Examination?")}</h3>
             <div className="exam-modal__body">
-              <p>
-                You have completed <strong>{answeredPassages}</strong> of <strong>{totalPassages}</strong> passages across all sections.
-              </p>
-              <p>
-                Once submitted, your translations will be evaluated against the rubric dimensions and consolidated into a practice assessment scorecard.
-              </p>
+              <p>{t("You have completed ")}<strong>{answeredPassages}</strong>{t(" of ")}<strong>{totalPassages}</strong>{t(" passages across all sections.")}</p>
+              <p>{t("Once submitted, your translations will be evaluated against the rubric dimensions and consolidated into a practice assessment scorecard.")}</p>
               {answeredPassages < totalPassages && (
-                <p style={{ color: '#b45309', fontWeight: 600 }}>
-                  Note: You have unanswered passages remaining. Unanswered passages will receive zero points.
-                </p>
+                <p style={{ color: '#b45309', fontWeight: 600 }}>{t("Note: You have unanswered passages remaining. Unanswered passages will receive zero points.")}</p>
               )}
             </div>
             <div className="exam-modal__actions">
@@ -503,16 +498,12 @@ export function ExamRunner({
                 className="button button--quiet"
                 type="button"
                 onClick={() => setShowSubmitModal(false)}
-              >
-                Return to Exam
-              </button>
+              >{t("Return to Exam")}</button>
               <button
                 className="button button--primary"
                 type="button"
                 onClick={handleConfirmSubmit}
-              >
-                Yes, Submit Now →
-              </button>
+              >{t("Yes, Submit Now →")}</button>
             </div>
           </div>
         </div>
@@ -522,9 +513,7 @@ export function ExamRunner({
       {sectionExpiredAlert && (
         <div className="exam-modal-backdrop" role="presentation">
           <div className="exam-modal" role="dialog" aria-modal="true" aria-labelledby="expired-heading">
-            <h3 id="expired-heading" className="exam-modal__title">
-              Section Time Expired
-            </h3>
+            <h3 id="expired-heading" className="exam-modal__title">{t("Section Time Expired")}</h3>
             <div className="exam-modal__body">
               <p>{sectionExpiredAlert}</p>
             </div>
@@ -533,9 +522,7 @@ export function ExamRunner({
                 className="button button--primary"
                 type="button"
                 onClick={() => setSectionExpiredAlert(undefined)}
-              >
-                Continue →
-              </button>
+              >{t("Continue →")}</button>
             </div>
           </div>
         </div>

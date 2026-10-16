@@ -45,7 +45,7 @@ function sendText(response, statusCode, message) {
   response.end(message)
 }
 
-function createStaticServer(rootDirectory) {
+function createStaticServer(rootDirectory, { port = 0 } = {}) {
   const root = path.resolve(rootDirectory)
   let origin = ''
 
@@ -116,7 +116,7 @@ function createStaticServer(rootDirectory) {
 
     const extension = path.extname(filePath).toLowerCase()
     response.statusCode = 200
-    response.setHeader('Cache-Control', extension === '.js' ? 'no-cache' : 'public, max-age=300')
+    response.setHeader('Cache-Control', ['.js', '.html', '.json'].includes(extension) ? 'no-cache' : 'public, max-age=300')
     response.setHeader('Content-Length', fileStat.size)
     response.setHeader('Content-Type', CONTENT_TYPES.get(extension) || 'application/octet-stream')
 
@@ -135,7 +135,7 @@ function createStaticServer(rootDirectory) {
 
   return new Promise((resolve, reject) => {
     server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(port, '127.0.0.1', () => {
       server.removeListener('error', reject)
       const address = server.address()
       if (!address || typeof address === 'string') {

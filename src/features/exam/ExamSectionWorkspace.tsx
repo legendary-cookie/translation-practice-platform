@@ -1,3 +1,4 @@
+import { t } from '../../i18n'
 import { useEffect, useState } from 'react'
 import type { ExamSectionConfig } from '../../domain/types'
 import { CLIPBOARD_POLICY_NOTICE, countTextUnits, formatSeconds } from '../../domain/exam'
@@ -34,7 +35,7 @@ export function ExamSectionWorkspace({
 
   const activePassage = section.passages[selectedPassageIndex] ?? section.passages[0]
   if (!activePassage) {
-    return <div className="notice-banner">No passages configured for this section.</div>
+    return <div className="notice-banner">{t("No passages configured for this section.")}</div>
   }
 
   const currentAnswer = answers[activePassage.id] ?? ''
@@ -57,13 +58,12 @@ export function ExamSectionWorkspace({
       <div className="exam-strict-banner" role="status">
         <span aria-hidden="true">🔒</span>
         <span>
-          <strong>Strict test mode active:</strong> Reference glossaries and interactive AI assistance are disabled. Clipboard restriction is a platform simulation choice, not an official universal CATTI rule.
-        </span>
+          <strong>{t("Strict test mode active:")}</strong>{t(" Reference glossaries and interactive AI assistance are disabled. Clipboard restriction is a platform simulation choice, not an official universal CATTI rule.")}</span>
       </div>
 
       {/* Multiple Passages Tabs */}
       {section.passages.length > 1 && (
-        <div className="exam-passage-tabs" role="tablist" aria-label="Section passages">
+        <div className="exam-passage-tabs" role="tablist" aria-label={t("Section passages")}>
           {section.passages.map((passage, index) => {
             const hasContent = (answers[passage.id] ?? '').trim().length > 0
             const isActive = index === selectedPassageIndex
@@ -76,8 +76,8 @@ export function ExamSectionWorkspace({
                 type="button"
                 onClick={() => setSelectedPassageIndex(index)}
               >
-                <span>Passage {index + 1}</span>
-                {hasContent && <span aria-label="completed" style={{ marginLeft: '0.35rem' }}>✓</span>}
+                <span>{t("Passage ")}{index + 1}</span>
+                {hasContent && <span aria-label={t("completed")} style={{ marginLeft: '0.35rem' }}>✓</span>}
               </button>
             )
           })}
@@ -93,7 +93,7 @@ export function ExamSectionWorkspace({
               {activePassage.title}
             </h3>
             <span className="exam-source-pane__meta">
-              {activePassage.wordCount} {section.direction.startsWith('zh') ? 'characters' : 'words'}
+              {activePassage.wordCount} {section.direction.startsWith('zh') ? t("characters") : t("words")}
               {activePassage.recommendedPace && ` · ${activePassage.recommendedPace}`}
             </span>
           </div>
@@ -114,12 +114,10 @@ export function ExamSectionWorkspace({
         {/* Right Pane: Translation Editor */}
         <section className="exam-target-pane" aria-labelledby="target-heading">
           <div className="exam-target-pane__header">
-            <label id="target-heading" htmlFor="exam-answer-input" className="exam-target-pane__label">
-              Your Translation ({activePassage.targetLanguage.toUpperCase()})
+            <label id="target-heading" htmlFor="exam-answer-input" className="exam-target-pane__label">{t("Your Translation (")}{activePassage.targetLanguage.toUpperCase()})
             </label>
             <span className="exam-target-pane__counter">
-              {currentCount} {activePassage.targetLanguage === 'zh' ? 'chars' : 'words'} entered
-            </span>
+              {currentCount} {activePassage.targetLanguage === 'zh' ? t("chars") : t("words")}{t(" entered")}</span>
           </div>
 
           <textarea
@@ -133,21 +131,19 @@ export function ExamSectionWorkspace({
             onPaste={handlePaste}
             placeholder={
               isLocked
-                ? 'Time for this section has expired. Inputs are locked.'
-                : 'Type your translation here. Clipboard restriction is a platform simulation choice for this practice run...'
+                ? t("Time for this section has expired. Inputs are locked.")
+                : t("Type your translation here. Clipboard restriction is a platform simulation choice for this practice run...")
             }
           />
 
           {pasteNotice && (
             <p className="exam-target-pane__notice" role="alert">
-              {pasteNotice}
+              {t(pasteNotice)}
             </p>
           )}
 
           {isLocked && (
-            <p className="exam-target-pane__notice" role="alert">
-              Section time expired. Translation inputs for this section are locked.
-            </p>
+            <p className="exam-target-pane__notice" role="alert">{t("Section time expired. Translation inputs for this section are locked.")}</p>
           )}
         </section>
       </div>
@@ -160,9 +156,7 @@ export function ExamSectionWorkspace({
               className="button button--quiet"
               type="button"
               onClick={() => setSelectedPassageIndex(selectedPassageIndex - 1)}
-            >
-              ← Previous Passage
-            </button>
+            >{t("← Previous Passage")}</button>
           )}
         </div>
 
@@ -172,15 +166,11 @@ export function ExamSectionWorkspace({
               className="button button--quiet"
               type="button"
               onClick={() => setSelectedPassageIndex(selectedPassageIndex + 1)}
-            >
-              Next Passage →
-            </button>
+            >{t("Next Passage →")}</button>
           )}
 
           {!isLastSection && unusedSectionSeconds > 0 && (
-            <small role="note" style={{ alignSelf: 'center', maxWidth: '15rem' }}>
-              Advancing now forfeits the remaining {formatSeconds(unusedSectionSeconds)} from the overall exam time.
-            </small>
+            <small role="note" style={{ alignSelf: 'center', maxWidth: '15rem' }}>{t("Advancing now forfeits the remaining ")}{formatSeconds(unusedSectionSeconds)}{t(" from the overall exam time.")}</small>
           )}
 
           <button
@@ -189,7 +179,7 @@ export function ExamSectionWorkspace({
             disabled={isEditorReadOnly}
             onClick={onNextSection}
           >
-            {isLastSection ? 'Proceed to Final Submission' : unusedSectionSeconds > 0 ? 'Finish Section Early →' : 'Next Section →'}
+            {isLastSection ? t("Proceed to Final Submission") : unusedSectionSeconds > 0 ? t("Finish Section Early →") : t("Next Section →")}
           </button>
         </div>
       </footer>

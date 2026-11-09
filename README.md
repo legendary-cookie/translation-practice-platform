@@ -6,6 +6,8 @@ Lingo Practice is a local-first PWA for written, news, and audio interpreting pr
 
 Follow the [getting-started instructions below](#getting-started) for installation, your first exercise, larger text, saved work, and speaking practice. No coding knowledge or AI setup is needed to begin. You can also open the [guide on its own page](docs/USER-GUIDE.md).
 
+**Prefer to watch?** [Watch the 1-minute video](docs/video/lingo-walkthrough.mp4) of the first exercise, with captions. It shows how to open Practice, choose a passage, type a translation, and make the text bigger. (Click the link, then press the play button.)
+
 ## Download 0.1.1
 
 | Platform | Download |

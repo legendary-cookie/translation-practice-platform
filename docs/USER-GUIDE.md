@@ -29,6 +29,8 @@ Use a Windows computer that supports x64 apps. These downloads do not install on
 4. Wait for the download to finish. Open your **Downloads** folder and double-click that file.
 5. Follow the installation window's instructions. When installation finishes, open **Lingo Practice** from the Windows Start menu.
 
+   ![The GitHub download page. Under Assets, the file Lingo-Practice-Setup-0.1.1.exe is outlined in red.](images/00-download-page.png)
+
 This is an early test release. Windows may show an unknown-publisher warning because the installer has no publisher signature. Check that you downloaded the exact file linked above. If Windows blocks it and you are unsure, stop and ask someone you trust to help; you do not need to turn off Windows security.
 
 **Which file should I pick?** Use **Setup** for a normal installation. **Portable** is an alternative executable that runs without the normal installation steps. You only need one. The **Source code** downloads are for people working on the app's code.
@@ -64,6 +66,8 @@ Open **Settings**, then find **Appearance and reading**:
 
 For example, **Chinese → English** means read Chinese and write English. Changing the menu language does not translate the exercise text or your answer.
 
+![The Settings page, showing Appearance and reading with language, theme, text size and line spacing menus.](images/04-settings.png)
+
 ### Find your way around
 
 On a computer, navigation is on the left. On a phone, the main buttons are at the bottom. If you use the Chinese interface, these are the matching names:
@@ -88,6 +92,8 @@ Allow yourself a few quiet minutes. There is no need to finish quickly.
 4. For a first attempt, try **Beginner** under **Difficulty** and **Untimed** under **Timing**. Leave **Topic** on **All topics**. If no passage appears, choose **Any difficulty**.
 5. Choose a **Passage**, then **Open translation desk**.
 6. Read the original passage under **Source**. Type your translation in **Your translation**.
+
+   ![The translation desk with the Chinese passage on the left and an English answer being typed on the right.](images/03-translation-desk.png)
 7. On a phone, use **Read source** and **Write answer** to switch between the two. The **Glossary** provides notes about some words or phrases.
 8. Look below the answer for **Draft saved on this device** before closing the app. If it says **Saving draft…**, wait. If it says **Draft not saved**, keep the app open and copy your answer into another document before leaving.
 

@@ -2,6 +2,8 @@
 
 This guide is for anyone who wants clear steps, even if they rarely install apps. You do not need an account or a password to study.
 
+**Prefer to watch?** [Watch the 1-minute video](video/lingo-walkthrough.mp4) of the first exercise, with captions. It shows how to open Practice, choose a passage, type a translation, and make the text bigger. (Click the link, then press the play button.)
+
 **Start here:** install the app, open **Practice**, choose a passage, and write a translation. You can do this without setting up AI.
 
 In this guide, **choose** means click once with a mouse, or tap once on a phone. Words in **bold** match buttons or labels in the English app.

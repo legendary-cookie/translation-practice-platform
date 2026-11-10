@@ -54,7 +54,7 @@ If the phone refuses an update because it conflicts with an existing app, **keep
 
 ## Make the app comfortable to read
 
-If a welcome screen appears, choose your language direction, practice level, and learning goal. **Everyday practice** is a simple place to begin. You can change these choices later.
+If a welcome screen appears, choose your language direction and learning goal. **Everyday practice** is a simple place to begin. You can change these choices later.
 
 Open **Settings**, then find **Appearance and reading**:
 
@@ -91,7 +91,7 @@ Allow yourself a few quiet minutes. There is no need to finish quickly.
 1. Choose **Practice**.
 2. Leave **Practice mode** on **Written translation**.
 3. Choose your **Language direction**. The arrow points from the language you read to the language you write.
-4. For a first attempt, try **Beginner** under **Difficulty** and **Untimed** under **Timing**. Leave **Topic** on **All topics**. If no passage appears, choose **Any difficulty**.
+4. All passages target **CATTI 3**. Choose **Untimed** under **Timing** and leave **Topic** on **All topics**. Some directions may have no content yet.
 5. Choose a **Passage**, then **Open translation desk**.
 6. Read the original passage under **Source**. Type your translation in **Your translation**.
 
@@ -103,7 +103,7 @@ You have now started a practice exercise. A draft is an unfinished answer. Retur
 
 The app keeps one unfinished written draft. Read any replacement or discard message carefully when starting another passage.
 
-To request an AI review, choose **Submit for feedback** after setting up the optional feature below. Without AI, you can still write, save a draft, and review your wording yourself. An unfinished draft appears through **Continue translation**; it is not a completed result in **Progress**.
+To request an AI review, choose **Submit for feedback** after setting up the optional feature below. Choose **Check translation offline** for paragraph alignment, number and key-term checks, length warnings, rough reference similarity, and a **Source | Your translation | Reference (参考译文)** comparison. After an attempt, **Show reference translation** toggles the reference. These checks need no AI or network. Similarity is a rough comparison, never a grade; different valid translations are possible. An unfinished draft appears through **Continue translation**; it is not a completed result in **Progress**.
 
 ## Get optional AI feedback
 
@@ -119,7 +119,7 @@ AI can suggest improvements, but it can also misunderstand a good translation. S
 
 Once downloaded and available on the computer, the local model can work without sending your practice text to an online AI service. If its downloaded files are removed, prepare it again when connected to the internet.
 
-Local feedback is currently unavailable for Hindi and Arabic. The basic checks for this release cover English/Chinese written work; feedback quality in other supported directions can vary.
+Offline checks work in all four supported directions. Optional AI feedback quality can vary.
 
 ### On an Android phone
 
@@ -171,9 +171,9 @@ This is optional. Begin with ordinary Practice if you want to learn the controls
 2. Read the sections and time limits, then choose **Start Exam Simulation** when ready.
 3. Follow the section instructions. Exam clocks have stricter timing than ordinary practice.
 4. Use **Save & Exit** if you need to stop, and wait for the saved confirmation. Return to **Exam** to resume the saved run.
-5. Use **Submit Exam** when finished. AI evaluation needs a supported prepared model or a separately approved cloud request.
+5. Use **Submit Exam** when finished. By default, results show offline checks and reference translations for every passage. Select **Add optional AI feedback** only if you want an additional AI review; that requires a supported prepared model or separately approved cloud request. Offline reports do not award a grade.
 
-These are practice simulations. Results do not certify a CATTI or MTI qualification or replace current official exam instructions.
+These are practice simulations. Results do not certify a CATTI qualification or replace current official exam instructions.
 
 ## Keep your work safe
 
@@ -191,7 +191,7 @@ Your work is saved **on the device and in the app you used**. It does not automa
 
 | What you see | What to do |
 | --- | --- |
-| No passage to choose | Set **Topic** to **All topics** and **Difficulty** to **Any difficulty**. |
+| No passage to choose | Set **Topic** to **All topics** or choose another available direction. |
 | **Draft not saved** | Keep the app open. Copy your answer to a separate document. Read the message before closing or reloading. |
 | An empty history or a history error | Check that you opened the same app on the same device. If a read error is shown, use its retry button; an error does not mean your records were deleted. |
 | **Local model unavailable**, or feedback fails | You can continue studying manually. On Windows, read the reason in **Settings**. On Android, local AI is unavailable in this release. |

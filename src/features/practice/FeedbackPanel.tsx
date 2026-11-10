@@ -1,3 +1,4 @@
+import { OfflineCheckPanel } from '../../components/OfflineCheckPanel'
 import { t } from '../../i18n'
 import { FeedbackActions } from './FeedbackActions'
 import { useState } from 'react'
@@ -60,9 +61,10 @@ export function FeedbackPanel({
 }) {
   return (
     <div className="feedback-layout">
+      <OfflineCheckPanel input={{ ...exercise, paragraphs: exercise.paragraphs ?? [], keyTerms: exercise.keyTerms ?? [], translation: answer }} />
       <section className="feedback-summary">
         <div className="feedback-summary__topline"><div><div className="feedback-summary__actions"><button className="back-button" type="button" onClick={onRevise}>{t("← Revise translation")}</button><button className="back-button" type="button" onClick={onChangeSetup}>{t("← Change setup")}</button></div><p className="eyebrow">{t("Feedback · ")}{exercise.title}</p><h2>{t("Your practice readout.")}</h2></div><div className="estimate-badge"><strong>{feedback.overallScore}</strong><span>{t("Practice estimate")}<br />{t("out of 100")}</span></div></div>
-        <div className="estimate-notice"><span>{t("Practice estimate only")}</span><p>{t("This feedback is for study and reflection. It is not an official CATTI or MTI result.")}</p></div>
+        <div className="estimate-notice"><span>{t("Practice estimate only")}</span><p>{t("This feedback is for study and reflection. It is not an official CATTI result.")}</p></div>
         <p className="feedback-summary__copy">{feedback.summary}</p>
         <div className="dimension-grid">{(Object.keys(dimensionLabels) as ScoreDimension[]).map((dimension) => <div className="dimension-score" key={dimension}><div><span>{t(dimensionLabels[dimension])}</span><strong>{feedback.dimensions[dimension]}</strong></div><div className="score-track"><span style={{ width: `${feedback.dimensions[dimension]}%` }} /></div></div>)}</div>
         <div className="feedback-columns"><div><span className="eyebrow">{t("What is working")}</span><ul className="feedback-list">{feedback.strengths.length ? feedback.strengths.map((strength) => <li key={strength}>{strength}</li>) : <li>{t("No specific strengths were returned.")}</li>}</ul></div><div><span className="eyebrow">{t("Other valid renderings")}</span>{feedback.alternatives.length ? <ul className="feedback-list">{feedback.alternatives.map((alternative) => <li key={alternative}>{alternative}</li>)}</ul> : <p className="muted-copy">{t("The evaluator did not add an alternative for this pass.")}</p>}</div></div>

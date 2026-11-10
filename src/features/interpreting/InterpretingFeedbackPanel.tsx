@@ -29,7 +29,7 @@ export function InterpretingFeedbackPanel({
   const deliveryScores = feedback.deliveryScores
   return (
     <div className="interpreting-feedback-page" aria-label={t("Interpreting practice feedback")}>
-      <header className="interpreting-feedback-header"><div><p className="eyebrow">{feedback.overallScore === undefined ? t("Interpreting self-review") : t("Interpreting practice estimate")}</p><h2>{t("Review the evidence, not just the number.")}</h2><p>{exercise.title} · {getLanguage(exercise.sourceLanguage).nativeLabel} → {targetLanguage.nativeLabel} · {t(input.interpretingMode)}</p></div><span className="pill">{t("Not an official CATTI/MTI result")}</span></header>
+      <header className="interpreting-feedback-header"><div><p className="eyebrow">{feedback.overallScore === undefined ? t("Interpreting self-review") : t("Interpreting practice estimate")}</p><h2>{t("Review the evidence, not just the number.")}</h2><p>{exercise.title} · {getLanguage(exercise.sourceLanguage).nativeLabel} → {targetLanguage.nativeLabel} · {t(input.interpretingMode)}</p></div><span className="pill">{t("Not an official CATTI result")}</span></header>
       {notice && <p className="interpreting-notice" role="status">{t(notice)}</p>}
       {pendingSave && <div className="interpreting-notice interpreting-save-retry" role="status"><p>{t("This recording and its self-review are not saved yet. The pending copy is held in this page until local storage succeeds.")}</p><button className="button button--quiet interpreting-action" type="button" onClick={onRetrySave} disabled={isSaving}>{isSaving ? t("Saving locally…") : t("Retry local save")}</button></div>}
       <section className="interpreting-score-groups" aria-label={t("Separate interpreting score groups")}>

@@ -30,7 +30,7 @@ test('repeated hard recall never lowers the SM-2 ease below 1.3 or mutates the p
 })
 
 test('written recovery preserves exact multilingual answer and clock but rejects corrupt payloads', () => {
-  const draft = { exercise: { id: 'original', sourceText: '原文', title: 'Original', sourceLanguage: 'zh', targetLanguage: 'ar', mode: 'written', glossary: [{ term: '原文', note: 'source text' }] }, answer: '  ترجمة\nहिन्दी 中文  ', elapsedSeconds: 12, timeLimitSeconds: 600, updatedAt: '2026-01-01T00:00:00Z' }
+  const draft = { exercise: { id: 'original', sourceText: '原文', title: 'Original', sourceLanguage: 'zh', targetLanguage: 'ru', mode: 'written', glossary: [{ term: '原文', note: 'source text' }] }, answer: '  ترجمة\nहिन्दी 中文  ', elapsedSeconds: 12, timeLimitSeconds: 600, updatedAt: '2026-01-01T00:00:00Z' }
   assert.deepEqual(readWrittenDraft(draft), draft)
   assert.equal(readWrittenDraft({ ...draft, elapsedSeconds: -1 }), undefined)
   assert.equal(readWrittenDraft({ ...draft, answer: null }), undefined)

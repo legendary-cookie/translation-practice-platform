@@ -1,4 +1,4 @@
-export type LanguageCode = 'zh' | 'en' | 'ru' | 'fr' | 'hi' | 'es' | 'ar'
+export type LanguageCode = 'zh' | 'en' | 'ru'
 
 export type TextDirection = 'ltr' | 'rtl'
 
@@ -15,15 +15,11 @@ export const LANGUAGE_CATALOG: Record<LanguageCode, LanguageDefinition> = {
   zh: { code: 'zh', label: 'Chinese', nativeLabel: '中文', script: 'Simplified Chinese', direction: 'ltr', speechTag: 'zh-CN' },
   en: { code: 'en', label: 'English', nativeLabel: 'English', script: 'Latin', direction: 'ltr', speechTag: 'en-US' },
   ru: { code: 'ru', label: 'Russian', nativeLabel: 'Русский', script: 'Cyrillic', direction: 'ltr', speechTag: 'ru-RU' },
-  fr: { code: 'fr', label: 'French', nativeLabel: 'Français', script: 'Latin', direction: 'ltr', speechTag: 'fr-FR' },
-  hi: { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी', script: 'Devanagari', direction: 'ltr', speechTag: 'hi-IN' },
-  es: { code: 'es', label: 'Spanish', nativeLabel: 'Español', script: 'Latin', direction: 'ltr', speechTag: 'es-ES' },
-  ar: { code: 'ar', label: 'Arabic', nativeLabel: 'العربية', script: 'Arabic', direction: 'rtl', speechTag: 'ar-SA' },
 }
 
 export const LANGUAGE_CODES = Object.keys(LANGUAGE_CATALOG) as LanguageCode[]
 
-export type DirectionId = `${LanguageCode}-${LanguageCode}`
+export type DirectionId = 'zh-en' | 'en-zh' | 'zh-ru' | 'ru-zh'
 
 export type TranslationDirection = {
   id: DirectionId
@@ -32,7 +28,7 @@ export type TranslationDirection = {
   label: string
 }
 
-const nonChineseLanguages: LanguageCode[] = ['en', 'ru', 'fr', 'hi', 'es', 'ar']
+const nonChineseLanguages: LanguageCode[] = ['en', 'ru']
 
 export const CHINESE_DIRECTIONS: TranslationDirection[] = nonChineseLanguages.flatMap((language) => [
   {

@@ -1,7 +1,8 @@
+import { isSupportedCatti3Profile } from '../../data/exam-profiles'
 import { t } from '../../i18n'
 import { useState } from 'react'
-import type { ActiveExamRun, ExamProfile, ExamType, LanguageCode } from '../../domain/types'
-import { CATTI_LEVEL_2_SYLLABUS_BASELINES } from '../../data/catti-syllabus-baselines'
+import type { ActiveExamRun, ExamProfile, LanguageCode } from '../../domain/types'
+import { CATTI_LEVEL_3_SYLLABUS_BASELINES } from '../../data/catti-syllabus-baselines'
 import {
   CATTI_THRESHOLD_NOTICE,
   formatSeconds,
@@ -32,7 +33,6 @@ export function ExamCatalog({
   onDiscardRun,
 }: ExamCatalogProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<'all' | LanguageCode>('all')
-  const [selectedType, setSelectedType] = useState<'all' | ExamType>('all')
   const activeRemainingSeconds = useRecoveryCountdown(activeRun)
 
   const activeRunProfile = activeRun
@@ -40,9 +40,7 @@ export function ExamCatalog({
     : undefined
 
   const filteredProfiles = profiles.filter((profile) => {
-    if (selectedType !== 'all' && profile.examType !== selectedType) {
-      return false
-    }
+    if (!isSupportedCatti3Profile(profile)) return false
     if (selectedLanguage !== 'all') {
       const matchesLanguage =
         profile.sourceLanguage === selectedLanguage || profile.targetLanguage === selectedLanguage
@@ -100,24 +98,24 @@ export function ExamCatalog({
       <section className="notice-banner" role="alert" style={{ marginBottom: '1.5rem' }}>
         <strong>{t("Practice estimate: ")}</strong>
         <span>
-          {t(PRACTICE_ESTIMATE_DISCLAIMER)}{t(" No official endorsement or certification by CIPG, ATICICG, CPTA, or any MTI university is implied.")}</span>
+          {t(PRACTICE_ESTIMATE_DISCLAIMER)}</span>
       </section>
 
       <details className="exam-profile-notes"><summary>{t("Read dated syllabus references and profile boundaries")}</summary>
       <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
-        <strong>{t("2023-12-25 CATTI syllabus references: ")}</strong>
-        <span>{t("These are dated official syllabus baselines, not timeless administration promises. The simulator's rubric and scores remain platform-authored practice estimates.")}</span>
+        <strong>{t("Provisional CATTI 3 descriptions: ")}</strong>
+        <span>{t("Confirm these descriptions against the current catti.net.cn syllabus.")}</span>
         <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
-          {CATTI_LEVEL_2_SYLLABUS_BASELINES.map((baseline) => (
+          {CATTI_LEVEL_3_SYLLABUS_BASELINES.map((baseline) => (
             <li key={baseline.language}>
-              {t(baseline.languageLabel)}: {baseline.foreignToChinese} ({baseline.foreignToChinesePoints}{t(" pts) → ")}{baseline.chineseToForeign} ({baseline.chineseToForeignPoints}{t(" pts), ")}{baseline.durationMinutes}{t(" min")}</li>
+              {t(baseline.languageLabel)}: {t(baseline.foreignToChinese)} ({baseline.foreignToChinesePoints}{t(" pts) → ")}{t(baseline.chineseToForeign)} ({baseline.chineseToForeignPoints}{t(" pts), ")}{baseline.durationMinutes}{t(" min")}</li>
           ))}
         </ul>
       </section>
 
       <section className="notice-banner" role="note" style={{ marginBottom: '1.5rem' }}>
         <strong>{t("Profile boundaries: ")}</strong>
-        <span>{t("MTI 357 varies by admitting university and admission year, so no generic national MTI profile is presented here. ")}{t(MATERIALS_POLICY_NOTICE)}</span>
+        <span>{t(MATERIALS_POLICY_NOTICE)}</span>
       </section>
 
       </details>
@@ -135,46 +133,23 @@ export function ExamCatalog({
       {/* Filter Controls */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
-          <span className="muted-label">{t("Type:")}</span>
-          <button
-            className={`button ${selectedType === 'all' ? 'button--primary' : 'button--quiet'}`}
-            type="button"
-            onClick={() => setSelectedType('all')}
-          >{t("All")}</button>
-          <button
-            className={`button ${selectedType === 'CATTI' ? 'button--primary' : 'button--quiet'}`}
-            type="button"
-            onClick={() => setSelectedType('CATTI')}
-          >{t("CATTI")}</button>
-          <button
-            className={`button ${selectedType === 'MTI' ? 'button--primary' : 'button--quiet'}`}
-            type="button"
-            onClick={() => setSelectedType('MTI')}
-          >{t("MTI")}</button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
           <span className="muted-label">{t("Language:")}</span>
           <button
             className={`button ${selectedLanguage === 'all' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedLanguage('all')}
-          >{t("All Pairs")}</button>
+          >{t("All")}</button>
           <button
             className={`button ${selectedLanguage === 'en' ? 'button--primary' : 'button--quiet'}`}
             type="button"
             onClick={() => setSelectedLanguage('en')}
           >{t("English")}</button>
           <button
-            className={`button ${selectedLanguage === 'fr' ? 'button--primary' : 'button--quiet'}`}
+            className={`button ${selectedLanguage === 'ru' ? 'button--primary' : 'button--quiet'}`}
             type="button"
-            onClick={() => setSelectedLanguage('fr')}
-          >{t("French")}</button>
-          <button
-            className={`button ${selectedLanguage === 'ar' ? 'button--primary' : 'button--quiet'}`}
-            type="button"
-            onClick={() => setSelectedLanguage('ar')}
-          >{t("Arabic")}</button>
+            onClick={() => setSelectedLanguage('ru')}
+          >{t("Russian")}</button>
+
         </div>
       </div>
 
@@ -182,7 +157,7 @@ export function ExamCatalog({
       {filteredProfiles.length === 0 && (
         <section className="progress-empty" style={{ marginBottom: '1.5rem' }}>
           <h3>{t("No profile is bundled for this filter.")}</h3>
-          <p>{t("MTI 357 practice requires a named university and admission year. A generic national task-count or benchmark profile is intentionally not offered.")}</p>
+          <p>{t('Exam profiles appear when both sections have passage content.')}</p>
         </section>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '1.5rem' }}>

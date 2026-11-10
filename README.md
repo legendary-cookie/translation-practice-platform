@@ -1,6 +1,6 @@
 # Lingo Practice
 
-Lingo Practice is a local-first PWA for written, news, and audio interpreting practice across seven languages: Chinese, English, Russian, French, Hindi, Spanish, and Arabic. The first release includes the twelve Chinese-centered directions and works without an account.
+Lingo Practice is a local-first CATTI Level 3 (三级笔译) trainer for Chinese, English and Russian. It supports Chinese ↔ English and Chinese ↔ Russian, with offline translation checks and paragraph-aligned reference translations. No account or AI setup is needed.
 
 ## New to the app?
 
@@ -77,7 +77,7 @@ If the phone refuses an update because it conflicts with an existing app, **keep
 
 ### Make the app comfortable to read
 
-If a welcome screen appears, choose your language direction, practice level, and learning goal. **Everyday practice** is a simple place to begin. You can change these choices later.
+If a welcome screen appears, choose your language direction and learning goal. **Everyday practice** is a simple place to begin. You can change these choices later.
 
 Open **Settings**, then find **Appearance and reading**:
 
@@ -114,7 +114,7 @@ Allow yourself a few quiet minutes. There is no need to finish quickly.
 1. Choose **Practice**.
 2. Leave **Practice mode** on **Written translation**.
 3. Choose your **Language direction**. The arrow points from the language you read to the language you write.
-4. For a first attempt, try **Beginner** under **Difficulty** and **Untimed** under **Timing**. Leave **Topic** on **All topics**. If no passage appears, choose **Any difficulty**.
+4. All passages target **CATTI 3**. Choose **Untimed** under **Timing** and leave **Topic** on **All topics**. Some directions may have no content yet.
 5. Choose a **Passage**, then **Open translation desk**.
 6. Read the original passage under **Source**. Type your translation in **Your translation**.
 
@@ -126,7 +126,7 @@ You have now started a practice exercise. A draft is an unfinished answer. Retur
 
 The app keeps one unfinished written draft. Read any replacement or discard message carefully when starting another passage.
 
-To request an AI review, choose **Submit for feedback** after setting up the optional feature below. Without AI, you can still write, save a draft, and review your wording yourself. An unfinished draft appears through **Continue translation**; it is not a completed result in **Progress**.
+To request an AI review, choose **Submit for feedback** after setting up the optional feature below. Choose **Check translation offline** for paragraph alignment, number and key-term checks, length warnings, rough reference similarity, and a **Source | Your translation | Reference (参考译文)** comparison. After an attempt, **Show reference translation** toggles the reference. These checks need no AI or network. Similarity is a rough comparison, never a grade; different valid translations are possible. An unfinished draft appears through **Continue translation**; it is not a completed result in **Progress**.
 
 ### Get optional AI feedback
 
@@ -142,7 +142,7 @@ AI can suggest improvements, but it can also misunderstand a good translation. S
 
 Once downloaded and available on the computer, the local model can work without sending your practice text to an online AI service. If its downloaded files are removed, prepare it again when connected to the internet.
 
-Local feedback is currently unavailable for Hindi and Arabic. The basic checks for this release cover English/Chinese written work; feedback quality in other supported directions can vary.
+Offline checks work in all four supported directions. Optional AI feedback quality can vary.
 
 #### On an Android phone
 
@@ -194,9 +194,9 @@ This is optional. Begin with ordinary Practice if you want to learn the controls
 2. Read the sections and time limits, then choose **Start Exam Simulation** when ready.
 3. Follow the section instructions. Exam clocks have stricter timing than ordinary practice.
 4. Use **Save & Exit** if you need to stop, and wait for the saved confirmation. Return to **Exam** to resume the saved run.
-5. Use **Submit Exam** when finished. AI evaluation needs a supported prepared model or a separately approved cloud request.
+5. Use **Submit Exam** when finished. By default, results show offline checks and reference translations for every passage. Select **Add optional AI feedback** only if you want an additional AI review; that requires a supported prepared model or separately approved cloud request. Offline reports do not award a grade.
 
-These are practice simulations. Results do not certify a CATTI or MTI qualification or replace current official exam instructions.
+These are practice simulations. Results do not certify a CATTI qualification or replace current official exam instructions.
 
 ### Keep your work safe
 
@@ -214,7 +214,7 @@ Your work is saved **on the device and in the app you used**. It does not automa
 
 | What you see | What to do |
 | --- | --- |
-| No passage to choose | Set **Topic** to **All topics** and **Difficulty** to **Any difficulty**. |
+| No passage to choose | Set **Topic** to **All topics** or choose another available direction. |
 | **Draft not saved** | Keep the app open. Copy your answer to a separate document. Read the message before closing or reloading. |
 | An empty history or a history error | Check that you opened the same app on the same device. If a read error is shown, use its retry button; an error does not mean your records were deleted. |
 | **Local model unavailable**, or feedback fails | You can continue studying manually. On Windows, read the reason in **Settings**. On Android, local AI is unavailable in this release. |
@@ -249,11 +249,11 @@ Run the behavior regression suite with `npm test`. `npm run build` checks TypeSc
 ## Adaptive study desk
 
 - Desktop uses a compact collapsible navigation rail and paired source/answer panes. Phones use five primary destinations and explicit source/answer switching; interpreting is available from Home.
-- First launch can choose a default language direction, practice level, and learning goal without an account. Settings offers English and Simplified Chinese interfaces; source/answer content supports all seven scripts. Authored passage text, exam-profile names, and model-generated feedback remain in their original languages.
+- First launch can choose a default language direction and learning goal without an account. Settings offers English and Simplified Chinese interfaces; source/answer content supports Chinese, English and Russian. Authored passage text, exam-profile names, and model-generated feedback remain in their original languages.
 - Light, dark, and device themes, editor text size, and line spacing are saved locally. Ctrl/Command + Enter submits written work; native text editing provides undo/redo. The timer can pause independently of the editor. Exam clocks keep their strict timing rules.
 - Written drafts save exact answer text, elapsed time, and an exercise snapshot. A successfully read recovery state and an origin-wide Web Lock protect the singleton draft. A second tab cannot autosave over its owner. A tab claims ownership and reads the latest stored draft before resuming or replacing it. Unsupported or unreadable storage leaves a clearly labeled in-tab practice; it does not overwrite unknown saved work.
 - Opening News setup preserves an owned draft. Replacement/discard confirms before losing meaningful work, including unsaved input. Successfully saved completed feedback retires the unfinished draft; failed session saves preserve recovery. All writes are fenced against data deletion, including writes queued by the deleting tab itself.
-- The recovered catalog has 96 exercises: four written and four news-style exercises in each of the twelve Chinese-centered directions. The passage selector exposes every filtered exercise. News dates describe fictional practice scenarios, not real reported events.
+- The written and news practice catalogs use original CATTI 3 passages with paragraph references and accepted key terms. Content is added progressively; exam passages stay out of practice.
 
 ## Local learning library
 
@@ -305,7 +305,7 @@ Smaller 0.5B, 0.6B, 0.8B, 1.5B and 2B candidates produced rejected JSON, copied 
 
 Written evaluation uses constrained JSON, a coverage check for every source clause, and evidence IDs resolved to unchanged input text. Unknown IDs, invented quotes, missing coverage, inconsistent omission scores, malformed output, truncation and deadline failures are rejected before saving feedback. One repair attempt shares the same 120-second evaluation deadline. The existing domain validator still checks the resolved literal evidence. Quoted text can be correct while the explanation or suggested revision is wrong; the UI includes an explicit small-model warning.
 
-The local worker remains optional. Devices without WebGPU/storage are unavailable; mobile and weak-memory devices remain restricted until qualified. Hindi and Arabic local critique remain disabled. Interpreting uses verified transcripts and never infers speech quality from audio amplitude. Its model critique quality remains outside the written matrix. Cloud fallback still requires exact-task, payload and destination consent.
+The local worker remains optional. Devices without WebGPU/storage are unavailable; mobile and weak-memory devices remain restricted until qualified. Interpreting uses verified transcripts and never infers speech quality from audio amplitude. Its model critique quality remains outside the written matrix. Cloud fallback still requires exact-task, payload and destination consent.
 
 On Android WebView, on-device speech-recognition probing is disabled. WebView 154 on the physical Samsung phone exposed the API but terminated its renderer when the native speech binder was missing. Manual transcripts and local recording/replay remain available; the default remote speech service is never used.
 
@@ -321,9 +321,9 @@ If local-first with cloud fallback is selected and local evaluation cannot run, 
 
 - Exercises, settings, completed sessions, progress, and exports are local to the current browser/device.
 - The service worker caches the same-origin app shell and falls back to the cached entry point for navigation. It does not cache `fetch` requests, evaluation requests, API responses, or cross-origin content.
-- Previously cached app content remains available offline. AI feedback is offline only after the local model has been prepared and the device supports it.
+- Previously cached app content remains available offline. Number, terminology, paragraph, length and reference-similarity checks always run offline. Optional AI feedback is offline only after the local model has been prepared and the device supports it.
 - Export creates a versioned JSON file from local records. Deletion requires explicit confirmation and clears local settings, sessions, interpreting history, and recordings.
-- Scores are practice estimates. They are not official CATTI or MTI results.
+- Scores are practice estimates. They are not official CATTI results.
 
 ## Audio interpreting mode
 
@@ -333,30 +333,26 @@ If local-first with cloud fallback is selected and local evaluation cannot run, 
 - **Microphone boundary**: Recording is requested only from the explicit record action and requires localhost or HTTPS plus browser permission. `MediaRecorder` chooses a runtime-supported MIME type. Permission, device, secure-context, and codec errors remain visible; every microphone track and replay object URL is released on stop, discard, navigation, and unmount.
 - **Local evidence**: Takes remain in memory until submission, then are saved in IndexedDB with their recording metadata and referenced by the saved interpreting session. Progress can reopen a saved self-review with local replay evidence. Export includes short audio as browser-safe data URLs; deleting local data clears recordings, sessions, settings, and interpreting history together.
 - **Scoreless self-review and recovery**: Learners can save a local self-review without automated evaluation or a fabricated transcript/score. If IndexedDB cannot save it, the exact pending session remains available for an explicit retry in the current tab; saved takes can be reopened and deleted individually, with shared recordings retained only while referenced.
-- **Recognition and feedback**: On-device Web Speech is an optional capability check that requires `processLocally: true`; it never falls back to default remote recognition. Unsupported or low-confidence languages use manual transcript confirmation and explicitly labeled incomplete content feedback. Delivery metrics are local heuristics, separate from content scores, and every result is a practice estimate rather than an official CATTI/MTI result.
+- **Recognition and feedback**: On-device Web Speech is an optional capability check that requires `processLocally: true`; it never falls back to default remote recognition. Unsupported or low-confidence languages use manual transcript confirmation and explicitly labeled incomplete content feedback. Delivery metrics are local heuristics, separate from content scores, and every result is a practice estimate rather than an official CATTI result.
 - **Cloud boundary**: Local-only mode sends no source transcript, learner transcript, learner audio, or derived metrics remotely. A configured cloud provider is offered only after a task-specific consent view names the endpoint/model and exact text, audio MIME/duration/bytes, and delivery-metric payload. Cancelling or failing that request leaves the audio and transcript on this device; there is no automatic remote speech processing.
 
 ## Included practice modes
 
 - **Written translation**: Sentence- and paragraph-level deliberate practice focusing on accuracy, terminology, and natural phrasing.
 - **News translation**: Practice with original, current-affairs style passages categorized by domain.
-- **Exam simulation**: Realistic, timed mock examinations for CATTI candidates and named-university MTI profiles with strict test conditions, dual countdown timers, crash recovery, and multi-section consolidated evaluations.
+- **Exam simulation**: Realistic, timed mock examinations for CATTI Level 3 candidates with strict test conditions, dual countdown timers, crash recovery, and multi-section consolidated evaluations.
 
 ## Exam simulation mode
 
 The exam simulator provides an authentic testing experience tailored to individual candidates:
 
 ### 1. Versioned Exam Profiles & Dated Syllabus References
-- **CATTI Level 2 English 实务 (`catti-2-practical-en-zh-v1`)** [2023-12-25 official syllabus baseline]: 180 minutes; about 900 English words for English-to-Chinese (50 pts) and about 600 Chinese characters for Chinese-to-English (50 pts). The score shown by this app remains a practice estimate.
-- **CATTI Level 2 French 实务 (`catti-2-practical-fr-zh-v1`)** [2023-12-25 official syllabus baseline]: 180 minutes; about 800 French words for French-to-Chinese (60 pts) and about 500 Chinese characters for Chinese-to-French (40 pts). The score shown by this app remains a practice estimate.
-- **CATTI Level 2 Arabic 实务 (`catti-2-practical-ar-zh-v1`)** [2023-12-25 official syllabus baseline]: 180 minutes; about 700–800 Arabic words for Arabic-to-Chinese (60 pts) and about 400–500 Chinese characters for Chinese-to-Arabic (40 pts), with RTL rendering. The score shown by this app remains a practice estimate.
-- **CATTI Russian and Spanish references**: The dated 2023-12-25 syllabus baselines are about 800 Russian words / 400 Chinese characters and about 800 Spanish words / 500 Chinese characters, both with 60/40 point weighting. No Russian or Spanish passage packs are bundled in this slice yet.
-- **MTI 357**: No generic national profile is bundled. MTI 357 task counts and structures vary by named university and admission year; a profile must be tied to both before it is offered.
-- **Hindi Scope Boundary**: CATTI does not administer Hindi examinations; Hindi is intentionally excluded from CATTI simulation profiles.
+- **CATTI Level 3 English 实务 (`catti-3-practical-en-zh-v1`)**: 180 minutes; two English-to-Chinese passages (about 600 English words total, 50 points, 90 minutes) and two Chinese-to-English passages (about 400 Chinese characters total, 50 points, 90 minutes).
+- **CATTI Level 3 Russian 实务 (`catti-3-practical-ru-zh-v1`)**: 180 minutes; two Russian-to-Chinese passages (about 600 Russian words total, 60 points, 100 minutes) and two Chinese-to-Russian passages (about 400 Chinese characters total, 40 points, 80 minutes).
+- Both profiles are provisional drafts, with a 60/100 practice benchmark. Their structure follows widely published CATTI 3 《笔译实务》 descriptions and must be confirmed against the current catti.net.cn syllabus. Passages are original platform-authored CATTI 3 style texts, not real exam papers. Missing passage ids are skipped; profiles appear only when both sections have content.
 
 ### 2. Permitted Aids & Strict Mode
-- **CATTI Aids Policy**: The 2023-12-25 profile references are dated syllabus baselines; consult the target administration's official notice for current aids.
-- **MTI Aids Policy**: A named university and admission-year profile must provide its own current policy; no generic MTI policy is asserted here.
+- **CATTI Aids Policy**: Two bilingual paper dictionaries are allowed in the provisional profiles; confirm current rules against the official syllabus.
 - **Strict Client Ergonomics**: Inline glossaries, vocabulary tooltips, and interactive AI hints are hidden during the test. Clipboard restriction is a platform simulation choice, not an official universal CATTI rule.
 
 ### 3. Dual Timers & Crash Recovery
@@ -365,10 +361,7 @@ The exam simulator provides an authentic testing experience tailored to individu
 - **Auto-Advance & Auto-Submit**: Sections auto-lock when section time expires; overall exam timer auto-submits when total time hits zero.
 
 ### 4. Consolidated Evaluation & Mandatory Practice Disclaimer
-- Submissions are evaluated across five platform-authored rubric dimensions (`accuracy`, `terminology`, `grammar`, `fluency`, `taskStyle`) and aggregated into a scaled practice score. No official marker-consensus sheet, micro-deduction table, or official threshold is claimed.
+- Offline submissions show paragraph-aligned checks and references without a grade. Optional AI submissions are evaluated across five platform-authored rubric dimensions (`accuracy`, `terminology`, `grammar`, `fluency`, `taskStyle`) and aggregated into a scaled practice score. No official marker-consensus sheet, micro-deduction table, or official threshold is claimed.
 - **Threshold nuance**: CATTI's default fixed standard is not a universal rule for every administration and region; the 2024 separate-line exception was 58. The simulator's benchmark is only a practice comparison.
-- **Mandatory Practice Disclaimer**: Every score and summary is explicitly labeled as an automated practice estimate. No official endorsement, certification, or affiliation with CIPG (中国外文局), ATICICG (翻译院), CPTA (人事考试网), or any MTI university is implied.
+- **Mandatory Practice Disclaimer**: Every score and summary is explicitly labeled as an automated practice estimate. No official endorsement, certification, or affiliation with CIPG (中国外文局), ATICICG (翻译院), CPTA (人事考试网) is implied.
 - **Materials policy**: This release uses platform-authored practice passages and does not reproduce past exam papers. Ownership of past papers is not asserted; rights must be checked paper by paper before reuse.
-
-Arabic source and answer fields set `dir="rtl"`; all supported scripts use touch-sized controls and responsive layouts for narrow phones and laptops. The app uses system fonts and local SVG/PNG icons, with no remote font or image dependency.
-

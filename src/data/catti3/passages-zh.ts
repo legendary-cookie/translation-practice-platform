@@ -41,7 +41,7 @@ export const ZH_PASSAGES: Catti3Passage[] = [
       },
     ],
     keyTerms: [
-      { source: '人均水资源量', accepted: { en: ['per capita water'], ru: ['на душу населения'] } },
+      { source: '人均水资源量', accepted: { en: ['per capita water', 'per capita', 'per person', 'per-capita'], ru: ['на душу населения', 'на человека', 'на одного жителя'] } },
       { source: '城镇化', accepted: { en: ['urbani'], ru: ['урбанизац'] } },
       { source: '节水型城市', accepted: { en: ['water-saving cit', 'water-efficient cit'], ru: ['водосберегающ'] } },
       { source: '管网漏损率', accepted: { en: ['leakage'], ru: ['потер', 'утечк'] } },
@@ -162,8 +162,8 @@ export const ZH_PASSAGES: Catti3Passage[] = [
       {
         source: '高铁的发展深刻改变了人们的出行方式。过去从北京到上海坐火车需要十几个小时，现在乘坐高铁最快只需4个多小时。“同城化”效应日益明显，不少人选择在一座城市工作、在另一座城市生活。',
         reference: {
-          en: 'The development of high-speed rail has profoundly changed the way people travel. A train journey from Beijing to Shanghai used to take more than ten hours; today the fastest high-speed trains make it in just over four hours. Neighbouring cities are increasingly functioning as one, and many people now choose to work in one city and live in another.',
-          ru: 'Развитие высокоскоростных железных дорог коренным образом изменило то, как люди путешествуют. Раньше поездка на поезде из Пекина в Шанхай занимала более десяти часов, а теперь на самом быстром скоростном поезде она длится немногим более четырёх. Соседние города всё больше сливаются в единое пространство, и многие предпочитают работать в одном городе, а жить в другом.',
+          en: 'The development of high-speed rail has profoundly changed the way people travel. A train journey from Beijing to Shanghai used to take more than ten hours; today the fastest high-speed trains make it in just over 4 hours. Neighbouring cities are increasingly functioning as one, and many people now choose to work in one city and live in another.',
+          ru: 'Развитие высокоскоростных железных дорог коренным образом изменило то, как люди путешествуют. Раньше поездка на поезде из Пекина в Шанхай занимала более десяти часов, а теперь на самом быстром скоростном поезде она длится немногим более 4 часов. Соседние города всё больше сливаются в единое пространство, и многие предпочитают работать в одном городе, а жить в другом.',
         },
       },
       {

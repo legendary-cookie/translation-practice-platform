@@ -157,9 +157,10 @@ export function ProgressPage({
   }, new Map())
 
   // Exam simulation stats
-  const examAveragePercentage = average(examResults.map((r) => r.percentage))
+  const scoredExams = examResults.filter(r => r.evaluationKind !== 'offline')
+  const examAveragePercentage = average(scoredExams.map((r) => r.percentage))
   const examDimensionAverages = dimensions.reduce<Record<ScoreDimension, number>>((result, dimension) => {
-    result[dimension] = average(examResults.map((r) => r.consolidatedDimensions[dimension] ?? 0))
+    result[dimension] = average(scoredExams.map((r) => r.consolidatedDimensions[dimension] ?? 0))
     return result
   }, {} as Record<ScoreDimension, number>)
 
@@ -319,7 +320,7 @@ export function ProgressPage({
                 <article className="progress-card progress-card--note">
                   <span className="progress-card__mark">✦</span>
                   <h3>{t("Use the pattern, not the number.")}</h3>
-                  <p>{t("These summaries help you decide what to revisit. They are not calibrated, official, or a substitute for CATTI or MTI scoring.")}</p>
+                  <p>{t("These summaries help you decide what to revisit. They are not calibrated, official, or a substitute for CATTI scoring.")}</p>
                 </article>
               </section>
             </>
@@ -376,7 +377,7 @@ export function ProgressPage({
                   <p>{t("Consolidated multi-section results saved on this device. All scores are practice estimates.")}</p>
                 </div>
                 <div className="progress-overview__score">
-                  <strong>{examAveragePercentage}%</strong>
+                  <strong>{scoredExams.length ? `${examAveragePercentage}%` : '—'}</strong>
                   <span>{t("average overall")}<br />{t("estimate")}</span>
                 </div>
               </section>
@@ -390,16 +391,16 @@ export function ProgressPage({
                 <article className="progress-stat">
                   <span className="eyebrow">{t("Met Benchmark")}</span>
                   <strong>
-                    {examResults.filter((r) => r.totalScore >= r.passBenchmark).length}
+                    {scoredExams.filter((r) => r.totalScore >= r.passBenchmark).length}
                   </strong>
                   <span>{t("attempts met benchmark")}</span>
                 </article>
                 <article className="progress-stat">
                   <span className="eyebrow">{t("Latest Score")}</span>
                   <strong>
-                    {examResults[0].totalScore} / {examResults[0].maxScore}
+                    {scoredExams[0] ? `${scoredExams[0].totalScore} / ${scoredExams[0].maxScore}` : '—'}
                   </strong>
-                  <span>{examResults[0].percentage}{t("% · practice estimate")}</span>
+                  <span>{scoredExams[0] ? `${scoredExams[0].percentage}%` : t('No score')}</span>
                 </article>
               </section>
 
@@ -432,17 +433,18 @@ export function ProgressPage({
                           <div className="trend-row__label">
                             <span>{result.examTitle}</span>
                             <small>
-                              {formatDate(result.completedAt)}{t(" · Practice estimate · ")}<span className={`pill ${badgeClass}`}>{t(result.estimatedStatus)}</span>
+                              {formatDate(result.completedAt)}{result.evaluationKind !== 'offline' && <>{t(' · Practice estimate · ')}<span className={`pill ${badgeClass}`}>{t(result.estimatedStatus)}</span></>}
                             </small>
                           </div>
                           <strong>
-                            {result.totalScore} / {result.maxScore}{t(" pts (")}{result.percentage}{t("%) · Practice estimate")}</strong>
+                            {result.evaluationKind === 'offline' ? t('Offline check') : <>{result.totalScore} / {result.maxScore}{t(' pts (')}{result.percentage}{t('%) · Practice estimate')}</>}</strong>
                         </button>
                       )
                     })}
                   </div>
                 </article>
 
+                {scoredExams.length > 0 && <>
                 <article className="progress-card">
                   <div className="progress-card__heading">
                     <div>
@@ -464,6 +466,7 @@ export function ProgressPage({
                     ))}
                   </div>
                 </article>
+                </>}
               </section>
 
               <section className="progress-panels">

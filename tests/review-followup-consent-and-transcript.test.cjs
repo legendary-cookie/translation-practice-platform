@@ -66,7 +66,7 @@ test('active-take recognition survives recorder finalization; replacement takes 
 
 test('exam consent resumes from validated same-input passage feedback and rejects changed answer or rubric reuse', async () => {
   const { createActiveExamRun } = require('../src/domain/exam.ts')
-  const { DEFAULT_EXAM_PROFILES } = require('../src/data/exam-profiles.ts')
+  const DEFAULT_EXAM_PROFILES = require('./catti3-fixtures.cjs').profiles()
   const {
     ExamEvaluationBlockedError,
     approveExamPassageFeedback,

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Focus the trainer on CATTI Level 3 and Chinese ↔ English / Chinese ↔ Russian.
+- Remove MTI and CATTI Level 2.
+- Replace the short practice snippets with 20 original CATTI 3-style passages (news, report, culture and science texts in 4–6 paragraphs), each with a paragraph-aligned reference translation (参考译文).
+- Add an offline check that needs no AI: paragraph count, figures (handles 万/亿/万亿, млн/тыс, ranges, decimal commas), key terms, length, and rough similarity to the reference, with a side-by-side Source / Your translation / Reference table.
+- Add provisional CATTI 3 exam profiles for English ↔ Chinese and Russian ↔ Chinese. Exam reports show the offline check and references when no AI is set up, instead of stopping.
+- Remove obsolete language assets, exam variants and practice-level selectors; safely fall back from old preferences.
+
 ## 0.1.1 — 2026-10-16 (QA)
 
 - Fix an Android WebView speech-capability probe that could terminate interpreting.

@@ -418,6 +418,17 @@ input, select, textarea { color: var(--ink); background-color: var(--surface); b
 
 .offline-check { min-width: 0; margin-block: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; }
 .offline-check__chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.offline-check__chip--ok { background: color-mix(in srgb, #16a34a 14%, transparent); color: inherit; }
+.offline-check__chip--warn { background: color-mix(in srgb, #d97706 20%, transparent); color: inherit; }
+.offline-check__warning { margin-block: .75rem; padding: .5rem .75rem; border-inline-start: 4px solid #d97706; background: color-mix(in srgb, #d97706 10%, transparent); border-radius: 4px; }
+.offline-check__lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; margin-block: 1rem; }
+.offline-check__lists h4 { margin: 0 0 .5rem; font-size: .85rem; text-transform: uppercase; letter-spacing: .06em; }
+.offline-check__list { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; }
+.offline-check__list li { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem .6rem; border-radius: 6px; }
+.offline-check__list strong { font-size: .8rem; white-space: nowrap; }
+.offline-check__list--missing li { background: color-mix(in srgb, #d97706 14%, transparent); }
+.offline-check__list--found li { background: color-mix(in srgb, #16a34a 10%, transparent); }
+.offline-check__toggle { margin-block: .5rem 1rem; }
 .offline-check__table { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .offline-check__table th, .offline-check__table td { padding: .75rem; vertical-align: top; text-align: start; border: 1px solid var(--line); overflow-wrap: anywhere; white-space: pre-wrap; }
 .offline-check__table small { display: block; margin-top: .5rem; }

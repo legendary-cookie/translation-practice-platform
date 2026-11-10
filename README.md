@@ -6,18 +6,18 @@ Lingo Practice is a local-first CATTI Level 3 (三级笔译) trainer for Chinese
 
 Follow the [getting-started instructions below](#getting-started) for installation, your first exercise, larger text, saved work, and speaking practice. No coding knowledge or AI setup is needed to begin. You can also open the [guide on its own page](docs/USER-GUIDE.md).
 
-**Prefer to watch?** [Watch the 1-minute video](docs/video/lingo-walkthrough.mp4) of the first exercise, with captions. It shows how to open Practice, choose a passage, type a translation, and make the text bigger. (Click the link, then press the play button.)
+**Prefer to watch?** [Watch the 1-minute video](docs/video/lingo-walkthrough.mp4) of the first exercise, with captions. It shows how to open Practice, choose a CATTI 3 passage, type a translation, check it offline, and compare it with the reference translation (参考译文). (Click the link, then press the play button.)
 
-## Download 0.1.1
+## Download 0.2.0
 
 | Platform | Download |
 | --- | --- |
-| Windows x64 installer | [Setup EXE](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-Setup-0.1.1.exe) |
-| Windows x64 portable | [Portable EXE](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-Portable-0.1.1.exe) |
-| Android | [Debug APK](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-0.1.1-debug.apk) |
-| Integrity | [SHA256SUMS.txt](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/SHA256SUMS.txt) |
+| Windows x64 installer | [Setup EXE](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.2.0/Lingo-Practice-Setup-0.2.0.exe) |
+| Windows x64 portable | [Portable EXE](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.2.0/Lingo-Practice-Portable-0.2.0.exe) |
+| Android | [Debug APK](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.2.0/Lingo-Practice-0.2.0-debug.apk) |
+| Integrity | [SHA256SUMS.txt](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.2.0/SHA256SUMS.txt) |
 
-These are QA builds: Windows executables are unsigned and the APK uses an Android debug signing key. Android local AI remains disabled; recording, manual transcripts and local study tools work without it. A compatible Windows GPU can prepare the optional local model in Settings. [Release notes](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.1.1).
+These are QA builds: Windows executables are unsigned and the APK uses an Android debug signing key. Android local AI remains disabled; recording, manual transcripts and local study tools work without it. A compatible Windows GPU can prepare the optional local model in Settings. [Release notes](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.2.0).
 
 See the [current verification report](docs/runbooks/2026-10-16-phone-accessibility-and-local-ai.md), [packaging instructions](docs/runbooks/native-packaging.md), and [CI builds](https://github.com/legendary-cookie/translation-practice-platform/actions/workflows/verify-and-package.yml). Export important existing data before changing experimental builds. JSON exports currently have no import/restore flow.
 
@@ -37,6 +37,7 @@ In this guide, **choose** means click once with a mouse, or tap once on a phone.
 - [Install on an Android phone](#install-on-an-android-phone)
 - [Make the app comfortable to read](#make-the-app-comfortable-to-read)
 - [Do your first written exercise](#do-your-first-written-exercise)
+- [Check your translation](#check-your-translation)
 - [Get optional AI feedback](#get-optional-ai-feedback)
 - [Find your saved work](#find-your-saved-work)
 - [Practise speaking and listening](#practise-speaking-and-listening)
@@ -48,13 +49,13 @@ In this guide, **choose** means click once with a mouse, or tap once on a phone.
 
 Use a Windows computer that supports x64 apps. These downloads do not install on a Mac, an iPhone, or an iPad.
 
-1. Open the [Lingo Practice 0.1.1 download page](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.1.1).
+1. Open the [Lingo Practice 0.2.0 download page](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.2.0).
 2. Find **Assets** near the bottom of the page. If the file list is closed, choose **Assets** to open it.
-3. Choose **Lingo-Practice-Setup-0.1.1.exe**. You can also use this [direct Windows installer download](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-Setup-0.1.1.exe).
+3. Choose **Lingo-Practice-Setup-0.2.0.exe**. You can also use this [direct Windows installer download](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.2.0/Lingo-Practice-Setup-0.2.0.exe).
 4. Wait for the download to finish. Open your **Downloads** folder and double-click that file.
 5. Follow the installation window's instructions. When installation finishes, open **Lingo Practice** from the Windows Start menu.
 
-   ![The GitHub download page. Under Assets, the file Lingo-Practice-Setup-0.1.1.exe is outlined in red.](docs/images/00-download-page.png)
+   ![The GitHub download page. Under Assets, the file Lingo-Practice-Setup-0.2.0.exe is outlined in red.](docs/images/00-download-page.png)
 
 This is an early test release. Windows may show an unknown-publisher warning because the installer has no publisher signature. Check that you downloaded the exact file linked above. If Windows blocks it and you are unsure, stop and ask someone you trust to help; you do not need to turn off Windows security.
 
@@ -64,8 +65,8 @@ This is an early test release. Windows may show an unknown-publisher warning bec
 
 An **APK** is an Android app installation file. This release is downloaded from GitHub, rather than installed through Google Play.
 
-1. On your phone, open the [Lingo Practice 0.1.1 download page](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.1.1).
-2. Under **Assets**, choose **Lingo-Practice-0.1.1-debug.apk**. Here is the [direct Android download](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.1.1/Lingo-Practice-0.1.1-debug.apk).
+1. On your phone, open the [Lingo Practice 0.2.0 download page](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.2.0).
+2. Under **Assets**, choose **Lingo-Practice-0.2.0-debug.apk**. Here is the [direct Android download](https://github.com/legendary-cookie/translation-practice-platform/releases/download/v0.2.0/Lingo-Practice-0.2.0-debug.apk).
 3. Wait for the download to finish. Open the downloaded file from your browser's downloads or your phone's file app.
 4. Android may ask whether the browser or file app is allowed to install this download. Read the message carefully. Allow installation from that app only if you trust the download linked above. The wording varies between phones.
 5. Choose **Install**, then **Open**. Later, open **Lingo Practice** from your phone's app list.
@@ -114,7 +115,7 @@ Allow yourself a few quiet minutes. There is no need to finish quickly.
 1. Choose **Practice**.
 2. Leave **Practice mode** on **Written translation**.
 3. Choose your **Language direction**. The arrow points from the language you read to the language you write.
-4. All passages target **CATTI 3**. Choose **Untimed** under **Timing** and leave **Topic** on **All topics**. Some directions may have no content yet.
+4. All passages target **CATTI 3**. Choose **Untimed** under **Timing** and leave **Topic** on **All topics**.
 5. Choose a **Passage**, then **Open translation desk**.
 6. Read the original passage under **Source**. Type your translation in **Your translation**.
 
@@ -126,7 +127,22 @@ You have now started a practice exercise. A draft is an unfinished answer. Retur
 
 The app keeps one unfinished written draft. Read any replacement or discard message carefully when starting another passage.
 
-To request an AI review, choose **Submit for feedback** after setting up the optional feature below. Choose **Check translation offline** for paragraph alignment, number and key-term checks, length warnings, rough reference similarity, and a **Source | Your translation | Reference (参考译文)** comparison. After an attempt, **Show reference translation** toggles the reference. These checks need no AI or network. Similarity is a rough comparison, never a grade; different valid translations are possible. An unfinished draft appears through **Continue translation**; it is not a completed result in **Progress**.
+### Check your translation
+
+You do not need AI for this.
+
+1. When you have finished, choose **Check translation offline**.
+2. Read the coloured boxes at the top. A green box with ✓ means that part looks fine; an amber box with ! means it needs a look:
+   - **Paragraphs**: did you translate every paragraph? Separate paragraphs with an empty line.
+   - **Numbers**: are all figures from the original in your answer (for example 9%, 2000万 = 20 million)?
+   - **Key terms**: did you translate the important terms?
+   - **Length**: is your answer much shorter or longer than the reference?
+3. Under **Needs attention**, the app lists the figures and terms it could not find in your answer.
+4. Scroll down to **Paragraph comparison**. Each row shows the original, your translation and the reference translation (参考译文) side by side. Use **Hide reference translation** if you want to try again without looking.
+
+   ![The offline check: amber boxes for paragraphs, numbers and key terms, a Needs attention list with 9% and 可持续利用 missing, and the start of the paragraph comparison table.](docs/images/05-offline-check.png)
+
+**Rough similarity** only measures how close your wording is to the reference. It is not a grade: a different but correct translation can score low. To also get an AI review, choose **Submit for feedback** after setting up the optional feature below. An unfinished draft appears through **Continue translation**; it is not a completed result in **Progress**.
 
 ### Get optional AI feedback
 
@@ -190,7 +206,9 @@ Interpreting means listening in one language and speaking the meaning in another
 
 This is optional. Begin with ordinary Practice if you want to learn the controls first.
 
-1. Open **Exam** and choose an exam profile.
+1. Open **Exam** and choose an exam profile: **CATTI Level 3 · English ↔ Chinese** or **CATTI Level 3 · Russian ↔ Chinese**. Each is a 180-minute paper with two parts.
+
+   ![The Exam page with two CATTI Level 3 profiles, English ↔ Chinese and Russian ↔ Chinese, showing 180 minutes, 100 points and the paper structure.](docs/images/06-exam-catalog.png)
 2. Read the sections and time limits, then choose **Start Exam Simulation** when ready.
 3. Follow the section instructions. Exam clocks have stricter timing than ordinary practice.
 4. Use **Save & Exit** if you need to stop, and wait for the saved confirmation. Return to **Exam** to resume the saved run.
@@ -224,9 +242,9 @@ Your work is saved **on the device and in the app you used**. It does not automa
 | A screen reader announces colours or text sizes | This may be the reader's formatting-announcement setting. Ask a helper to check that setting if needed. Full screen-reader support is still being checked in this release. |
 | An installation or update is refused | Keep any existing app and data. Note the exact message and ask for help before uninstalling anything. |
 
-If you need help, [open a GitHub issue](https://github.com/legendary-cookie/translation-practice-platform/issues) or ask the person who helped you install the app. Explain what you chose, what you expected, and what appeared. Include Windows or Android and the app version, **0.1.1**. Leave out private answers, recordings, and access keys.
+If you need help, [open a GitHub issue](https://github.com/legendary-cookie/translation-practice-platform/issues) or ask the person who helped you install the app. Explain what you chose, what you expected, and what appeared. Include Windows or Android and the app version, **0.2.0**. Leave out private answers, recordings, and access keys.
 
-For technical details and known limits, see the [release notes](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.1.1) and [verification report](docs/runbooks/2026-10-16-phone-accessibility-and-local-ai.md).
+For technical details and known limits, see the [release notes](https://github.com/legendary-cookie/translation-practice-platform/releases/tag/v0.2.0) and [verification report](docs/runbooks/2026-10-16-phone-accessibility-and-local-ai.md).
 
 ## Run locally
 
@@ -266,6 +284,10 @@ Home suggestions use real saved issues and practice frequency in the latest lang
 IndexedDB schema 7 preserves the earlier stores, including draft, learning-card, and feedback-rating stores. New audio is stored as standalone bytes with a strict transaction commit and reconstructed as a Blob for replay/export; readable legacy Blob records remain supported. Android appearance/language preferences use native Preferences with a WebView mirror hydrated before startup. JSON export version 5 includes local records, the current original catalog, detached snapshots for new written sessions, interpreting audio, exam snapshots, and appearance preferences. Legacy written sessions may not contain a historical passage snapshot; the exported current catalog is a reference for them. API keys remain absent. Export is reference-only; this release has no import/restore flow.
 
 Exports read persisted stores from one readonly database snapshot before encoding audio, while the data lock prevents deletion from crossing the operation. Unsaved exam recovery journals are not a backup snapshot. An interrupted deletion blocks new writes until an explicit deletion retry completes. Imported source audio is limited to 25 MiB and ten minutes before opening a practice desk.
+
+## Documentation screenshots and video
+
+After `npm run build`, run `npm run docs:media` to regenerate `docs/images/01-06*.png` and the captioned `docs/video/lingo-walkthrough.mp4` from the production build (needs Google Chrome and ffmpeg). `docs/images/00-download-page.png` is a screenshot of the GitHub release page, taken after a release is published.
 
 ## Browser verification
 

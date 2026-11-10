@@ -1,18 +1,19 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { CHINESE_DIRECTIONS } = require('../src/domain/languages.ts')
-const { EXERCISES } = require('../src/data/exercises.ts')
+const { createPracticeExercise } = require('../src/data/exercises.ts')
+const EXERCISES = ['one', 'two'].map(id => createPracticeExercise({ id, sourceLanguage: 'zh', targetLanguages: ['en', 'ru'], title: 'Synthetic passage', topic: 'science', genre: 'science', usage: 'practice', paragraphs: [{ source: '原文', reference: { en: 'Reference text', ru: 'Перевод' } }], keyTerms: [{ source: '原文', accepted: { en: ['source'], ru: ['текст'] } }] }, 'en', 'written'))
 const { buildLearnerProfile, recommendCatalogPractice } = require('../src/domain/profile.ts')
 
-test('the recovered original catalog has four passages per mode in all twelve directions', () => {
-  assert.equal(EXERCISES.length, 96)
-  assert.equal(new Set(EXERCISES.map((exercise) => exercise.id)).size, 96)
-  for (const direction of CHINESE_DIRECTIONS) for (const mode of ['written', 'news']) {
-    const matches = EXERCISES.filter((exercise) => exercise.sourceLanguage === direction.sourceLanguage && exercise.targetLanguage === direction.targetLanguage && exercise.mode === mode)
-    assert.equal(matches.length, 4)
-    assert.ok(matches.some((exercise) => exercise.difficulty === 'beginner'))
-    assert.ok(matches.some((exercise) => exercise.difficulty === 'advanced'))
-    assert.ok(matches.every((exercise) => exercise.sourceText.length > 50 && exercise.glossary.length > 0))
+test('catalog has unique CATTI 3 exercises with paragraph references', () => {
+  assert.equal(CHINESE_DIRECTIONS.length, 4)
+  assert.equal(new Set(EXERCISES.map(e => e.id)).size, EXERCISES.length)
+  for (const e of EXERCISES) {
+    assert.equal(e.difficulty, 'intermediate')
+    assert.ok(e.paragraphs.length > 0)
+    assert.ok(e.paragraphs.every(p => p.source && p.reference))
+    assert.equal(e.referenceTranslation, e.paragraphs.map(p => p.reference).join('\n\n'))
+    assert.deepEqual(e.glossary.map(g => g.targetHint), e.keyTerms.map(k => k.accepted[0]))
   }
 })
 

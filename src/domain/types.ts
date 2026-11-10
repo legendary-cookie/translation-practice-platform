@@ -24,6 +24,9 @@ export type Exercise = {
   topic: string
   difficulty: Difficulty
   sourceText: string
+  referenceTranslation: string
+  paragraphs: { source: string; reference: string }[]
+  keyTerms: { source: string; accepted: string[] }[]
   glossary: GlossaryEntry[]
   tags: ExerciseTag[]
 }
@@ -261,9 +264,9 @@ export type StoredSettings = {
   localModelStatus: LocalModelStatus
 }
 
-export type ExamType = 'CATTI' | 'MTI'
+export type ExamType = 'CATTI'
 
-export type ExamLevel = 'Level 1' | 'Level 2' | 'Level 3' | 'MTI 357' | 'MTI 448'
+export type ExamLevel = 'Level 3'
 
 export type ExamAidPolicy = {
   paperDictionaryAllowed: boolean
@@ -278,6 +281,9 @@ export type ExamPassage = {
   sourceText: string
   wordCount: number
   targetLanguage: LanguageCode
+  paragraphs?: Exercise['paragraphs']
+  keyTerms?: Exercise['keyTerms']
+  referenceTranslation?: string
   recommendedPace?: string
   isProvisional?: boolean
 }
@@ -298,7 +304,7 @@ export type ExamBenchmarkType = 'fixed-60-percent' | 'administration-dependent' 
 
 export type ExamProfileStatus = 'verified' | 'provisional_draft'
 
-export type ExamProfileAuthority = 'official-syllabus-baseline' | 'named-university-admission-year'
+export type ExamProfileAuthority = 'official-syllabus-baseline'
 
 export type ExamProvisionalDetails = {
   isStructureProvisional?: boolean
@@ -377,6 +383,7 @@ export type SectionResult = {
 export type EstimatedStatus = 'above-benchmark' | 'near-benchmark' | 'below-benchmark'
 
 export type ConsolidatedExamResult = {
+  evaluationKind?: 'offline' | 'ai'
   id: string
   runId: string
   completedAt: string

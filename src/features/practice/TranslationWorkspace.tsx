@@ -1,3 +1,4 @@
+import { OfflineCheckPanel } from '../../components/OfflineCheckPanel'
 import { t } from '../../i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLanguage } from '../../domain/languages'
@@ -14,6 +15,7 @@ function formatTime(seconds: number): string {
 export function TranslationWorkspace({
   exercise,
   initialAnswer,
+  hasPreviousAttempt = false,
   initialElapsedSeconds,
   isSubmitting,
   clockPaused = false,
@@ -27,6 +29,7 @@ export function TranslationWorkspace({
   onSubmit,
 }: {
   exercise: Exercise
+  hasPreviousAttempt?: boolean
   initialAnswer: string
   initialElapsedSeconds: number
   isSubmitting: boolean
@@ -40,6 +43,7 @@ export function TranslationWorkspace({
   onElapsedChange: (elapsedSeconds: number) => void
   onSubmit: (answer: string, elapsedSeconds: number) => void
 }) {
+  const [checkedAnswer, setCheckedAnswer] = useState<string | undefined>(hasPreviousAttempt ? initialAnswer : undefined)
   const [focusMode, setFocusMode] = useState(false)
   const [mobilePane, setMobilePane] = useState<'source' | 'answer'>('answer')
   const [answer, setAnswer] = useState(initialAnswer)
@@ -89,6 +93,7 @@ export function TranslationWorkspace({
       setValidationMessage('Write a translation before submitting.')
       return
     }
+    setCheckedAnswer(answer)
     setValidationMessage(undefined)
     const submittedElapsedSeconds = elapsedSecondsAt(startedAt.current, Date.now(), pausedAt.current)
     setElapsedSeconds(submittedElapsedSeconds)
@@ -102,12 +107,14 @@ export function TranslationWorkspace({
         <div className="workspace-heading"><div><button className="back-button" type="button" onClick={onCancel}>{t("← Change setup")}</button><p className="eyebrow">{exercise.mode === 'news' ? t("News translation") : t("Written translation")}</p><h2>{exercise.title}</h2></div><div className={`timer ${isOvertime ? 'timer--overtime' : ''}`}><span className="timer__label">{timeLimitSeconds === undefined ? t("Elapsed") : t("Remaining")}</span><strong>{formatTime(timeLimitSeconds === undefined ? elapsedSeconds : remainingSeconds ?? elapsedSeconds)}</strong></div></div>
         <div className="editor-toolbar"><div className="mobile-pane-switch segmented-control" role="group" aria-label={t("Translation panes")}><button className="button button--quiet" type="button" aria-pressed={mobilePane === 'source'} onClick={() => setMobilePane('source')}>{t("Read source")}</button><button className="button button--quiet" type="button" aria-pressed={mobilePane === 'answer'} onClick={() => setMobilePane('answer')}>{t("Write answer")}</button></div><div className="settings-actions"><button className="button button--quiet" type="button" aria-pressed={focusMode} onClick={() => setFocusMode(!focusMode)}>{focusMode ? t("Show glossary") : t("Focus mode")}</button>{onPauseChange && <button className="button button--quiet" type="button" onClick={() => onPauseChange(!clockPaused)}>{clockPaused ? t("Resume timer") : t("Pause timer")}</button>}</div></div>
         <div className="translation-panes">
-        <div className="source-card"><div className="source-card__topline"><span className="eyebrow">{t("Source · ")}{sourceLanguage.nativeLabel}</span><span className="source-card__meta">{t(exercise.difficulty)} · {exercise.topic}</span></div><p className="source-text" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{exercise.sourceText}</p></div>
+        <div className="source-card"><div className="source-card__topline"><span className="eyebrow">{t("Source · ")}{sourceLanguage.nativeLabel}</span><span className="source-card__meta">{t('CATTI 3')} · {exercise.topic}</span></div><p className="source-text" dir={sourceLanguage.direction} lang={exercise.sourceLanguage}>{exercise.sourceText}</p></div>
         <label className="answer-panel" htmlFor="translation-answer"><span className="answer-panel__topline"><span><span className="eyebrow">{t("Your translation · ")}{targetLanguage.nativeLabel}</span></span><span className="answer-panel__count">{wordCount}{t(" words · ")}{characterCount}{t(" characters")}</span></span><textarea id="translation-answer" dir={targetLanguage.direction} lang={exercise.targetLanguage} value={answer} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing && !isSubmitting) { event.preventDefault(); handleSubmit() } }} onChange={(event) => { const nextAnswer = event.target.value; setAnswer(nextAnswer); onDraftChange(nextAnswer) }} placeholder={t("Write your {0} translation here…", t(targetLanguage.label))} disabled={isSubmitting} /></label>
         </div>
         <p className="draft-status" role="status">{saveStatus ?? 'Draft stays in this tab'} · {clockPaused ? t("Timer paused") : t("Timer running")}</p>
         {validationMessage && <p className="form-message form-message--error" role="alert">{t(validationMessage)}</p>}
         {notice && <p className="form-message" role="status">{t(notice)}</p>}
+        <button className="button button--quiet" type="button" onClick={() => setCheckedAnswer(answer)}>{t('Check translation offline')}</button>
+        {checkedAnswer !== undefined && <OfflineCheckPanel input={{ ...exercise, paragraphs: exercise.paragraphs ?? [], keyTerms: exercise.keyTerms ?? [], translation: checkedAnswer }} />}
         <div className="workspace-actions"><button className="button button--quiet" type="button" onClick={onCancel} disabled={isSubmitting}>{t("Change passage")}</button><button className="button button--primary" type="button" onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting ? t("Evaluating…") : t("Submit for feedback")} <span aria-hidden="true">→</span></button></div>
       </section>
       <aside className="workspace-aside"><details className="glossary-card" open><summary><span>{t("Glossary")}</span><span aria-hidden="true">⌄</span></summary><div className="glossary-list">{exercise.glossary.map((entry) => <div className="glossary-entry" key={entry.term}><strong dir={sourceLanguage.direction}>{entry.term}</strong><span>{entry.note}</span>{entry.targetHint && <em>{entry.targetHint}</em>}</div>)}</div></details><div className="workspace-tip"><span className="workspace-tip__icon">✦</span><strong>{t("Make room for meaning.")}</strong><p>{t("There may be more than one good translation. Feedback will point to evidence, not compare you to a single answer.")}</p></div></aside>

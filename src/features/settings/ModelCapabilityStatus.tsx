@@ -31,16 +31,6 @@ export function ModelCapabilityStatus({ capability }: { capability: CapabilityAs
         <div><dt>{t("Current task gate")}</dt><dd>{t(localLabel)}</dd></div>
       </dl>
       <p className="capability-status__note">{t("Local-only mode never sends practice content to the cloud. If local inference is unavailable, keep the task for manual review; cloud mode can ask for explicit consent for that one task.")}</p>
-      <p className="capability-status__warning">{t("Hindi↔Chinese and Arabic↔Chinese local critique stays blocked until native-language quality checks validate this model. A listed language is not a quality guarantee.")}</p>
     </section>
-  )
-}
-
-export function DirectionQualityNotice({ capability }: { capability: CapabilityAssessment }) {
-  return (
-    <aside className="direction-quality-notice" role="note">
-      <strong>{t("Direction quality gate")}</strong>
-      <p>{capability.tier}{t(" is detected for this device. Local Qwen3.5-4B critique is not offered for Hindi↔Chinese or Arabic↔Chinese yet; choose another direction for local feedback, or use manual review or explicit cloud consent.")}</p>
-    </aside>
   )
 }

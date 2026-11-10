@@ -39,7 +39,7 @@ import { approveExamPassageFeedback, ExamEvaluationBlockedError, evaluateExamRun
 import { snapshotExamProfile } from './domain/exam'
 import { DEFAULT_EXAM_PROFILES } from './data/exam-profiles'
 import { getInterpretingExerciseById } from './data/interpreting-exercises'
-import { DirectionQualityNotice, ModelCapabilityStatus } from './features/settings/ModelCapabilityStatus'
+import { ModelCapabilityStatus } from './features/settings/ModelCapabilityStatus'
 import type {
   ActiveExamRun,
   AudioRecordingRecord,
@@ -949,6 +949,7 @@ export default function App() {
     completedRun: ActiveExamRun,
     approvedFeedback?: ApprovedExamFeedbackCheckpoint,
     profileOverride?: ExamProfile,
+    offlineOnly = false,
   ) {
     const selectedProfile = profileOverride ?? selectedExamProfile
     if (!selectedProfile) {
@@ -967,6 +968,7 @@ export default function App() {
         evaluationRouter,
         (completed, total) => setExamEvaluationProgress({ completed, total }),
         approvedFeedback,
+        offlineOnly,
       )
       if (dataLoadGeneration.current !== submissionGeneration) {
         return
@@ -999,6 +1001,11 @@ export default function App() {
           approvedFeedback: error.approvedFeedback ?? approvedFeedback,
         })
         setExamEvaluationNotice(`${error.message} Review the exact task before deciding whether to use cloud evaluation.`)
+      } else if (!offlineOnly && error instanceof ExamEvaluationBlockedError) {
+        // No AI evaluator is available: still give the learner a report with offline
+        // checks and paragraph-aligned reference translations instead of a dead end.
+        await handleSubmitExamRun(completedRun, undefined, evaluationProfile, true)
+        return
       } else {
         const reason = error instanceof Error ? error.message : 'Evaluation could not be completed.'
         const resumableRun = {
@@ -1951,9 +1958,9 @@ export default function App() {
             onNavigate={navigateToPage}
           />
         )}
-        {currentPage === 'practice' && !activeExercise && practiceSetupMode === 'written' && <><DirectionQualityNotice capability={capability} /><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} isCheckingSavedDraft={draftRecoveryStatus === 'loading'} onStart={beginPractice} /></>}
+        {currentPage === 'practice' && !activeExercise && practiceSetupMode === 'written' && <><PracticeSetup initialMode={initialPracticeMode} evaluationMode={settings.evaluationMode} localStatus={localProgress.status} isCheckingSavedDraft={draftRecoveryStatus === 'loading'} onStart={beginPractice} /></>}
         {currentPage === 'interpreting' && !activeInterpretingExercise && practiceSetupMode === 'interpreting' && <InterpretingSetup evaluationMode={settings.evaluationMode} localStatus={localProgress.status} onStart={beginInterpreting} />}
-        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating || pendingConsent !== undefined} saveStatus={draftSaveStatus} onPauseChange={setWrittenClockPaused} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
+        {currentPage === 'practice' && activeExercise && !feedback && <TranslationWorkspace hasPreviousAttempt={recentSessions.some(s => s.exerciseId === activeExercise.id)} exercise={activeExercise} initialAnswer={draftAnswer} initialElapsedSeconds={draftElapsedSeconds} isSubmitting={isEvaluating || pendingConsent !== undefined} saveStatus={draftSaveStatus} onPauseChange={setWrittenClockPaused} clockPaused={writtenClockPaused} notice={practiceNotice} timeLimitSeconds={timeLimitSeconds} onCancel={resetPractice} onDraftChange={setDraftAnswer} onElapsedChange={setDraftElapsedSeconds} onSubmit={submitAnswer} />}
         {currentPage === 'practice' && activeExercise && feedback && <FeedbackPanel sessionId={recentSessions.find((session) => session.exerciseId === activeExercise.id && session.answer === draftAnswer && session.feedback === feedback)?.id} answer={draftAnswer} exercise={activeExercise} feedback={feedback} onRevise={() => { setFeedback(undefined); setPracticeNotice('Revise your answer, then submit again for a new practice estimate.') }} onChangeSetup={resetPractice} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && !interpretingFeedback && <InterpretingWorkspace exercise={activeInterpretingExercise} initialInput={activeInterpretingInput} interpretingMode={activeInterpretingMode} isSubmitting={isEvaluating} notice={practiceNotice} onCancel={resetPractice} onSubmit={(input) => void submitInterpreting(input)} onSaveSelfReview={saveScorelessInterpretingSelfReview} />}
         {currentPage === 'interpreting' && activeInterpretingExercise && interpretingFeedback && activeInterpretingInput && <InterpretingFeedbackPanel exercise={activeInterpretingExercise} input={activeInterpretingInput} feedback={interpretingFeedback} notice={practiceNotice} pendingSave={currentPendingInterpretingSave !== undefined} isSaving={currentPendingInterpretingSave ? savingInterpretingSaveIds.has(currentPendingInterpretingSave.id) : false} onRetrySave={() => currentPendingInterpretingSave && void retryPendingInterpretingSave(currentPendingInterpretingSave.id)} onRevise={() => { setInterpretingFeedback(undefined); setPracticeNotice('Review the take and transcript, then submit again.') }} onChangeSetup={resetPractice} />}
@@ -1988,7 +1995,7 @@ export default function App() {
           <ExamRunner
             profile={selectedExamProfile}
             initialRun={activeExamRun}
-            onSubmitRun={handleSubmitExamRun}
+            onSubmitRun={(run, withAI) => handleSubmitExamRun(run, undefined, undefined, !withAI)}
             onCancel={handleCancelExamRun}
             onPersistenceError={handleExamPersistenceError}
             isEvaluationPaused={Boolean(pendingExamConsent)}

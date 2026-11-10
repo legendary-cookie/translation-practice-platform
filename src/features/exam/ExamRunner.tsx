@@ -21,7 +21,7 @@ import './exam.css'
 export type ExamRunnerProps = {
   profile: ExamProfile
   initialRun?: ActiveExamRun
-  onSubmitRun: (run: ActiveExamRun) => void | Promise<void>
+  onSubmitRun: (run: ActiveExamRun, withAI?: boolean) => void | Promise<void>
   onCancel: (savedRun: ActiveExamRun) => void
   onPersistenceError?: (message: string) => void
   isEvaluationPaused?: boolean
@@ -63,6 +63,7 @@ export function ExamRunner({
   isEvaluationPaused = false,
   isEditorLeaseLost = false,
 }: ExamRunnerProps) {
+  const [withAI, setWithAI] = useState(false)
   const [run, setRun] = useState<ActiveExamRun>(() => initialRun ? reconcilePersistedRun(initialRun, profile) : createActiveExamRun(profile))
   const [showAidsModal, setShowAidsModal] = useState(false)
   const [showSubmitModal, setShowSubmitModal] = useState(false)
@@ -82,7 +83,7 @@ export function ExamRunner({
   const onSubmitRunRef = useRef(onSubmitRun)
   const onPersistenceErrorRef = useRef(onPersistenceError)
   const isEvaluationPausedRef = useRef(isEvaluationPaused)
-  onSubmitRunRef.current = onSubmitRun
+  onSubmitRunRef.current = run => onSubmitRun(run, withAI)
   onPersistenceErrorRef.current = onPersistenceError
   isEvaluationPausedRef.current = isEvaluationPaused
 
@@ -489,11 +490,12 @@ export function ExamRunner({
             <h3 id="submit-heading" className="exam-modal__title">{t("Submit Examination?")}</h3>
             <div className="exam-modal__body">
               <p>{t("You have completed ")}<strong>{answeredPassages}</strong>{t(" of ")}<strong>{totalPassages}</strong>{t(" passages across all sections.")}</p>
-              <p>{t("Once submitted, your translations will be evaluated against the rubric dimensions and consolidated into a practice assessment scorecard.")}</p>
+              <p>{t('Submit to see offline checks and paragraph references. AI feedback is optional.')}</p>
               {answeredPassages < totalPassages && (
-                <p style={{ color: 'var(--warning-ink)', fontWeight: 600 }}>{t("Note: You have unanswered passages remaining. Unanswered passages will receive zero points.")}</p>
+                <p style={{ color: 'var(--warning-ink)', fontWeight: 600 }}>{t('Unanswered passages will appear as missing translations.')}</p>
               )}
             </div>
+            <label><input type="checkbox" checked={withAI} onChange={event => setWithAI(event.target.checked)} />{t('Add optional AI feedback')}</label>
             <div className="exam-modal__actions">
               <button
                 className="button button--quiet"

@@ -81,10 +81,7 @@ function resolveSourceLanguage(
 ): LanguageCode {
   if (sectionDirection.startsWith('en')) return 'en'
   if (sectionDirection.startsWith('zh')) return 'zh'
-  if (sectionDirection.startsWith('fr')) return 'fr'
   if (sectionDirection.startsWith('ru')) return 'ru'
-  if (sectionDirection.startsWith('es')) return 'es'
-  if (sectionDirection.startsWith('ar')) return 'ar'
   if (sectionDirection === 'bidirectional') {
     return targetLanguage === 'zh' ? 'en' : 'zh'
   }
@@ -104,6 +101,9 @@ type ExamPassageInput = {
   passageId: string
   passageTitle: string
   sourceText: string
+  paragraphs: Exercise['paragraphs']
+  keyTerms: Exercise['keyTerms']
+  referenceTranslation: string
   targetLanguage: LanguageCode
   sourceLanguage: LanguageCode
   answer: string
@@ -115,6 +115,7 @@ function listExamPassages(run: ActiveExamRun, profile: ExamProfile): ExamPassage
     passageId: passage.id,
     passageTitle: passage.title,
     sourceText: passage.sourceText,
+    paragraphs: passage.paragraphs ?? [], keyTerms: passage.keyTerms ?? [], referenceTranslation: passage.referenceTranslation ?? '',
     targetLanguage: passage.targetLanguage,
     sourceLanguage: resolveSourceLanguage(section.direction, passage.targetLanguage, profile),
     answer: run.answers[section.id]?.[passage.id] ?? '',
@@ -210,6 +211,7 @@ export async function evaluateExamRun(
   evaluationRouter: EvaluationRouter,
   onProgress?: (completed: number, total: number) => void,
   approvedFeedback?: ApprovedExamFeedbackCheckpoint,
+  offlineOnly = false,
 ): Promise<ConsolidatedExamResult> {
   const profileSnapshot = snapshotExamProfile(profile)
   const evaluatedSections: SectionEvaluationInput[] = []
@@ -220,8 +222,10 @@ export async function evaluateExamRun(
   let completedCount = 0
 
   for (const item of allPassages) {
-    if (!item.answer.trim()) {
-      feedbackMap[item.passageId] = validateExamFeedback(EMPTY_FEEDBACK, item.sourceText, item.answer)
+    if (offlineOnly || !item.answer.trim()) {
+      feedbackMap[item.passageId] = validateExamFeedback(offlineOnly
+        ? { ...EMPTY_FEEDBACK, summary: 'Offline report; no AI grade requested.', uncertainty: 'Offline report; no AI grade requested.' }
+        : EMPTY_FEEDBACK, item.sourceText, item.answer)
     } else {
       const approved = canReuseCheckpoint ? approvedFeedback.passages[item.passageId] : undefined
       if (passageMatchesCheckpoint(approved, item)) {
@@ -242,7 +246,8 @@ export async function evaluateExamRun(
         targetLanguage: item.targetLanguage,
         title: item.passageTitle,
         topic: 'Exam Simulation',
-        difficulty: 'advanced',
+        difficulty: 'intermediate',
+        referenceTranslation: item.referenceTranslation, paragraphs: item.paragraphs, keyTerms: item.keyTerms,
         sourceText: item.sourceText,
         glossary: [],
         tags: ['general'],
@@ -303,6 +308,7 @@ export async function evaluateExamRun(
   const aggregated = aggregateExamScores(evaluatedSections, profileSnapshot)
 
   return {
+    evaluationKind: offlineOnly ? 'offline' : 'ai',
     id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `result-${Date.now()}`,
     runId: run.id,
     completedAt: new Date().toISOString(),

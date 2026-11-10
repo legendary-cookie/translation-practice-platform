@@ -1,3 +1,4 @@
+const { ensureExamFixture } = require('./browser-exam-fixture.cjs')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -44,6 +45,7 @@ fs.mkdirSync(output, { recursive: true })
     }
     await page.screenshot({ path: path.join(output, 'desk-1440-chinese.png'), fullPage: true })
     pass('Chinese workspace reflows at four phone/tablet/desktop widths')
+    await ensureExamFixture(page)
     await nav('考试')
     await page.getByRole('button', { name: '开始模拟考试' }).first().waitFor()
     await page.getByRole('button', { name: '开始模拟考试' }).first().click()

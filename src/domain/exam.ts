@@ -9,12 +9,12 @@ import type {
 } from './types'
 
 export const PRACTICE_ESTIMATE_DISCLAIMER =
-  'Practice Assessment Only: This score is an automated estimation generated for independent study. It is NOT an official CATTI or MTI examination result and has no official certification standing.'
+  'Practice Assessment Only: This score is an automated estimation generated for independent study. It is NOT an official CATTI examination result and has no official certification standing.'
 
 export const EXAM_RUBRIC_VERSION = 'rubric-v1'
 export const PRACTICE_ESTIMATE_LABEL = 'Practice Estimate · 模拟练习评估'
 export const PLATFORM_AUTHORED_RUBRIC_NOTICE =
-  'Rubric and dimension scores are a platform-authored practice model, not an official CATTI/MTI marker-consensus sheet or deduction table.'
+  'Rubric and dimension scores are a platform-authored practice model, not an official CATTI marker-consensus sheet or deduction table.'
 export const CATTI_THRESHOLD_NOTICE =
   'The comparison below is a practice benchmark only. CATTI thresholds depend on administration, level, paper, and region; the 2024 separate-line exception was 58 rather than a universal 60.'
 export const CLIPBOARD_POLICY_NOTICE =

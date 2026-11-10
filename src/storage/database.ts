@@ -15,7 +15,7 @@ import type {
   StoredSettings,
 } from '../domain/types'
 import { createActiveExamRun, isValidActiveRun } from '../domain/exam'
-import { DEFAULT_EXAM_PROFILES, DEPRECATED_EXAM_PROFILE_IDS } from '../data/exam-profiles'
+import { DEFAULT_EXAM_PROFILES, isSupportedCatti3Profile } from '../data/exam-profiles'
 import { createDataWriteCoordinator, DATA_CLEARED_NOTICE } from './data-write-coordinator'
 import {
   assertExamRunNotDiscarded,
@@ -574,7 +574,7 @@ export const database = {
     return withDataWrite(async () => {
       const db = await getDatabase()
       const stored = await db.getAll('examProfiles')
-      const deprecatedIds = new Set<string>(DEPRECATED_EXAM_PROFILE_IDS)
+      const deprecatedIds = new Set<string>(stored.filter(p => !isSupportedCatti3Profile(p)).map(p => p.id))
       const retained = stored.filter((profile) => !deprecatedIds.has(profile.id))
 
       for (const profile of stored) {

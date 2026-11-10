@@ -1,3 +1,4 @@
+const { ensureExamFixture } = require('./browser-exam-fixture.cjs')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -55,6 +56,7 @@ const report = { checks: [], scans: [], errors: [] }
       await page.locator('#translation-answer').waitFor()
       await scan(`${language} written workspace`)
       fs.writeFileSync(path.join(output, `accessibility-tree-${language}.yml`), await page.locator('body').ariaSnapshot())
+      await ensureExamFixture(page)
       await nav(names[3])
       await page.getByRole('button', { name: language === 'en' ? 'Start Exam Simulation' : '开始模拟考试', exact: true }).first().click()
       await page.locator('#exam-answer-input').waitFor()
@@ -110,7 +112,7 @@ const report = { checks: [], scans: [], errors: [] }
         const db = await new Promise((resolve, reject) => { const request = indexedDB.open('lingo-practice-local'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
         const read = db.transaction('examProfiles', 'readonly').objectStore('examProfiles').getAll()
         const profiles = await new Promise((resolve, reject) => { read.onsuccess = () => resolve(read.result); read.onerror = () => reject(read.error) })
-        const profile = profiles.find(profile => profile.id.includes('en-zh')) || profiles[0]
+        const profile = profiles.find(profile => profile.id.includes('en-zh')) || profiles[0] || { id: 'synthetic-catti3', version: 1, rubricVersion: 'synthetic', examType: 'CATTI', level: 'Level 3', sourceLanguage: 'en', targetLanguage: 'zh', title: 'Synthetic CATTI 3 profile', totalDurationMinutes: 180, maxTotalPoints: 100, passBenchmarkPoints: 60, status: 'provisional_draft', sections: [{ id: 'synthetic-section', passages: [{ id: 'synthetic-passage', targetLanguage: 'zh', paragraphs: [{ source: 'Synthetic source', reference: '合成参考译文' }], keyTerms: [] }] }] }
         const dimensions = { accuracy: 70, terminology: 70, grammar: 70, fluency: 70, taskStyle: 70 }
         const result = { id: 'synthetic-reader-report', runId: 'synthetic-reader-run', completedAt: new Date().toISOString(), profileId: profile.id, profileVersion: profile.version, profileSnapshot: profile, rubricVersion: 'synthetic', examTitle: 'Synthetic accessibility report', totalScore: 70, maxScore: 100, percentage: 70, passBenchmark: 60, estimatedStatus: 'above-benchmark', consolidatedDimensions: dimensions, disclaimer: 'Synthetic fixture', sectionResults: [{ sectionId: 'synthetic-section', sectionTitle: 'Synthetic section', score: 70, maxPoints: 100, passageFeedbacks: [{ passageId: 'synthetic-passage', passageTitle: 'Synthetic passage', answer: 'Synthetic answer', sourceText: 'Synthetic source', sourceLanguage: 'en', targetLanguage: 'zh', feedback: { summary: 'Synthetic summary', overallScore: 70, dimensions, strengths: ['Synthetic strength'], issues: [{ dimension: 'accuracy', sourceQuote: 'Synthetic source', learnerQuote: 'Synthetic answer', explanation: 'Synthetic issue', suggestion: 'Synthetic revision' }], alternatives: [], uncertainty: 'Synthetic fixture' } }] }] }
         const transaction = db.transaction('examResults', 'readwrite'); transaction.objectStore('examResults').put(result)

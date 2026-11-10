@@ -82,7 +82,7 @@ export function Dashboard({
         </div>
         <div className="hero-card__shape" aria-hidden="true">
           <span>译</span>
-          <span>अ</span>
+          <span>Я</span>
           <span>文</span>
         </div>
       </section>
@@ -117,7 +117,7 @@ export function Dashboard({
             <span className="mode-card__icon">◷</span>
             <span className="mode-card__content">
               <strong>{t("Exam simulation")}</strong>
-              <span>{t("CATTI and named-university MTI timed practice with strict test conditions.")}</span>
+              <span>{t("CATTI timed practice with strict test conditions.")}</span>
             </span>
             <span className="mode-card__arrow" aria-hidden="true">↗</span>
           </button>

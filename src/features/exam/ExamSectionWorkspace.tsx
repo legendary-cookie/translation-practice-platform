@@ -41,10 +41,6 @@ export function ExamSectionWorkspace({
   const currentAnswer = answers[activePassage.id] ?? ''
   const currentCount = countTextUnits(currentAnswer, activePassage.targetLanguage)
 
-  // Determine text direction
-  const isSourceArabic = section.direction.startsWith('ar')
-  const isTargetArabic = activePassage.targetLanguage === 'ar'
-
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     // This is a product-level simulation choice, not an assertion about every CATTI client.
     event.preventDefault()
@@ -115,7 +111,7 @@ export function ExamSectionWorkspace({
             tabIndex={0}
             role="region"
             aria-labelledby="source-heading"
-            dir={isSourceArabic ? 'rtl' : 'ltr'}
+            dir="ltr"
             onCopy={(e) => {
               e.preventDefault()
               setPasteNotice(CLIPBOARD_POLICY_NOTICE)
@@ -139,7 +135,7 @@ export function ExamSectionWorkspace({
           <textarea
             id="exam-answer-input"
             className="exam-target-pane__textarea"
-            dir={isTargetArabic ? 'rtl' : 'ltr'}
+            dir="ltr"
             value={currentAnswer}
             disabled={isLocked}
             onChange={(e) => onAnswerChange(activePassage.id, e.target.value)}

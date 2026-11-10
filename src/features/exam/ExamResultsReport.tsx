@@ -1,3 +1,4 @@
+import { OfflineCheckPanel } from '../../components/OfflineCheckPanel'
 import { t } from '../../i18n'
 import { exportJson } from '../../native/export-json'
 import { useState } from 'react'
@@ -38,6 +39,7 @@ export function ExamResultsReport({
   onRetake,
   onBackToDashboard,
 }: ExamResultsReportProps) {
+  const offlineOnly = result.evaluationKind === 'offline'
   const [exportError, setExportError] = useState<string>()
   const [expandedPassageIds, setExpandedPassageIds] = useState<Record<string, boolean>>(() => {
     // Default open first passage of each section
@@ -107,7 +109,7 @@ export function ExamResultsReport({
           <h2>{result.examTitle}</h2>
           <p className="muted-label">{t("Completed on ")}{new Date(result.completedAt).toLocaleString()}</p>
         </div>
-        <div className="progress-overview__score">
+        {!offlineOnly && <div className="progress-overview__score">
           <strong>
             {result.totalScore}
             <span style={{ fontSize: '1.25rem', color: 'inherit' }}> / {result.maxScore}</span>
@@ -116,8 +118,10 @@ export function ExamResultsReport({
             {result.percentage}{t("% · Practice estimate · ")}<span className={`pill ${statusColorClass}`}>{t(statusLabel)}</span>
           </span>
         </div>
+        }
       </header>
 
+      {offlineOnly ? <p role="status">{t('Offline report; no AI grade requested.')}</p> : <>
       {/* Benchmark Comparison & Quick Stats */}
       <section className="progress-stat-grid">
         <article className="progress-stat">
@@ -168,6 +172,7 @@ export function ExamResultsReport({
         </div>
       </section>
 
+      </>}
       {/* Section-by-Section Details & Passage Feedback */}
       <section style={{ marginTop: '2rem' }}>
         <div className="section-heading">
@@ -192,13 +197,14 @@ export function ExamResultsReport({
               </div>
               <div>
                 <strong style={{ fontSize: '1.25rem' }}>
-                  {section.score} / {section.maxPoints}{t(" pts")}</strong>
-                <small className="muted-label" style={{ display: 'block', textAlign: 'right' }}>{t("Practice estimate")}</small>
+                  {!offlineOnly && <>{section.score} / {section.maxPoints}{t(' pts')}</>}</strong>
+                {!offlineOnly && <small>{t('Practice estimate')}</small>}
               </div>
             </div>
 
             <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {section.passageFeedbacks.map((passage) => {
+                const original = result.profileSnapshot.sections.flatMap(s => s.passages).find(p => p.id === passage.passageId)
                 const isExpanded = expandedPassageIds[passage.passageId] ?? false
                 const hasAnswer = passage.answer.trim().length > 0
                 const sourceLanguage = passage.sourceLanguage ? getLanguage(passage.sourceLanguage) : undefined
@@ -234,13 +240,14 @@ export function ExamResultsReport({
                       <div>
                         <strong>{passage.passageTitle}</strong>
                         <span className="muted-label" style={{ marginLeft: '0.5rem' }}>
-                          {hasAnswer ? t("Practice estimate: {0}/100", passage.feedback.overallScore) : t("Practice estimate: 0 pts")}
+                          {!offlineOnly && (hasAnswer ? t("Practice estimate: {0}/100", passage.feedback.overallScore) : t("Practice estimate: 0 pts"))}
                         </span>
                       </div>
                       <span className="text-button">{isExpanded ? t("Hide Details ▲") : t("Show Details ▼")}</span>
                     </div>
 
-                    {isExpanded && (
+                    <OfflineCheckPanel input={{ sourceLanguage: passage.sourceLanguage ?? 'zh', targetLanguage: passage.targetLanguage ?? original?.targetLanguage ?? 'en', paragraphs: original?.paragraphs ?? [{ source: passage.sourceText, reference: original?.referenceTranslation ?? '' }], keyTerms: original?.keyTerms ?? [], translation: passage.answer }} />
+                    {isExpanded && !offlineOnly && (
                       <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
                         {/* Summary & Uncertainty */}
                         <div style={{ marginBottom: '1rem' }}>

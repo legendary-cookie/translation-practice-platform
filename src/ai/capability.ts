@@ -85,7 +85,7 @@ export const LOCAL_MODEL_REQUIREMENTS = {
   contextWindowTokens: 4096,
 } as const
 
-export const WEAK_LOCAL_LANGUAGES: LanguageCode[] = ['hi', 'ar']
+export const WEAK_LOCAL_LANGUAGES: LanguageCode[] = []
 
 const LOCAL_MODEL_STORAGE_RESERVE_BYTES = 3_000_000_000
 const LOCAL_MODEL_OUTPUT_TOKEN_RESERVE = 1400

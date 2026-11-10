@@ -415,3 +415,15 @@ input, select, textarea { color: var(--ink); background-color: var(--surface); b
 .field-label input, .field-label select { min-height:44px; }
 :root[data-theme="dark"] .brand-mark__symbol { background:#175ac0; }
 @media(max-width:590px) { .storage-grid { grid-template-columns:1fr; } }
+
+.offline-check { min-width: 0; margin-block: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; }
+.offline-check__chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.offline-check__table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.offline-check__table th, .offline-check__table td { padding: .75rem; vertical-align: top; text-align: start; border: 1px solid var(--line); overflow-wrap: anywhere; white-space: pre-wrap; }
+.offline-check__table small { display: block; margin-top: .5rem; }
+@media (max-width: 650px) {
+  .offline-check__table, .offline-check__table tbody, .offline-check__table tr, .offline-check__table td { display: block; width: 100%; }
+  .offline-check__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .offline-check__table td::before { content: attr(data-label); display: block; font-weight: bold; }
+  .offline-check__table tr { margin-block: 1rem; }
+}

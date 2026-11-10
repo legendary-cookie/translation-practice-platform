@@ -57,65 +57,6 @@ const sourceClips: SourceClip[] = [
       { id: 'ru-repair-2', startMs: 5300, endMs: 10828, transcript: 'Опытные мастера показывают, как найти неисправность.' },
     ],
   },
-  {
-    sourceLanguage: 'fr',
-    id: 'fr-rooftop',
-    title: 'Rainwater on the rooftops',
-    topic: 'Climate and city planning',
-    difficulty: 'advanced',
-    audioUrl: '/audio/interpreting/fr-rooftop.wav',
-    durationMs: 8442,
-    rightsRecordId: 'audio.fr.rooftop.v1',
-    sourceAudioDisclosure: 'This French script uses a fallback desktop voice, not a verified French voice. Treat its pronunciation as a demonstration only.',
-    segments: [
-      { id: 'fr-rooftop-1', startMs: 0, endMs: 4200, transcript: 'Les habitants récupèrent l’eau de pluie sur les toits.' },
-      { id: 'fr-rooftop-2', startMs: 4200, endMs: 8442, transcript: 'Cette eau suffit pour arroser les plantations.' },
-    ],
-  },
-  {
-    sourceLanguage: 'hi',
-    id: 'hi-seeds',
-    title: 'A small seed library',
-    topic: 'Food and local knowledge',
-    difficulty: 'advanced',
-    audioUrl: '/audio/interpreting/hi-seeds.wav',
-    durationMs: 10871,
-    rightsRecordId: 'audio.hi.seeds.v1',
-    sourceAudioDisclosure: 'This Hindi script was romanized for synthesis with a fallback desktop voice. It is not native Hindi speech; use it for timing and transcript workflow practice, not pronunciation benchmarking.',
-    segments: [
-      { id: 'hi-seeds-1', startMs: 0, endMs: 5200, transcript: 'किसानों ने स्थानीय बीजों की एक छोटी लाइब्रेरी शुरू की है।' },
-      { id: 'hi-seeds-2', startMs: 5200, endMs: 10871, transcript: 'लोग अगले मौसम में बीजों को उधार ले जाते हैं।' },
-    ],
-  },
-  {
-    sourceLanguage: 'es',
-    id: 'es-notebook',
-    title: 'The neighborhood notebook',
-    topic: 'Civic life and observation',
-    difficulty: 'intermediate',
-    audioUrl: '/audio/interpreting/es-notebook.wav',
-    durationMs: 9827,
-    rightsRecordId: 'audio.es.notebook.v1',
-    segments: [
-      { id: 'es-notebook-1', startMs: 0, endMs: 4800, transcript: 'Los vecinos anotan los problemas del barrio en un cuaderno.' },
-      { id: 'es-notebook-2', startMs: 4800, endMs: 9827, transcript: 'Cada viernes, una voluntaria reúne las notas.' },
-    ],
-  },
-  {
-    sourceLanguage: 'ar',
-    id: 'ar-map',
-    title: 'An old coastal map',
-    topic: 'Heritage and public memory',
-    difficulty: 'advanced',
-    audioUrl: '/audio/interpreting/ar-map.wav',
-    durationMs: 11197,
-    rightsRecordId: 'audio.ar.map.v1',
-    sourceAudioDisclosure: 'This Arabic script was romanized for synthesis with a fallback desktop voice. It is not native Arabic speech; use it for timing and transcript workflow practice, not pronunciation benchmarking.',
-    segments: [
-      { id: 'ar-map-1', startMs: 0, endMs: 5500, transcript: 'عثر الطلاب على خريطة قديمة في المركز الثقافي.' },
-      { id: 'ar-map-2', startMs: 5500, endMs: 11197, transcript: 'قرروا تصويرها ومقارنتها بذاكرة الكبار.' },
-    ],
-  },
 ]
 
 function validateSourceClip(clip: SourceClip): void {
@@ -161,16 +102,8 @@ function toExercise(clip: SourceClip, targetLanguage: LanguageCode): Interpretin
 const chineseCenteredDirections: Array<[LanguageCode, LanguageCode]> = [
   ['zh', 'en'],
   ['zh', 'ru'],
-  ['zh', 'fr'],
-  ['zh', 'hi'],
-  ['zh', 'es'],
-  ['zh', 'ar'],
   ['en', 'zh'],
   ['ru', 'zh'],
-  ['fr', 'zh'],
-  ['hi', 'zh'],
-  ['es', 'zh'],
-  ['ar', 'zh'],
 ]
 
 export const INTERPRETING_EXERCISES: InterpretingExercise[] = chineseCenteredDirections.flatMap(([sourceLanguage, targetLanguage]) => {

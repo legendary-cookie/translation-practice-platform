@@ -1001,11 +1001,6 @@ export default function App() {
           approvedFeedback: error.approvedFeedback ?? approvedFeedback,
         })
         setExamEvaluationNotice(`${error.message} Review the exact task before deciding whether to use cloud evaluation.`)
-      } else if (!offlineOnly && error instanceof ExamEvaluationBlockedError) {
-        // No AI evaluator is available: still give the learner a report with offline
-        // checks and paragraph-aligned reference translations instead of a dead end.
-        await handleSubmitExamRun(completedRun, undefined, evaluationProfile, true)
-        return
       } else {
         const reason = error instanceof Error ? error.message : 'Evaluation could not be completed.'
         const resumableRun = {
